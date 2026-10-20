@@ -15,7 +15,7 @@ import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { assertDealStageTransition, dealHasEverBeenWon, type RelatedDealMoveGuard } from './deal-lifecycle';
+import { assertDealStageTransition, dealHasEverBeenWon, isQualifiedStage, type RelatedDealMoveGuard } from './deal-lifecycle';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
@@ -125,6 +125,7 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
   delete dealData.productInterests;
   dealData.value = Number(product.dealValue);
   dealData.currency = 'PHP';
+  if (isQualifiedStage(stage)) dealData.priority = 'HIGH';
   normalizeProductOther(dealData, [product.name]);
   const deal = await db.deal.create({
     data: { ...dealData, ...(dealData.addressSource === null ? { addressSource: Prisma.DbNull } : {}), tenantId, ownerId, productsNormalized: true } as never,
@@ -278,6 +279,7 @@ export async function moveDealStage(
         hasEverBeenWon: hasEverBeenWon || newStage.isWon,
         ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,
+        ...(isQualifiedStage(newStage) ? { priority: 'HIGH' } : {}),
         closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason?.trim() || null : null,
         ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
       if (newStage.isWon) {
@@ -331,7 +333,7 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     const now = new Date();
     const written = await tx.deal.updateMany({ where: { id, tenantId, isArchived: false, deletedAt: null,
       pipelineId: previousDeal.pipelineId, stageId: previousDeal.stageId, updatedAt: previousDeal.updatedAt },
-      data: { pipelineId: pipeline.id, stageId: stage.id, stageChangedAt: now } });
+      data: { pipelineId: pipeline.id, stageId: stage.id, stageChangedAt: now, ...(isQualifiedStage(stage) ? { priority: 'HIGH' } : {}) } });
     if (written.count !== 1) throw new ConflictError('This Deal changed. Reopen it before moving it.');
     const note = 'Moved from ' + previousDeal.pipeline.name + ' / ' + previousDeal.stage.name + ' to ' + pipeline.name + ' / ' + stage.name;
     const stageHistory = await tx.dealStageHistory.create({ data: { tenantId, dealId: id, movedById: actorId,

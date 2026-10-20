@@ -1,5 +1,5 @@
 'use client';
-import { CrmStatusBadge } from './crm-status';
+import { CrmStatusBadge, CustomerStatusMenu } from './crm-status';
 import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
@@ -16,7 +16,7 @@ import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbo
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { cn, getCRMStatusStyles } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import type { Lead, Contact } from '@/store/types';
@@ -94,6 +94,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const canReadContacts = useHasPermission('contacts.view');
   const canReadLeads = useHasPermission('leads.view');
   const canReadAccounts = useHasPermission('accounts.view');
+  const canEditContacts = useHasPermission('contacts.edit');
+  const canEditLeads = useHasPermission('leads.edit');
   const [tab, setTab] = useState(focusClosing ? 'details' : 'activity');
   const [closingAttention, setClosingAttention] = useState(focusClosing);
   const [detailsVisited, setDetailsVisited] = useState(false);
@@ -113,6 +115,25 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
+  const primaryContact = (record?.contactDeals as RecordData[] | undefined)?.[0];
+  const primaryLead = (record?.leadDeals as RecordData[] | undefined)?.[0];
+  const primaryContactId = text(record?.contactId) || text(primaryContact?.contactId) || text(object(primaryContact?.contact)?.id);
+  const primaryLeadId = text(record?.leadId) || text(primaryLead?.leadId) || text(object(primaryLead?.lead)?.id);
+  const customerModule = primaryContactId ? 'contacts' : 'leads';
+  const customerId = primaryContactId || primaryLeadId;
+  const customerAccess = useCrmRecordAccess(customerModule);
+  const canReadCustomer = customerModule === 'contacts' ? canReadContacts : canReadLeads;
+  const customerQuery = useCachedPage<RecordData>({ module: customerModule, params: { recordId: customerId },
+    disabled: USE_MOCK_DATA || module !== 'deals' || !customerId || !canReadCustomer,
+    revalidateOnInvalidation: true,
+    fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { signal })).data });
+  const mockCustomer = USE_MOCK_DATA ? data.contacts.find(item => item.id === customerId && item.tenantId === tenant?.id) as unknown as RecordData | undefined : undefined;
+  const customerRecord = module === 'deals'
+    ? canReadCustomer && USE_MOCK_DATA ? mockCustomer : canReadCustomer && ![401, 403, 404].includes(customerQuery.errorStatus ?? 0) && customerQuery.data?.id === customerId ? customerQuery.data : undefined
+    : record;
+  const canEditCustomer = module === 'deals'
+    ? !!customerRecord && (customerModule === 'contacts' ? canEditContacts : canEditLeads) && customerAccess.canMutate(customerRecord) && !(customerModule === 'leads' && customerRecord.convertedAt)
+    : hasEditPermission && recordAccess.canMutate(record) && !(module === 'leads' && record?.convertedAt);
   useReadRecordNotifications(labels[module], id,
     !USE_MOCK_DATA && !!record && !recordQuery.isInitialLoad && !recordQuery.isRefreshing && !recordQuery.error);
   const canEdit = hasEditPermission && recordAccess.canMutate(record);
@@ -204,6 +225,18 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       }
       toast.success(`${label} updated`);
     } catch (error) { showCrmMutationError(error, `Failed to update ${label.toLowerCase()}`); }
+    finally { setSaving(false); }
+  };
+
+  const saveCustomerStatus = async (status: string) => {
+    if (saving || !canEditCustomer) return;
+    if (module !== 'deals') { await save({ status }); return; }
+    setSaving(true);
+    try {
+      await apiClient.put(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status });
+      await Promise.all([customerQuery.refetch(), recordQuery.refetch()]);
+      toast.success('Customer status updated');
+    } catch (error) { showCrmMutationError(error, 'Unable to update customer status'); }
     finally { setSaving(false); }
   };
 
@@ -419,7 +452,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               </span></TooltipTrigger>
               <TooltipContent>{personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
             </Tooltip></TooltipProvider>}
-            {module === 'deals' ? <CrmStatusBadge status={typeof record.engagementStatus === 'string' ? record.engagementStatus : undefined} /> : status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{statusManaged && record.manualCancellation ? 'Reopen customer' : option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {module !== 'accounts' && <CustomerStatusMenu status={text(customerRecord?.status)} managed={!!customerRecord?.statusManagedByDeals} manuallyCancelled={!!customerRecord?.manualCancellation}
+              canEdit={canEditCustomer} busy={saving} label={module === 'deals' ? 'Customer Status' : undefined} onChange={saveCustomerStatus} />}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </>}
         />
@@ -454,6 +488,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
+            {module === 'deals' && <InlineEditRows canEdit={false} onSave={saveField} rows={[{ label: 'Deal Engagement', value: record.engagementStatus, alwaysVisible: true, renderValue: () => <CrmStatusBadge status={text(record.engagementStatus)} /> }]} />}
             {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}
             {detailGroups.map(({ group, fields, relationships: hasRelationships }) => <RecordSection key={group.id} title={group.label}>
               {hasRelationships && !isPerson && relationshipContent}

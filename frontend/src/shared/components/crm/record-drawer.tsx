@@ -205,9 +205,11 @@ interface StatusBadgeProps {
   label: string;
   variant?: 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral';
   dot?: boolean;
+  className?: string;
+  dotClassName?: string;
 }
 
-export function StatusBadge({ label, variant = 'neutral', dot = true }: StatusBadgeProps): React.ReactElement {
+export function StatusBadge({ label, variant = 'neutral', dot = true, className, dotClassName }: StatusBadgeProps): React.ReactElement {
   const variantStyles: Record<string, string> = {
     success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
     info: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
@@ -230,8 +232,9 @@ export function StatusBadge({ label, variant = 'neutral', dot = true }: StatusBa
     <span className={cn(
       'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11.5px] font-semibold',
       variantStyles[variant],
+      className,
     )}>
-      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', dotStyles[variant])} />}
+      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', dotStyles[variant], dotClassName)} />}
       {label}
     </span>
   );

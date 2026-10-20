@@ -29,6 +29,7 @@ class Events extends EventTarget {
 const pipeline = { id: 'pipeline', name: 'Sales', stages: [
   { id: 'lead', name: 'Lead', order: 0, probability: 0, isDefault: true },
   { id: 'lost', name: 'Lost', order: 1, probability: 0, isLost: true },
+  { id: 'qualified', name: 'Qualified', order: 2, probability: 50 },
 ] } as Pipeline;
 const row = (stageId = 'lead') => ({ id: 'deal', title: 'Live opportunity', tenantId: state.tenant, pipelineId: pipeline.id, stageId, value: 1000, priority: 'HIGH' });
 let rows = [row()];
@@ -62,20 +63,24 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 
-it('updates shared Deals, the real Kanban card and stage counts through crm-change', async () => {
+it('updates Qualified stage, High priority badge and counts through crm-change without a manual refresh', async () => {
+  rows = [{ ...row(), priority: 'MEDIUM' }];
   render(<DataProvider><View board /></DataProvider>);
   await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:lead'));
   await screen.findByText('Live opportunity');
+  expect(screen.getByText('Medium')).toBeTruthy();
   const before = sharedReads();
-  rows = [row('lost')];
+  rows = [row('qualified')];
   act(() => { source().emit('crm-change'); source().emit('crm-change'); source().emit('crm-change'); });
-  await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:lost'));
-  const lostColumn = screen.getByRole('heading', { name: 'Lost' }).closest('.p-4')!.parentElement!;
+  await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:qualified'));
+  const qualifiedColumn = screen.getByRole('heading', { name: 'Qualified' }).closest('.p-4')!.parentElement!;
   const leadColumn = screen.getByRole('heading', { name: 'Lead' }).closest('.p-4')!.parentElement!;
-  await waitFor(() => expect(within(lostColumn).getByText('Live opportunity')).toBeTruthy());
+  await waitFor(() => expect(within(qualifiedColumn).getByText('Live opportunity')).toBeTruthy());
+  expect(within(qualifiedColumn).getByText('High')).toBeTruthy();
+  expect(screen.queryByText('Medium')).toBeNull();
   expect(within(leadColumn).queryByText('Live opportunity')).toBeNull();
   expect(within(leadColumn).getByText('0', { exact: true })).toBeTruthy();
-  expect(within(lostColumn).getByText('1', { exact: true })).toBeTruthy();
+  expect(within(qualifiedColumn).getByText('1', { exact: true })).toBeTruthy();
   expect(sharedReads() - before).toBe(1);
   // Duplicate revisions must not refetch, including after reconciliation completed.
   act(() => source().emit('crm-change'));
