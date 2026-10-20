@@ -27,6 +27,11 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
   }
   const admin = active && !!await db.user.findFirst({ where: { ...activeAdminWhere(tenantId), id: userId }, select: { id: true } });
   const permissions = active && !admin ? await findUserEffectivePermissions(userId, tenantId, db) : {};
+  // Apply before pagination/counting. Stored operational history remains untouched.
+  const visibilityWhere: Prisma.NotificationWhereInput = admin ? { OR: [
+    { type: { in: [...adminNotifications].filter(type => type !== 'password_expiring_soon') } },
+    { type: 'password_expiring_soon', entityType: 'PasswordSecurity', entityId: userId },
+  ] } : {};
   const can = (module: string) => active && (admin || permissions[module]?.canView === true);
   const cache = new Map<string, Promise<{ entityType: string; entityId: string; destination: string } | null>>();
   const resolve = async (entityType?: string | null, entityId?: string | null): Promise<{ entityType: string; entityId: string; destination: string } | null> => {
@@ -108,7 +113,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
     // Task/Campaign/Mailbox/Message resolve already verifies the specific owner.
     return ['Task', 'Campaign', 'Mailbox', 'MailboxMessage'].includes(entityType);
   };
-  return { active, admin, resolve, eligible };
+  return { active, admin, resolve, eligible, visibilityWhere };
 }
 
 export async function presentNotifications(tenantId: string, userId: string, rows: Notification[]) {

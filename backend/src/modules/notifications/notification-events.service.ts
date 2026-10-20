@@ -20,6 +20,10 @@ export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event
     const users = await prisma.user.findMany({ where: activeAdminWhere(event.tenantId), select: { id: true } });
     users.forEach(user => recipients.add(user.id));
   }
+  if (recipients.size && !adminNotifications.has(event.type)) {
+    const users = await prisma.user.findMany({ where: { ...activeAdminWhere(event.tenantId), id: { in: [...recipients] } }, select: { id: true } });
+    users.forEach(user => recipients.delete(user.id));
+  }
   for (const userId of recipients) await deliverNotification({ ...event, actorId, userId });
 }
 
@@ -42,7 +46,8 @@ const titles: Record<NotificationType, string> = {
 };
 
 type Facts = { version?: number; incidentId?: string; stage?: string; status?: string; name?: string; counts?: SmsCampaignSummary;
-  assignedName?: string; value?: number; currency?: string; before?: unknown; after?: unknown; hasAccess?: boolean };
+  assignedName?: string; value?: number; currency?: string; before?: unknown; after?: unknown; hasAccess?: boolean;
+  securityEvent?: 'account_locked'; securityLockedAt?: string };
 const safeName = (value: unknown, fallback: string) => typeof value === 'string' && value.trim()
   ? value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || fallback : fallback;
 
@@ -107,8 +112,14 @@ async function presentation(event: NotificationEvent, facts: Facts) {
   else if (type === 'mailbox_sync_failed') body = 'A connected Gmail mailbox has a persistent synchronization failure. Review the connection.';
   else if (type === 'user_created') body = `${name} was added to your organization.`;
   else if (type === 'user_status_changed') {
-    const status = facts.status === 'ACTIVE' ? 'Reactivated' : 'Deactivated'; title = `User ${status}`; body = `${name}'s account was ${status.toLowerCase()}.`;
-  } else if (type === 'role_created') body = `${name} was created with access permissions.`;
+    if (facts.securityEvent === 'account_locked') {
+      title = 'Account Locked'; body = `${name}'s account was locked after repeated failed login attempts. Review User Management.`;
+    } else if (facts.status === 'PENDING') {
+      title = 'User Status Changed'; body = `${name}'s account status changed to Pending.`;
+    } else {
+      const status = facts.status === 'ACTIVE' ? 'Reactivated' : 'Deactivated'; title = `User ${status}`; body = `${name}'s account was ${status.toLowerCase()}.`;
+    }
+  } else if (type === 'role_created') body = `${name} was created.`;
   else if (type === 'role_archived') body = `"${name}" was deleted.`;
   else if (type === 'role_permissions_changed') body = `${name} permissions were updated.`;
   else if (type === 'user_role_changed') body = `${name}'s role assignment was updated.`;
@@ -121,13 +132,23 @@ async function project(event: NotificationEvent, now: Date) {
   const type = event.type as NotificationType;
   if (!adminNotifications.has(type) && !staffNotifications.has(type)) return;
   if (['role_permissions_changed', 'user_role_changed'].includes(type) && JSON.stringify(facts.before) === JSON.stringify(facts.after)) return;
-  if (['role_created', 'role_archived'].includes(type) && !facts.hasAccess) return;
+  if (['role_created', 'role_archived'].includes(type)) {
+    const role = await prisma.roleDefinition.findFirst({ where: { tenantId: event.tenantId, id: event.entityId }, select: { isSystemRole: true } });
+    if (!role || role.isSystemRole) return;
+  }
   if (type === 'user_created') {
-    const user = await prisma.user.findFirst({ where: { tenantId: event.tenantId, id: event.entityId }, select: { email: true, role: true } });
+    const user = await prisma.user.findFirst({ where: { tenantId: event.tenantId, id: event.entityId }, select: { id: true, tenantId: true, email: true, role: true } });
     if (!user) return;
     try { await requireEmployeeAccount(user); } catch (error) { if (error instanceof AppError) return; throw error; }
   }
-  if (type === 'user_status_changed' && !['ACTIVE', 'INACTIVE'].includes(facts.status ?? '')) return;
+  if (type === 'user_status_changed') {
+    if (facts.securityEvent === 'account_locked') {
+      if (!facts.securityLockedAt || !Number.isFinite(Date.parse(facts.securityLockedAt))) return;
+      const user = await prisma.user.findFirst({ where: { tenantId: event.tenantId, id: event.entityId,
+        securityLockedAt: new Date(facts.securityLockedAt) }, select: { id: true } });
+      if (!user) return;
+    } else if (!['ACTIVE', 'INACTIVE', 'PENDING'].includes(facts.status ?? '')) return;
+  }
   if (['task_due', 'task_overdue'].includes(event.type)) {
     const task = await prisma.task.findFirst({ where: { tenantId: event.tenantId, id: event.entityId, isArchived: false,
       assignedUserId: event.ownerId ?? '', status: { notIn: ['completed', 'cancelled'] }, notificationVersion: facts.version } });
@@ -141,7 +162,8 @@ async function project(event: NotificationEvent, now: Date) {
   await deliverEvent({ tenantId: event.tenantId, eventKey: event.eventKey, type, ...content,
     entityType: event.entityType, entityId: event.entityId,
     ownerId: event.ownerId, actorId: event.actorId, admins: event.admins, occurredAt: event.occurredAt,
-    taskVersion: facts.version, incidentId: facts.incidentId, eligibilityAt: now });
+    taskVersion: facts.version, incidentId: facts.incidentId, eligibilityAt: now,
+    securityLockedAt: type === 'user_status_changed' && facts.securityEvent === 'account_locked' ? facts.securityLockedAt : undefined });
 }
 
 /** A bounded lease claim never advances past unprocessed work. Expired leases recover on restart. */

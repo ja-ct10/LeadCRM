@@ -10,6 +10,7 @@ import * as cryptoHelpers from '../../../shared/helpers/crypto';
 import { hashResetToken } from '../password-reset.service';
 import { dispatchTenantNotifications } from '../../../modules/notifications/notification-events.service';
 import { notificationAccess } from '../../../modules/notifications/notification-access';
+import { deliverNotification } from '../../../modules/notifications/notifications.service';
 import { installTenantScoping } from '../../tenant/tenant-prisma';
 import { installProductProjections } from '../../tenant/product-projections';
 import { installCrmRecordAccess } from '../../../modules/crm/access/crm-record-access.service';
@@ -214,6 +215,61 @@ describe.sequential('security escalation, idle sessions and admin unlock', () =>
     expect(result.status).toBe(200);
     return result.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
   }
+  async function finalLockGate() {
+    await db.loginAttemptState.upsert({ where: { identityKey: loginIdentityKey(email) },
+      create: { identityKey: loginIdentityKey(email), failedAttempts: 5, lockoutCycles: 2 },
+      update: { failedAttempts: 5, lockoutCycles: 2, lockedUntil: null } });
+  }
+  it('queues one administrative Account Locked alert per permanent transition and preserves its replay identity', async () => {
+    const cookie = await admin(); await finalLockGate();
+    const adminUser = await db.user.findFirstOrThrow({ where: { tenantId, email: 'unlock-admin@camxian.com' } });
+    const before = await db.notificationEvent.count({ where: { tenantId, entityId: uid, payload: { path: ['securityEvent'], equals: 'account_locked' } } });
+    expect((await login(password)).status).toBe(423);
+    const target = await db.user.findUniqueOrThrow({ where: { id: uid } });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { tenantId, entityId: uid,
+      payload: { path: ['securityLockedAt'], equals: target.securityLockedAt!.toISOString() } } });
+    expect(event).toMatchObject({ type: 'user_status_changed', entityType: 'User', admins: true,
+      payload: { securityEvent: 'account_locked', securityLockedAt: target.securityLockedAt!.toISOString() } });
+    const audit = await db.auditLog.findFirstOrThrow({ where: { tenantId, entityId: uid, action: 'ACCOUNT_SECURITY_LOCKED' }, orderBy: { createdAt: 'desc' } });
+    expect(event.eventKey).toBe('account-security-locked:' + audit.id);
+    expect((await login(password)).status).toBe(423);
+    expect(await db.notificationEvent.count({ where: { tenantId, entityId: uid, payload: { path: ['securityEvent'], equals: 'account_locked' } } })).toBe(before + 1);
+    const now = new Date(Date.now() + 100);
+    await dispatchTenantNotifications(tenantId, now, 100); await dispatchTenantNotifications(tenantId, now, 100);
+    const notices = await db.notification.findMany({ where: { tenantId, eventKey: event.eventKey } });
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ userId: adminUser.id, title: 'Account Locked',
+      body: "Lockout Test's account was locked after repeated failed login attempts. Review User Management." });
+    expect((await call('/notifications/' + notices[0].id + '/destination', undefined, cookie)).body.destination).toBe('/settings?tab=users');
+    await db.notification.deleteMany({ where: { id: notices[0].id } });
+    await db.notificationEvent.update({ where: { id: event.id }, data: { processedAt: null } }); await dispatchTenantNotifications(tenantId, now, 100);
+    expect(await db.notification.count({ where: { tenantId, eventKey: event.eventKey } })).toBe(0);
+    expect(await db.notificationDelivery.findFirst({ where: { tenantId, eventKey: event.eventKey, userId: adminUser.id } })).toMatchObject({ outcome: 'deleted' });
+  });
+  it('suppresses unlocked incidents during projection and during the final locked delivery transaction', async () => {
+    const cookie = await admin(); await finalLockGate(); expect((await login(password)).status).toBe(423);
+    const adminUser = await db.user.findFirstOrThrow({ where: { tenantId, email: 'unlock-admin@camxian.com' } });
+    const target = await db.user.findUniqueOrThrow({ where: { id: uid } });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { tenantId, entityId: uid,
+      payload: { path: ['securityLockedAt'], equals: target.securityLockedAt!.toISOString() } } });
+    expect((await call('/administration/users/' + uid + '/unlock', {}, cookie)).status).toBe(200);
+    await deliverNotification({ tenantId, userId: adminUser.id, type: 'user_status_changed', title: 'Account Locked',
+      entityType: 'User', entityId: uid, eventKey: event.eventKey, securityLockedAt: target.securityLockedAt!.toISOString() });
+    await dispatchTenantNotifications(tenantId, new Date(Date.now() + 100), 100);
+    expect(await db.notification.count({ where: { tenantId, eventKey: event.eventKey } })).toBe(0);
+    expect(await db.notificationDelivery.findFirst({ where: { tenantId, eventKey: event.eventKey, userId: adminUser.id } })).toMatchObject({ outcome: 'ineligible' });
+  });
+  it('rolls back the permanent transition if its transactional notification cannot be queued', async () => {
+    await finalLockGate();
+    const audits = await db.auditLog.count({ where: { tenantId, entityId: uid, action: 'ACCOUNT_SECURITY_LOCKED' } });
+    // Reject new lock alerts only in this disposable fixture, retaining earlier rows.
+    await db.$executeRawUnsafe(`ALTER TABLE "NotificationEvent" ADD CONSTRAINT fixture_reject_lock_alert CHECK (payload->>'securityEvent' IS DISTINCT FROM 'account_locked') NOT VALID`);
+    try { expect((await login(password)).status).toBe(500); }
+    finally { await db.$executeRawUnsafe('ALTER TABLE "NotificationEvent" DROP CONSTRAINT fixture_reject_lock_alert'); }
+    expect((await db.user.findUniqueOrThrow({ where: { id: uid } })).securityLockedAt).toBeNull();
+    expect(await state()).toMatchObject({ failedAttempts: 5, lockoutCycles: 2 });
+    expect(await db.auditLog.count({ where: { tenantId, entityId: uid, action: 'ACCOUNT_SECURITY_LOCKED' } })).toBe(audits);
+  });
   it('locks on cycle three, persists indefinitely, revokes sessions and survives password reset', async () => {
     const cookie = (await login(password)).cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
     await escalate();
@@ -281,6 +337,10 @@ describe.sequential('password reminders, authorized CSV and Product metadata', (
   }
   it('delivers exactly once in day 89, ignores stale cycles and links only to self', async () => {
     const now = new Date(), changed = new Date(+now - 89 * 86400000);
+    const role = await db.roleDefinition.upsert({ where: { tenantId_name: { tenantId, name: 'Client Admin' } }, update: {},
+      create: { tenantId, name: 'Client Admin', isSystemRole: true } });
+    await db.userRole.createMany({ data: [{ tenantId, userId: uid, roleId: role.id }], skipDuplicates: true });
+    expect((await notificationAccess(tenantId, uid)).admin).toBe(true);
     await db.notificationEvent.updateMany({ where: { tenantId }, data: { processedAt: now } });
     await db.user.update({ where: { id: uid }, data: { passwordChangedAt: new Date(+now - 88 * 86400000), mustChangePassword: false } });
     expect((await dispatchTenantNotifications(tenantId, now)).claimed).toBe(0);
@@ -289,6 +349,7 @@ describe.sequential('password reminders, authorized CSV and Product metadata', (
     expect((await dispatchTenantNotifications(tenantId, now)).failed).toBe(0);
     const notices = await db.notification.findMany({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } });
     expect(notices).toHaveLength(1); expect(notices[0]).toMatchObject({ title: 'Password Expiring Soon', body: 'Your password will expire tomorrow. Please change your password to avoid losing access.' });
+    expect(await db.notification.count({ where: { tenantId, type: 'password_expiring_soon', entityId: uid, userId: { not: uid } } })).toBe(0);
     expect(await (await notificationAccess(tenantId, uid)).resolve('PasswordSecurity', uid)).toMatchObject({ destination: '/settings?tab=profile&changePassword=1' });
     expect(await (await notificationAccess(tenantId, uid)).resolve('PasswordSecurity', 'another-user')).toBeNull();
     await db.notification.deleteMany({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } });

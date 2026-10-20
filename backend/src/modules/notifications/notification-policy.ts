@@ -5,9 +5,7 @@ export const assignmentNotifications = new Set<NotificationType>([
 ]);
 export const adminNotifications = new Set<NotificationType>([
   'password_expiring_soon',
-  ...SmsCampaignNotificationTypes,
-  'website_lead', 'deal_won', 'deal_lost', 'campaign_failed', 'workflow_failed', 'form_processing_failed',
-  'mailbox_disconnected', 'mailbox_sync_failed', 'user_created', 'user_status_changed',
+  'user_created', 'user_status_changed',
   'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
 ]);
 export const staffNotifications = new Set<NotificationType>([
