@@ -4,6 +4,9 @@ import { PERMISSION_MODULES, PERMISSION_ACTIONS } from '@leadcrm/shared';
 const permissionRowSchema = z.object({
   module:    z.string().refine(value => PERMISSION_MODULES.some(module => module.key === value), 'Invalid permission module'),
   canView:   z.boolean(),
+  canViewAll: z.boolean().optional(),
+  canViewMy: z.boolean().optional(),
+  canViewActive: z.boolean().optional(),
   canCreate: z.boolean(),
   canEdit:   z.boolean(),
   canDelete: z.boolean(),

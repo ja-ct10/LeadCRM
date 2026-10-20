@@ -84,6 +84,7 @@ export const BulkStageChangeSchema = z.object({
 // --- Inferred Types ---
 
 export const DealsQuerySchema = z.object({
+  scope: z.enum(['all', 'my']).optional(),
   page:           z.coerce.number().int().min(1).default(1),
   limit:          z.coerce.number().int().min(1).max(100).default(25),
   sortBy:         z.enum(['title', 'value', 'priority', 'expectedCloseDate', 'createdAt', 'updatedAt', 'stageId']).optional(),

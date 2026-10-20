@@ -13,7 +13,9 @@ vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: a
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: state.get } }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock('@/shared/components/crm', () => ({ DealPanel: ({ open, deal }: any) => open ? <div role="dialog">{deal.title}</div> : null }));
+vi.mock('@/shared/components/crm', () => ({ DealPanel: ({ open, deal, onOpenChange }: any) => open ? <div role="dialog" data-deal-id={deal.id}>
+  {deal.title}<button onClick={() => onOpenChange(false)}>Close Deal details</button>
+</div> : null }));
 vi.mock('@/features/tenant/crm/deals/ui/deal-form', () => ({ DealFormSheet: () => null }));
 vi.mock('./pipeline-kanban-board', () => ({ PipelineKanbanBoard: ({ pipeline, deals, highlightDealId, onDealClick }: any) => <div data-testid="board" data-pipeline={pipeline.id}>
   {deals.map((deal: any) => <button key={deal.id} data-search-highlight={highlightDealId === deal.id || undefined} onClick={() => onDealClick(deal)}>{deal.title}</button>)}
@@ -22,7 +24,7 @@ vi.mock('./pipeline-stages-dialog', () => ({ PipelineStagesDialog: () => null })
 import PipelinePage from './pipeline-page';
 beforeEach(() => { vi.clearAllMocks(); state.params = 'highlight=selected'; state.rows = [{ id: 'selected', title: 'Search-selected Deal', pipelineId: 'other', stageId: 'last', value: 10, priority: 'Low' }]; state.refetch.mockResolvedValue(undefined); state.get.mockResolvedValue({ data: state.rows[0] }); }); afterEach(cleanup);
 it('selects the exact pipeline and highlights its card without automatically opening details', async () => {
-  render(<PipelinePage />);
+  const { rerender } = render(<PipelinePage />);
   const card = await screen.findByRole('button', { name: 'Search-selected Deal' });
   expect(screen.getByTestId('board').getAttribute('data-pipeline')).toBe('other');
   expect(card.getAttribute('data-search-highlight')).toBe('true');
@@ -30,7 +32,79 @@ it('selects the exact pipeline and highlights its card without automatically ope
   expect(state.get).toHaveBeenCalledWith('/crm/deals/selected', { signal: expect.any(AbortSignal) });
   expect(state.replace).toHaveBeenCalledWith('/crm/deals?highlight=selected&pipelineId=other', { scroll: false });
   fireEvent.click(card);
-  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(screen.getByRole('dialog').getAttribute('data-deal-id')).toBe('selected');
+  expect(card.getAttribute('data-search-highlight')).toBeNull();
+  expect(state.params).toBe('highlight=selected');
+  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=other', { scroll: false });
+
+  state.params = new URL(state.replace.mock.lastCall![0], 'http://localhost').searchParams.toString();
+  rerender(<PipelinePage />);
+  expect(screen.getByRole('dialog').getAttribute('data-deal-id')).toBe('selected');
+  expect(screen.getByTestId('board').getAttribute('data-pipeline')).toBe('other');
+  const refreshes = state.refetch.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Close Deal details' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(state.refetch).toHaveBeenCalledTimes(refreshes + 1);
+  expect(screen.getByRole('button', { name: 'Search-selected Deal' }).getAttribute('data-search-highlight')).toBeNull();
+});
+
+it('preserves the pipeline, tab and other query parameters when consuming the highlight', async () => {
+  state.params = 'highlight=selected&pipelineId=other&tab=my&accountId=account&contactId=contact&view=compact';
+  const { rerender } = render(<PipelinePage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Search-selected Deal' }));
+  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=other&tab=my&accountId=account&contactId=contact&view=compact', { scroll: false });
+  state.params = new URL(state.replace.mock.lastCall![0], 'http://localhost').searchParams.toString();
+  rerender(<PipelinePage />);
+  expect(screen.getByRole('dialog').getAttribute('data-deal-id')).toBe('selected');
+  expect(screen.getByTestId('board').getAttribute('data-pipeline')).toBe('other');
+  expect(document.querySelector('[data-search-highlight="true"]')).toBeNull();
+});
+
+it('keeps the highlight cleared when details close before the URL replacement completes', async () => {
+  state.params = 'highlight=selected&pipelineId=other';
+  const { rerender } = render(<PipelinePage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Search-selected Deal' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close Deal details' }));
+  rerender(<PipelinePage />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Search-selected Deal' }).getAttribute('data-search-highlight')).toBeNull();
+});
+
+it.each(['selected', 'second'])('highlights %s after a new explicit search following consumption', async nextId => {
+  state.params = 'highlight=selected&pipelineId=other';
+  const { rerender } = render(<PipelinePage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Search-selected Deal' }));
+  state.params = new URL(state.replace.mock.lastCall![0], 'http://localhost').searchParams.toString();
+  rerender(<PipelinePage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Deal details' }));
+
+  const next = { ...state.rows[0], id: nextId, title: 'New search Deal' };
+  state.rows = [next]; state.get.mockResolvedValue({ data: next });
+  state.params = 'highlight=' + nextId + '&pipelineId=other';
+  rerender(<PipelinePage />);
+  await waitFor(() => expect(screen.getByRole('button', { name: next.title }).getAttribute('data-search-highlight')).toBe('true'));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('opens ordinary cards without changing the URL', () => {
+  state.params = 'pipelineId=other';
+  render(<PipelinePage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Search-selected Deal' }));
+  expect(screen.getByRole('dialog').getAttribute('data-deal-id')).toBe('selected');
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(state.get).not.toHaveBeenCalled();
+});
+
+it('consumes the search highlight when another Deal card opens', async () => {
+  state.params = 'highlight=selected&pipelineId=other';
+  state.rows.push({ ...state.rows[0], id: 'another', title: 'Another Deal' });
+  render(<PipelinePage />);
+  const highlighted = await screen.findByRole('button', { name: 'Search-selected Deal' });
+  await waitFor(() => expect(highlighted.getAttribute('data-search-highlight')).toBe('true'));
+  fireEvent.click(screen.getByRole('button', { name: 'Another Deal' }));
+  expect(screen.getByRole('dialog').getAttribute('data-deal-id')).toBe('another');
+  expect(highlighted.getAttribute('data-search-highlight')).toBeNull();
+  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=other', { scroll: false });
 });
 
 it('bypasses local filters only for the authorized target and displays its pipeline read-only', async () => {

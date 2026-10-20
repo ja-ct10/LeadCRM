@@ -174,11 +174,11 @@ it('synchronizes row/individual checkboxes, sends module flags through the real 
   const contacts = screen.getByRole('checkbox', { name: 'Select all Contacts permissions' });
   expect(contacts.getAttribute('aria-checked')).toBe('false');
   fireEvent.click(contacts);
-  expect(screen.getByText('5/5')).toBeTruthy();
+  expect(screen.getByText('8/8')).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
-  expect(screen.getByText('4/5')).toBeTruthy(); expect(contacts).toHaveProperty('indeterminate', true);
-  fireEvent.click(contacts); expect(screen.getByText('5/5')).toBeTruthy();
-  fireEvent.click(contacts); expect(within(contacts.closest('tr')!).getByText('0/5')).toBeTruthy(); fireEvent.click(contacts);
+  expect(screen.getByText('7/8')).toBeTruthy(); expect(contacts).toHaveProperty('indeterminate', true);
+  fireEvent.click(contacts); expect(screen.getByText('8/8')).toBeTruthy();
+  fireEvent.click(contacts); expect(within(contacts.closest('tr')!).getByText('0/8')).toBeTruthy(); fireEvent.click(contacts);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Deals permissions' }));
   let finish!: () => void; pending = new Promise(resolve => { finish = resolve; });
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
@@ -199,7 +199,7 @@ it('keeps values and permissions on server failure and allows a zero-permission 
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Contacts permissions' }));
   failure = 'A role with this name already exists.';
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
-  await screen.findByText(failure); expect(screen.getByDisplayValue('Retain this')).toBeTruthy(); expect(screen.getByText('5/5')).toBeTruthy();
+  await screen.findByText(failure); expect(screen.getByDisplayValue('Retain this')).toBeTruthy(); expect(screen.getByText('8/8')).toBeTruthy();
   expect(mocks.success).not.toHaveBeenCalled(); expect(savedRoles).toHaveLength(0);
   failure = ''; fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Contacts permissions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
@@ -210,6 +210,26 @@ it('keeps values and permissions on server failure and allows a zero-permission 
 const totalPermissions = () => permissionModules.reduce((total, module) => total + module.actions.length, 0);
 const selectModule = (label: string) => screen.getByRole('checkbox', { name: `Select all ${label} permissions` });
 const moduleRow = (label: string) => selectModule(label).closest('tr')!;
+
+it.each(['create', 'edit'] as const)('configures CRM tab grants independently in the existing Additional Permissions column (%s)', async mode => {
+  await openTable(mode);
+  for (const name of ['All Leads', 'My Leads', 'Active Lead', 'All Contacts', 'My Contacts', 'Active Contacts', 'All Accounts', 'All Deals', 'My Deals']) {
+    expect(screen.getByRole('checkbox', { name })).toBeTruthy();
+  }
+  fireEvent.click(screen.getByRole('checkbox', { name: 'My Leads' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Active Lead' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All Leads' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All Leads' }));
+  expect(screen.getByRole('checkbox', { name: 'All Leads' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('checkbox', { name: 'My Leads' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'Active Lead' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'View Leads' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'My Contacts' })).toHaveProperty('checked', false);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'View Leads' }));
+  expect(screen.getByRole('checkbox', { name: 'My Leads' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('checkbox', { name: 'Active Lead' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('checkbox', { name: 'Manage Pipeline Stages' })).toBeTruthy();
+});
 async function filterModules(label: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Filter modules' }));
   fireEvent.click(await screen.findByRole('menuitemradio', { name: label }));
@@ -247,7 +267,7 @@ it.each(['create', 'edit'] as const)('updates row/global mixed states and counts
   expect(contacts).toHaveProperty('indeterminate', true);
   expect(contacts.getAttribute('aria-checked')).toBe('mixed');
   expect(all).toHaveProperty('indeterminate', true);
-  expect(within(moduleRow('Contacts')).getByText('2/5')).toBeTruthy();
+  expect(within(moduleRow('Contacts')).getByText('2/8')).toBeTruthy();
   expect(screen.getByText(`2 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
   fireEvent.click(contacts);
   expect(contacts).toHaveProperty('checked', true);
@@ -429,7 +449,7 @@ it('saves the complete edited permission payload once, including hidden and addi
   expect(body).toEqual({ name: 'Staff Updated', description: 'Updated description', permissions: expect.any(Array) });
   expect(body.permissions).toHaveLength(4);
   expect(body.permissions).toEqual(expect.arrayContaining([
-    { ...EMPTY_PERMISSION_FLAGS, module: 'contacts', canView: true, canCreate: true, canEdit: true, canArchive: true, canImport: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'contacts', canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canArchive: true, canImport: true },
     { ...EMPTY_PERMISSION_FLAGS, module: 'roles', canView: true, canEdit: true },
     { ...EMPTY_PERMISSION_FLAGS, module: 'deals', canView: true, canManageStages: true },
     { ...EMPTY_PERMISSION_FLAGS, module: 'groups', canView: true, canDelete: true },
@@ -441,7 +461,7 @@ it('saves the complete edited permission payload once, including hidden and addi
   await enterEdit('Staff Updated');
   expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', body.name);
   expect(screen.getByLabelText('Description — Optional')).toHaveProperty('value', body.description);
-  expect(screen.getByText(`11 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  expect(screen.getByText(`14 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
   expect(selectModule('Contacts')).toHaveProperty('checked', true);
   expect(screen.getByRole('checkbox', { name: 'Delete Groups' })).toHaveProperty('checked', true);
   expect(screen.getByRole('checkbox', { name: 'View Leads' })).toHaveProperty('checked', false);

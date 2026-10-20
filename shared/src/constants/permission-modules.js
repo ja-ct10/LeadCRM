@@ -9,6 +9,9 @@ exports.togglePermissionSelection = togglePermissionSelection;
 /** Canonical actions; there are no implicit edit-to-privileged-action aliases. */
 exports.PERMISSION_ACTION_KEYS = {
     "canView": "view",
+    "canViewAll": "view_all",
+    "canViewMy": "view_my",
+    "canViewActive": "view_active",
     "canCreate": "create",
     "canEdit": "edit",
     "canDelete": "delete",
@@ -30,6 +33,9 @@ exports.PERMISSION_ACTION_KEYS = {
 };
 exports.PERMISSION_ACTION_LABELS = {
     "canView": "View",
+    "canViewAll": "All",
+    "canViewMy": "My",
+    "canViewActive": "Active",
     "canCreate": "Create",
     "canEdit": "Edit",
     "canDelete": "Delete",
@@ -52,6 +58,9 @@ exports.PERMISSION_ACTION_LABELS = {
 exports.PERMISSION_ACTIONS = Object.keys(exports.PERMISSION_ACTION_KEYS);
 exports.EMPTY_PERMISSION_FLAGS = {
     "canView": false,
+    "canViewAll": false,
+    "canViewMy": false,
+    "canViewActive": false,
     "canCreate": false,
     "canEdit": false,
     "canDelete": false,
@@ -87,7 +96,10 @@ exports.PERMISSION_MODULES = [
             "canCreate",
             "canEdit",
             "canArchive",
-            "canImport"
+            "canImport",
+            "canViewAll",
+            "canViewMy",
+            "canViewActive"
         ]
     },
     {
@@ -98,7 +110,10 @@ exports.PERMISSION_MODULES = [
             "canCreate",
             "canEdit",
             "canArchive",
-            "canImport"
+            "canImport",
+            "canViewAll",
+            "canViewMy",
+            "canViewActive"
         ]
     },
     {
@@ -109,7 +124,8 @@ exports.PERMISSION_MODULES = [
             "canCreate",
             "canEdit",
             "canArchive",
-            "canImport"
+            "canImport",
+            "canViewAll"
         ]
     },
     {
@@ -120,6 +136,8 @@ exports.PERMISSION_MODULES = [
             "canCreate",
             "canEdit",
             "canArchive",
+            "canViewAll",
+            "canViewMy",
             "canManageStages"
         ]
     },
@@ -264,6 +282,9 @@ exports.PERMISSION_GROUPS = [
     { id: 'settings', label: 'Organization Settings', modules: ["settings"], description: '' },
 ];
 function permissionLabel(module, action) {
+    if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {
+        return exports.PERMISSION_ACTION_LABELS[action] + ' ' + (action === 'canViewActive' && module.key === 'leads' ? 'Lead' : module.label);
+    }
     if (module.key === 'roles' && action === 'canView')
         return 'View Roles & Permissions';
     if (module.key === 'users' && action === 'canActivate')

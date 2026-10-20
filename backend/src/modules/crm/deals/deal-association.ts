@@ -2,12 +2,13 @@ import type { Prisma } from '@prisma/client';
 import { dealAssociationPatch, type DealAssociationChange } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 import { ConflictError, ValidationError } from '../../../shared/errors/http-error';
-import { assertCrmCreateAssignment, crmActor, mayReadCrmModule, resolveCrmActor } from '../access/crm-record-access.service';
+import { assertCrmCreateAssignment, assertCrmRecordRead, crmActor, mayReadCrmModule, resolveCrmActor } from '../access/crm-record-access.service';
 import { resolveSalesAgent, validateSalesOwner } from '../leads/lead-automation.service';
 
 export async function readDealAssociation(tx: Prisma.TransactionClient, tenantId: string, association: Pick<DealAssociationChange, 'type' | 'id'>) {
   const module = association.type === 'lead' ? 'leads' : 'contacts';
   if (!await mayReadCrmModule(tx, tenantId, module)) throw new AppError(`You do not have permission to associate this ${association.type === 'lead' ? 'Lead' : 'Contact'}.`, 403);
+  await assertCrmRecordRead(tx, module, association.id);
   const where = { tenantId, id: association.id, isArchived: false, deletedAt: null };
   const select = { id: true, assignedUserId: true, accountId: true };
   const record = association.type === 'lead' ? await tx.lead.findFirst({ where, select }) : await tx.contact.findFirst({ where, select });

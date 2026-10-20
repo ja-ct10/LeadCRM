@@ -4,7 +4,7 @@ import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
-import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -63,7 +63,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
     ...(['INQUIRY', 'HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED_DEAL'].includes(contains.contains.toUpperCase().replace(' ', '_')) ? [{ status: contains.contains.toUpperCase().replace(' ', '_') }] : []),
   ]));
-  const scope = filters.find(filter => filter.field === 'scope')?.value;
+  const scope = requestedCrmScope(filters, query.scope);
+  clauses.push(await crmReadWhere(db, tenantId, 'contacts', scope));
   if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
   if (scope === 'active') clauses.push({ status: { in: ['INQUIRY', 'HOT', 'WARM'] } });
   const system = filters.find(filter => filter.field === 'system')?.value;

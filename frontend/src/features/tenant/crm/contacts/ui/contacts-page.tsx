@@ -1,4 +1,5 @@
 ﻿'use client';
+import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
@@ -39,6 +40,7 @@ export default function ContactsPage(): React.ReactElement {
   const { organizations, deals, users } = useData();
   const { user } = useAuth();
   const isClientAdmin = user?.role === 'Client Admin';
+  const tabAccess = useCrmTabs('contacts', [{ id: 'all', label: 'All Contacts' }, { id: 'my', label: 'My Contacts' }, { id: 'active-customers', label: 'Active Contacts' }]);
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('contacts.create');
   const canImport = useHasPermission('contacts.import');
@@ -88,11 +90,12 @@ export default function ContactsPage(): React.ReactElement {
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const tabParam = getParam('tab');
-  const [selectedTab, setActiveTab] = useState(() => isClientAdmin && tabParam === 'my' ? 'all' : tabParam || 'all');
-  const activeTab = isClientAdmin && (selectedTab === 'my' || tabParam === 'my') ? 'all' : selectedTab;
+  const unavailableTab = !!tabParam && !tabAccess.tabs.some(tab => tab.id === tabParam);
+  const [selectedTab, setActiveTab] = useState(() => tabAccess.tabs.some(tab => tab.id === tabParam) ? tabParam : tabAccess.firstId);
+  const activeTab = !unavailableTab && tabAccess.tabs.some(tab => tab.id === selectedTab) ? selectedTab : tabAccess.firstId;
   useEffect(() => {
-    if (isClientAdmin && (selectedTab === 'my' || tabParam === 'my')) setActiveTab('all');
-  }, [isClientAdmin, selectedTab, tabParam]);
+    if (activeTab !== selectedTab) setActiveTab(activeTab);
+  }, [activeTab, selectedTab]);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
@@ -107,7 +110,7 @@ export default function ContactsPage(): React.ReactElement {
 
   const debouncedSearch = useDebounce(searchTerm, 300);
   const serverFilters = useMemo((): FilterCondition[] => [
-    ...(activeTab === 'my' || activeTab === 'active-customers' ? [{ field: 'scope', operator: 'equals', value: activeTab === 'my' ? 'my' : 'active' } as FilterCondition] : []),
+    ...(activeTab === 'my' || activeTab === 'active-customers' ? [{ field: 'scope', operator: 'equals', value: activeTab === 'active-customers' ? 'active' : activeTab } as FilterCondition] : []),
     ...(selectedStatuses.length ? [{ field: 'status', operator: 'in', value: selectedStatuses } as FilterCondition] : []),
     ...(selectedSystemFilters.length ? [{ field: 'system', operator: 'in', value: selectedSystemFilters } as FilterCondition] : []),
     ...(selectedOwners.length ? [{ field: 'assignedUserId', operator: 'in', value: selectedOwners } as FilterCondition] : []),
@@ -118,7 +121,7 @@ export default function ContactsPage(): React.ReactElement {
     sort: sort ? `${sort.field}:${sort.direction}` : undefined, filters: serverFilters,
   };
   const { data: cachedResponse, refetch: fetchContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage<ContactsV2Response | Contact>({
-    module: 'contacts', revalidateOnInvalidation: true,
+    module: 'contacts', disabled: !tabAccess.firstId, revalidateOnInvalidation: true,
     intervalMs: highlightId ? undefined : 60_000,
     params: highlightId ? { recordId: highlightId } : { ...query },
     fetchFn: async signal => {
@@ -152,12 +155,12 @@ export default function ContactsPage(): React.ReactElement {
 
   useEffect(() => {
     if (!highlightId) return;
-    setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
+    setSearchTerm(''); setActiveTab(tabAccess.firstId); setActiveView('table'); setCurrentPage(1);
     setSelectedSystemFilters([]);
     setSelectedStatuses([]);
     setSelectedOwners([]);
     setSelectedRelated([]);
-  }, [highlightId]);
+  }, [highlightId, tabAccess.firstId]);
 
   // Sync to URL
   useEffect(() => {
@@ -311,6 +314,10 @@ export default function ContactsPage(): React.ReactElement {
     },
   });
 
+  React.useLayoutEffect(() => { setSelectedContact(null); setEditingContact(undefined); setContactSelectedIds(new Set()); }, [tabAccess.firstId]);
+
+  if (!tabAccess.firstId) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
+
   return (
     <>
     <ConfirmActionDialog {...dialogProps} />
@@ -334,11 +341,7 @@ export default function ContactsPage(): React.ReactElement {
       onSortChange={next => { setSort(next); setCurrentPage(1); }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
-      savedTabs={[
-        { id: 'all', label: 'All Contacts' },
-        { id: 'my', label: 'My Contacts' },
-        { id: 'active-customers', label: 'Active Contacts' },
-      ].filter(tab => !isClientAdmin || tab.id !== 'my')}
+      savedTabs={tabAccess.tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       filterGroups={filterGroups}

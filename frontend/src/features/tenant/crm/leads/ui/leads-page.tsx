@@ -1,5 +1,6 @@
 'use client';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { LEAD_SOURCES, formatLeadName, reconcileTableColumns } from '@leadcrm/shared';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
@@ -54,6 +55,7 @@ export default function LeadsPage(): React.ReactElement {
   } = useData();
   const { user } = useAuth();
   const isClientAdmin = user?.role === 'Client Admin';
+  const tabAccess = useCrmTabs('leads', [{ id: 'all', label: 'All Leads' }, { id: 'my', label: 'My Leads' }, { id: 'active', label: 'Active Leads' }]);
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('leads.create');
   const canImport = useHasPermission('leads.import');
@@ -98,11 +100,11 @@ export default function LeadsPage(): React.ReactElement {
   // ── State ────────────────────────────────────────────────────────────
   const activeView: ViewType = 'table';
   const tabParam = getParam('tab');
-  const unavailableTab = !!tabParam && (!['all', 'my', 'active'].includes(tabParam) || isClientAdmin && tabParam === 'my');
-  const [selectedTab, setActiveTab] = useState(() => unavailableTab ? 'all' : tabParam || 'all');
-  const activeTab = unavailableTab || isClientAdmin && selectedTab === 'my' ? 'all' : selectedTab;
+  const unavailableTab = !!tabParam && !tabAccess.tabs.some(tab => tab.id === tabParam);
+  const [selectedTab, setActiveTab] = useState(() => tabAccess.tabs.some(tab => tab.id === tabParam) ? tabParam : tabAccess.firstId);
+  const activeTab = !unavailableTab && tabAccess.tabs.some(tab => tab.id === selectedTab) ? selectedTab : tabAccess.firstId;
   useEffect(() => {
-    if (activeTab !== selectedTab) setActiveTab('all');
+    if (activeTab !== selectedTab) setActiveTab(activeTab);
   }, [activeTab, selectedTab]);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
@@ -133,13 +135,13 @@ export default function LeadsPage(): React.ReactElement {
 
   useEffect(() => {
     if (!highlightId) return;
-    setSearchTerm(''); setActiveTab('all'); setCurrentPage(1);
+    setSearchTerm(''); setActiveTab(tabAccess.firstId); setCurrentPage(1);
     setSelectedSystemFilters([]);
     setSelectedStatuses([]);
     setSelectedSources([]);
     setSelectedOwners([]);
     setSelectedRelated([]);
-  }, [highlightId]);
+  }, [highlightId, tabAccess.firstId]);
 
   // ── Server-side data (replaces DataContext contacts array) ────────────
   // useLeadsData owns the fetch, implements stale-while-revalidate, and
@@ -185,6 +187,7 @@ export default function LeadsPage(): React.ReactElement {
     error: leadsError,
     refetch: refetchLeads,
   } = useLeadsData({
+    disabled: !tabAccess.firstId,
     page: highlightId ? 1 : currentPage,
     recordId: highlightId,
     pageSize,
@@ -375,6 +378,10 @@ export default function LeadsPage(): React.ReactElement {
     },
   });
 
+  React.useLayoutEffect(() => { setSelectedLead(null); setEditingLead(undefined); setSelectedIds(new Set()); }, [tabAccess.firstId]);
+
+  if (!tabAccess.firstId) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
+
   return (
     <>
       <ConfirmActionDialog {...dialogProps} />
@@ -391,15 +398,11 @@ export default function LeadsPage(): React.ReactElement {
         availableViews={['table']}
         activeView={'table' as ViewType}
         onViewChange={() => {}}
-        savedTabs={[
-          { id: 'all', label: 'All Leads' },
-          { id: 'my', label: 'My Leads' },
-          { id: 'active', label: 'Active Leads' },
-        ].filter(tab => !isClientAdmin || tab.id !== 'my')}
+        savedTabs={tabAccess.tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterContent={<LeadCreatedFilter value={createdFilter} onChange={setCreatedFilter} />}
-        onClearFilters={() => { setCreatedFilter(emptyCreatedFilter); setSelectedStatuses([]); setSelectedSources([]); setSelectedOwners([]); setSelectedRelated([]); setSelectedSystemFilters([]); setActiveTab('all'); setSearchTerm(''); setCurrentPage(1); }}
+        onClearFilters={() => { setCreatedFilter(emptyCreatedFilter); setSelectedStatuses([]); setSelectedSources([]); setSelectedOwners([]); setSelectedRelated([]); setSelectedSystemFilters([]); setActiveTab(tabAccess.firstId); setSearchTerm(''); setCurrentPage(1); }}
         filterGroups={filterGroups}
         onFilterToggle={handleFilterToggle}
         showFilters={showFilters}

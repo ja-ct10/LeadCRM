@@ -209,14 +209,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const workspaceReady = Boolean(!authLoading && !authError && user && (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
       (user.role !== "Client Admin" || isOnboardingComplete(user))));
 
-  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
+  const crmScopeIdentity = ['leads', 'contacts', 'accounts', 'deals'].map(module =>
+    ['canViewAll', 'canViewMy', 'canViewActive'].map(action => userCan(module, action as import('@leadcrm/shared').PermissionAction) ? '1' : '0').join('')).join(':');
+  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}:${crmScopeIdentity}`;
   const dataIdentityRef = useRef(dataIdentity);
   dataIdentityRef.current = dataIdentity;
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const canReadDeals = userCan('deals', 'canView');
+  const canReadDeals = (['canViewAll', 'canViewMy'] as const).some(action => userCan('deals', action));
+  const canReadAccounts = userCan('accounts', 'canViewAll');
   const dealsRequest = useRef<{ identity: string; controller: AbortController; valid: () => boolean; promise: Promise<void> } | null>(null);
   const refreshDeals = useCallback((): Promise<void> => {
     if (USE_MOCK_DATA || !workspaceReady || !user?.id || !tenant?.id || !canReadDeals) return Promise.resolve();
@@ -373,7 +376,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //   🔄 tasks           → task-board, dashboard, RecordPanelWrappers, deals-page
         //   🔄 workflows       → workflows-page, campaign-builder, settings
         const [orgsRes, pipelinesRes, usersRes] = await Promise.all([
-          optionalModuleRead(organizationsService.getAll({ limit: 100 })),
+          canReadAccounts ? optionalModuleRead(organizationsService.getAll({ limit: 100 })) : Promise.resolve(null),
           optionalModuleRead(pipelineService.getPipelines()),
           loadShared ? optionalModuleRead(usersService.getDirectory()) : Promise.resolve(null),
           refreshDeals(),
@@ -574,7 +577,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!USE_MOCK_DATA && !workspaceReady) return;
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, tenant?.id, workspaceReady]);
+  }, [user?.id, tenant?.id, workspaceReady, crmScopeIdentity]);
 
   const saveAndSet = (key: string, data: any[], setter: any) => {
     const allData = JSON.parse(localStorage.getItem(key) || "[]");

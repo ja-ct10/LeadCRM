@@ -2,7 +2,7 @@ import { beforeAll, afterAll, it, expect, describe } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { EMPTY_PERMISSION_FLAGS, ArchiveQuerySchema } from '@leadcrm/shared';
+import { EMPTY_PERMISSION_FLAGS, ArchiveQuerySchema, PERMISSION_MODULES } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import app from '../../../app';
 import { issueAuthSession } from '../../../core/auth/auth-session';
@@ -26,7 +26,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
   const scoped = (actor: any, work: () => Promise<unknown>) => tenantContext.run({ tenantId }, () => crmActor.run({ tenantId, userId: actor.id }, async () => await work()));
   async function person(name: string, edit = true, roleName = 'Sales Staff') {
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: roleName, isSystemRole: roleName === 'Client Admin', permissions: { create: [
-      ...Object.keys(delegates).map(module => ({ module, ...EMPTY_PERMISSION_FLAGS, canView: true, canEdit: edit, canCreate: edit, canArchive: edit })),
+      ...Object.keys(delegates).map(module => ({ module, ...EMPTY_PERMISSION_FLAGS, ...Object.fromEntries(PERMISSION_MODULES.find(m => m.key === module)!.actions.filter(action => ['canViewAll','canViewMy','canViewActive'].includes(action)).map(action => [action, true])), canView: true, canEdit: edit, canCreate: edit, canArchive: edit })),
       { module: 'archived_data', ...EMPTY_PERMISSION_FLAGS, canView: true, canRestore: edit },
     ] } } });
     const user = await prisma.user.create({ data: { tenantId, role: roleName, email: `${name.toLowerCase()}@camxian.com`, firstName: name, lastName: 'QA',

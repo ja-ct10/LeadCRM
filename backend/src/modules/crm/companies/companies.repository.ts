@@ -4,7 +4,7 @@ import { ACCOUNTS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 import { RETIRED_ACCOUNT_FIELDS } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { consolidateAccountAddress } from './account-address';
-import { assertCrmRecordMutation, mayReadCrmModule } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, mayReadCrmModule, crmReadWhere } from '../access/crm-record-access.service';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -36,6 +36,7 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   const parsedFilters = parseFilterParams(query);
   if (RETIRED_ACCOUNT_FIELDS.some(field => query[field] !== undefined) || parsedFilters.some(filter => RETIRED_ACCOUNT_FIELDS.some(field => field === filter.field) || filter.field === 'scope')) throw new ValidationError('Account assignment and product filters are retired.');
   const filterClauses = buildPrismaFilters(parsedFilters, COMPANY_FILTER_FIELDS, COMPANY_FIELD_ALIASES);
+  filterClauses.push(await crmReadWhere(db, tenantId, 'accounts', 'all'));
   filterClauses.push(...buildSearchClauses(query.search, ['name', 'industry', 'address', 'website']));
   const system = parsedFilters.find(filter => filter.field === 'system')?.value;
   if (Array.isArray(system) && system.includes('touched') !== system.includes('untouched')) {

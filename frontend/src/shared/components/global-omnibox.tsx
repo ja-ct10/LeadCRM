@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { subscribePageCacheInvalidation } from '@/shared/cache/page-cache';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Search, Mail, Phone, ExternalLink, X, ChevronDown, User, Building, Briefcase, Target, Tag } from 'lucide-react';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -39,8 +40,8 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   const searchVersion = useRef(0);
 
   const { tenant, user, userCan } = useAuth();
-  const canLeads = userCan('leads', 'canView'), canContacts = userCan('contacts', 'canView');
-  const canAccounts = userCan('accounts', 'canView'), canDeals = userCan('deals', 'canView');
+  const canLeads = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('leads', action)), canContacts = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('contacts', action));
+  const canAccounts = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('accounts', action)), canDeals = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('deals', action));
   const debouncedQuery = useDebounce(query, 300);
   const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);
 
@@ -56,6 +57,13 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   const cleanQuery  = isTagSearch
     ? debouncedQuery.trim().slice(1).trim().toLowerCase()
     : debouncedQuery.trim().toLowerCase();
+
+  useEffect(() => subscribePageCacheInvalidation(module => {
+    if (module !== '*') return;
+    searchVersion.current++;
+    setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]);
+    setIsSearching(false); setIsDropdownOpen(false);
+  }), []);
 
   const searchServer = useCallback(async (term: string, scope: ScopedModule): Promise<void> => {
     const version = ++searchVersion.current;

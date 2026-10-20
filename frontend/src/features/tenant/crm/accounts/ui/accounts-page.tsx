@@ -1,4 +1,5 @@
 ﻿'use client';
+import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
@@ -38,6 +39,7 @@ import type { ColumnConfigItem } from '@leadcrm/shared';
 // ── Accounts Page ─────────────────────────────────────────────────────────────
 
 export default function AccountsPage(): React.ReactElement {
+  const tabAccess = useCrmTabs('accounts', [{ id: 'all', label: 'All Accounts' }]);
   const router = useRouter();
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('accounts.create');
@@ -171,6 +173,7 @@ export default function AccountsPage(): React.ReactElement {
     handleOpenEdit,
     handleCloseForm,
   } = useAccounts({
+    disabled: !tabAccess.firstId,
     page: highlightId ? 1 : currentPage,
     recordId: highlightId,
     pageSize,
@@ -345,6 +348,10 @@ export default function AccountsPage(): React.ReactElement {
     },
   });
 
+  React.useLayoutEffect(() => { setSelectedAccount(null); setAccountSelectedIds(new Set()); }, [tabAccess.firstId]);
+
+  if (!tabAccess.firstId) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
+
   return (
     <>
       <ConfirmActionDialog {...dialogProps} />
@@ -366,9 +373,7 @@ export default function AccountsPage(): React.ReactElement {
         pageSize={pageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        savedTabs={[
-          { id: 'all', label: 'All Accounts' },
-        ]}
+        savedTabs={tabAccess.tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterGroups={filterGroups}

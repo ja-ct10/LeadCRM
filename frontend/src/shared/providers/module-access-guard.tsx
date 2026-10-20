@@ -30,5 +30,9 @@ export function ModuleAccessGuard({ children }: { children: React.ReactNode }) {
     return <DataLoadingSpinner label="Loading" hideLabel />;
   }
   if (required && !userCan(...required)) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
+  if (required?.[1] === 'canView' && ['leads', 'contacts', 'accounts', 'deals'].includes(required[0]) &&
+      !(['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan(required[0], action))) {
+    return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
+  }
   return <>{children}</>;
 }
