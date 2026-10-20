@@ -64,14 +64,9 @@ try {
         assert.match(headerText, /\b1\b/, `Stage count ${i} at ${width}`);
         checks.push({ width, stage: pipeline.stages[i].name, card: true, header: true, badges: true, count: true });
       }
-      for (const [label, expected] of [['Active Open Deals', /3/], ['Total Open Value', /6,000/], ['Closed Won Revenue', /4,000/]]) {
-        const item = page.getByText(label, { exact: true }).locator('..'); assert.match(await item.innerText(), expected);
+      for (const label of ['Active Open Deals', 'Total Open Value', 'Closed Won Revenue']) {
+        assert.equal(await page.getByText(label, { exact: true }).count(), 0);
       }
-      const summary = await Promise.all(['Active Open Deals', 'Total Open Value', 'Closed Won Revenue'].map(label => page.getByText(label, { exact: true }).locator('..').boundingBox()));
-      assert.ok(summary.every(Boolean));
-      assert.ok(Math.abs(summary[0].y - summary[1].y) < 2);
-      if (width < 640) assert.ok(summary[2].y > summary[0].y && summary[2].width > summary[0].width);
-      else assert.ok(Math.abs(summary[2].y - summary[0].y) < 2 && Math.abs(summary[2].width - summary[0].width) < 2);
       assert.equal(await page.getByText('Weighted Forecast', { exact: true }).count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `Board overflow at ${width}`);
       await page.screenshot({ path: resolve(output, `board-${width}.png`), fullPage: true });

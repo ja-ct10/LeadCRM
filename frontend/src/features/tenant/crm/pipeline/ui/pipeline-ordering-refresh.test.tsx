@@ -24,7 +24,6 @@ vi.mock('@/shared/components/crm', () => ({ DealPanel: ({ open, onOpenChange }: 
 vi.mock('@/shared/components/crm/deal-card-menu', () => ({ DealCardMenu: () => null }));
 vi.mock('@/features/tenant/crm/deals/ui/deal-form', () => ({ DealFormSheet: () => null }));
 vi.mock('./pipeline-stages-dialog', () => ({ PipelineStagesDialog: () => null }));
-vi.mock('./forecast-bar', () => ({ default: () => null }));
 import PipelinePage from './pipeline-page';
 
 const raw = (id: string, createdAt: string, lastStageChangeDate: string) => ({

@@ -133,7 +133,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
     : `Deals created during the current ${funnelPeriod.range} · Recorded milestones through today` : 'Selected historical creation cohort';
   const statCards = [
     { label: 'Total Revenue', value: money(metric?.totalRevenue), icon: PesoIcon, color: 'blue', trend: `${metric?.won ?? '—'} won · period` },
-    { label: 'Forecasted Revenue', value: money(metric?.forecastedRevenue), icon: TrendingUp, color: 'emerald', trend: 'Current open pipeline' },
+    { label: 'Forecasted Revenue', value: money(metric?.forecastedRevenue), icon: TrendingUp, color: 'emerald', trend: 'Current Qualified deals' },
     { label: 'Active Deals', value: metric?.activeDeals ?? 'Unavailable', icon: Briefcase, color: 'purple', trend: 'Current open pipeline' },
     { label: 'Total Leads', value: metric?.totalLeads ?? 'Unavailable', icon: Users, color: 'orange', trend: 'Current unconverted' },
     { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', trend: `${metric?.currentWon ?? '—'} won / ${metric?.totalDeals ?? '—'} total deals · current` },
@@ -141,7 +141,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
   ];
   const dashboardCards = [
     { label: 'Revenue', value: <CompactMoney value={metric?.totalRevenue} currency={currency} />, icon: ChartNoAxesColumnIncreasing, color: 'emerald', context: 'Won revenue in the selected period' },
-    { label: 'Forecast', value: <CompactMoney value={metric?.forecastedRevenue} currency={currency} />, icon: TrendingUp, color: 'purple', context: 'Current open pipeline' },
+    { label: 'Forecast', value: <CompactMoney value={metric?.forecastedRevenue} currency={currency} />, icon: TrendingUp, color: 'purple', context: 'Current Qualified deals' },
     { label: 'Open Deals', value: metric?.activeDeals ?? 'Unavailable', icon: Briefcase, color: 'blue', context: 'Current open pipeline' },
     { label: 'Leads', value: metric?.totalLeads ?? 'Unavailable', icon: Users, color: 'orange', context: 'Current unconverted leads' },
     { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', context: 'Current won deals divided by all current eligible deals' },

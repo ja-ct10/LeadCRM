@@ -3,8 +3,10 @@ import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 
 import React from 'react';
+import { SALES_PIPELINE_STAGES } from '@leadcrm/shared';
 import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
 import { dealStageValueVisibility } from '@/shared/utils/deal-stage-pipeline';
+import { formatDate } from '@/shared/components/data-grid/cell-renderers';
 import {
   DndContext,
   DragOverlay,
@@ -91,6 +93,7 @@ interface PipelineKanbanBoardProps {
 
 interface DealCardContentProps {
   showValue: boolean;
+  showExpectedCloseDate: boolean;
   currencyConfig?: CurrencyConfig;
   deal: Deal;
   assignedUser?: Pick<UserType, 'id' | 'firstName' | 'lastName'>;
@@ -104,6 +107,7 @@ interface DealCardContentProps {
 
 function DealCardContent({
   showValue,
+  showExpectedCloseDate,
   currencyConfig,
   deal,
   assignedUser,
@@ -190,43 +194,16 @@ function DealCardContent({
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-1 pt-2.5 border-t border-slate-100 dark:border-white/[0.05]">
-        <div className="flex items-center text-[11px] font-medium">
-          {deal.expectedCloseDate ? (
-            <span
-              className="flex items-center gap-1 text-slate-500 dark:text-slate-400"
-              title="Expected Close Date"
-            >
-              <Calendar size={12} />{' '}
-              {new Date(deal.expectedCloseDate).toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-              })}
-            </span>
-          ) : (
-            <span className="opacity-0">-</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {assignedUser ? (
-            <div
-              className="flex items-center gap-1.5"
-              title={`Assigned to ${assignedUser.firstName} ${assignedUser.lastName}`}
-            >
-              <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-500/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-[9px] font-bold text-blue-700 dark:text-blue-400">
-                {assignedUser.firstName[0]}
-                {assignedUser.lastName[0]}
-              </div>
-            </div>
-          ) : (
-            <div
-              className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400"
-              title="Unassigned"
-            >
-              <User size={10} />
-            </div>
-          )}
-        </div>
+      <div className="flex min-w-0 items-center justify-between gap-3 mt-1 pt-2.5 border-t border-slate-100 dark:border-white/[0.05] text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        {showExpectedCloseDate && <span className="flex shrink-0 items-center gap-1 whitespace-nowrap" title="Expected Close Date">
+          <Calendar size={12} aria-hidden="true" />
+          {formatDate(deal.expectedCloseDate)}
+        </span>}
+        <span className="ml-auto flex min-w-0 items-center justify-end gap-1.5"
+          title={assignedUser ? `Assigned to ${assignedUser.firstName} ${assignedUser.lastName}` : 'Unassigned'}>
+          <User size={12} className="shrink-0" aria-hidden="true" />
+          <span className="truncate">{assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Unassigned'}</span>
+        </span>
       </div>
     </div>
   );
@@ -236,6 +213,7 @@ function DealCardContent({
 
 interface SortableDealCardProps {
   showValue: boolean;
+  showExpectedCloseDate: boolean;
   currencyConfig?: CurrencyConfig;
   deal: Deal;
   assignedUser?: Pick<UserType, 'id' | 'firstName' | 'lastName'>;
@@ -248,6 +226,7 @@ interface SortableDealCardProps {
 
 function SortableDealCard({
   showValue,
+  showExpectedCloseDate,
   currencyConfig,
   deal,
   assignedUser,
@@ -302,7 +281,7 @@ function SortableDealCard({
           : `${isStale ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
       }`}
     >
-      <DealCardContent showValue={showValue} currencyConfig={currencyConfig}
+      <DealCardContent showValue={showValue} showExpectedCloseDate={showExpectedCloseDate} currencyConfig={currencyConfig}
         deal={deal}
         assignedUser={assignedUser}
         canDrag={canDrag}
@@ -416,6 +395,8 @@ export function PipelineKanbanBoard({
   highlightDealId,
 }: PipelineKanbanBoardProps): React.ReactElement {
   const recordAccess = useCrmRecordAccess();
+  const qualifiedStageId = pipeline.stages.find(stage => !stage.isWon && !stage.isLost &&
+    stage.name.trim().toLowerCase() === SALES_PIPELINE_STAGES[2].toLowerCase())?.id;
   const boardRef = React.useRef<HTMLDivElement>(null);
   const [boardHeight, setBoardHeight] = React.useState<number>();
   React.useEffect(() => {
@@ -542,7 +523,7 @@ export function PipelineKanbanBoard({
                 >
                   <div className="p-3 flex-1 overflow-y-auto space-y-3 custom-scrollbar min-h-[200px]">
                     {stageDeals.map((deal) => (
-                      <SortableDealCard showValue={dealStageValueVisibility(pipeline, stage.id).card} currencyConfig={currencyConfig}
+                      <SortableDealCard showValue={dealStageValueVisibility(pipeline, stage.id).card} showExpectedCloseDate={stage.id === qualifiedStageId} currencyConfig={currencyConfig}
                         key={deal.id}
                         deal={deal}
                         highlighted={boardHeight !== undefined && deal.id === highlightDealId}
@@ -623,7 +604,7 @@ export function PipelineKanbanBoard({
       >
         {activeDeal ? (
           <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-blue-500/60 shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col gap-3 w-80 rotate-1 cursor-grabbing">
-            <DealCardContent showValue={dealStageValueVisibility(pipeline, activeDeal.stageId).card} currencyConfig={currencyConfig}
+            <DealCardContent showValue={dealStageValueVisibility(pipeline, activeDeal.stageId).card} showExpectedCloseDate={activeDeal.stageId === qualifiedStageId} currencyConfig={currencyConfig}
               deal={activeDeal}
               assignedUser={activeDeal.assignedUser ?? users.find((u) => u.id === activeDeal.assignedUserId)}
               isDragOverlay={true}

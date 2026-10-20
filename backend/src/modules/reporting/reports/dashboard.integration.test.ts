@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient } from '@prisma/client';
 import type { Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
 import { installTenantScoping } from '../../../core/tenant/tenant-prisma';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -171,6 +172,107 @@ afterAll(async () => {
   await db?.$disconnect(); await socket?.stop(); await pg?.close();
 });
 
+describe('Qualified-only forecast', () => {
+  const tenantId = 'forecast-fixture', pipelineId = 'forecast-sales';
+  const identity = { ...admin, userId: 'forecast-admin', tenantId };
+  const stageIds = Array.from({ length: 5 }, () => randomUUID());
+  const read = (extra = {}) => tenantContext.run({ tenantId }, () => dashboard(identity, { ...query, ...extra }, now));
+  const create = (id: string, index: number, value: number | null, extra = {}) => db.deal.create({ data: {
+    id: `forecast-${id}`, tenantId, pipelineId, stageId: stageIds[index], title: id, value, currency: 'PHP',
+    assignedUserId: identity.userId, createdAt: new Date('2020-01-01T00:00:00Z'),
+    ...(index >= 3 ? { closedAt: new Date('2020-01-05T00:00:00Z') } : {}), ...extra,
+  } });
+  beforeAll(async () => {
+    await db.tenant.create({ data: { id: tenantId, name: 'Forecast fixture', slug: tenantId } });
+    await db.user.create({ data: { id: identity.userId, tenantId, role: 'Client Admin', email: 'forecast@camxian.com', firstName: 'Forecast', lastName: 'Admin' } });
+    await db.pipeline.create({ data: { id: pipelineId, tenantId, name: 'Sales Pipeline' } });
+    await db.stage.createMany({ data: ['Lead', 'Contacted', 'Qualified', 'Closed Deal', 'Cancelled'].map((name, index) => ({
+      id: stageIds[index], tenantId, pipelineId, name, order: index + 1, isWon: index === 3, isLost: index === 4, requiredFields: [],
+    })) });
+    for (const [id, index, value] of [['lead', 0, 200000], ['contacted', 1, 12995], ['q1', 2, 20000], ['q2', 2, 12000], ['q3', 2, 5000], ['won', 3, 12000], ['lost', 4, 90000]] as const) await create(id, index, value);
+    await create('archived', 2, 900000, { isArchived: true });
+    await create('deleted', 2, 900000, { deletedAt: now });
+    await db.pipeline.create({ data: { id: 'forecast-other', tenantId, name: 'Other' } });
+    await db.stage.create({ data: { id: 'forecast-other-q', tenantId, pipelineId: 'forecast-other', name: 'Qualified', order: 1 } });
+    await create('outside', 2, 900000, { pipelineId: 'forecast-other', stageId: 'forecast-other-q' });
+    await create('foreign', 2, 900000, { tenantId: 'b', pipelineId: 'foreign-sales', stageId: 'foreign-qualified', assignedUserId: 'foreign' });
+    await db.roleDefinition.create({ data: { id: 'forecast-viewer-role', tenantId, name: 'Forecast viewer' } });
+    await db.rolePermission.create({ data: { tenantId, roleId: 'forecast-viewer-role', module: 'dashboard', canView: true } });
+    await db.user.create({ data: { id: 'forecast-viewer', tenantId, role: 'Forecast viewer', email: 'forecast-viewer@camxian.com', firstName: 'Viewer', lastName: 'Test' } });
+    await db.userRole.create({ data: { tenantId, userId: 'forecast-viewer', roleId: 'forecast-viewer-role' } });
+  });
+  it('returns 37000 from configured stage IDs while preserving all-open values, counts, revenue and history', async () => {
+    const history = await db.dealStageHistory.count({ where: { tenantId } });
+    const result = await read();
+    expect(result.metrics).toMatchObject({ forecastedRevenue: 37000, forecastMissing: 0, openPipelineValue: 249995,
+      activeDeals: 5, totalRevenue: 12000, currentWon: 1, totalDeals: 7, winRate: 14.3 });
+    expect(result.metrics.forecastedRevenue).toBe(result.distribution.find(row => row.id === stageIds[2])!.value);
+    expect(dashboardCsv(result)).toContain('"Forecasted Revenue","37000","Current Qualified deals / PHP"');
+    expect((await read({ range: 'today' })).metrics.forecastedRevenue).toBe(37000);
+    expect(await db.dealStageHistory.count({ where: { tenantId } })).toBe(history);
+    expect((await db.deal.findUniqueOrThrow({ where: { id: 'forecast-lead' } })).value).toBe(200000);
+    const denied = await tenantContext.run({ tenantId }, () => dashboard({ ...identity, userId: 'forecast-viewer', role: 'Forecast viewer' }, query, now));
+    expect(denied.metrics.forecastedRevenue).toBeNull();
+    expect(denied.access.deals).toBe(false);
+  });
+  it('does not make Forecast unavailable when Lead or Contacted amounts are invalid', async () => {
+    try {
+      await db.deal.update({ where: { id: 'forecast-lead' }, data: { value: null } });
+      await db.deal.update({ where: { id: 'forecast-contacted' }, data: { value: -5 } });
+      expect((await read()).metrics).toMatchObject({ forecastedRevenue: 37000, forecastMissing: 0, openPipelineValue: null });
+    } finally {
+      await db.deal.update({ where: { id: 'forecast-lead' }, data: { value: 200000 } });
+      await db.deal.update({ where: { id: 'forecast-contacted' }, data: { value: 12995 } });
+    }
+  });
+  it.each([null, -5, NaN, Infinity])('preserves unavailable Forecast for invalid Qualified money %s', async value => {
+    try {
+      if (value === null) await db.deal.update({ where: { id: 'forecast-q1' }, data: { value: null } });
+      else await db.$executeRaw`UPDATE "Deal" SET value = ${String(value)}::float8 WHERE id = 'forecast-q1'`;
+      expect((await read()).metrics).toMatchObject({ forecastedRevenue: null, forecastMissing: 1 });
+    } finally { await db.deal.update({ where: { id: 'forecast-q1' }, data: { value: 20000 } }); }
+  });
+  it('accepts zero and excludes other currencies and an empty Qualified stage', async () => {
+    const ids = ['forecast-q1', 'forecast-q2', 'forecast-q3'];
+    try {
+      await db.deal.update({ where: { id: ids[0] }, data: { value: 0 } });
+      expect((await read()).metrics).toMatchObject({ forecastedRevenue: 17000, forecastMissing: 0 });
+      await db.deal.update({ where: { id: ids[0] }, data: { value: 999999, currency: 'USD' } });
+      expect((await read()).metrics).toMatchObject({ forecastedRevenue: 17000, forecastMissing: 0, currencyExcluded: 1 });
+      await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } });
+      expect((await read()).metrics).toMatchObject({ forecastedRevenue: 0, forecastMissing: 0, activeDeals: 2 });
+    } finally {
+      await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: false } });
+      await db.deal.update({ where: { id: ids[0] }, data: { value: 20000, currency: 'PHP' } });
+    }
+  });
+  it('recomputes after manual and real Workflow movements using committed analytics revisions', async () => {
+    const id = 'forecast-lead';
+    const scopedMove = (stageId: string) => tenantContext.run({ tenantId }, () => move(id, tenantId, stageId, identity.userId));
+    const { dispatchAction } = await import('../../automation/actions/action-dispatcher');
+    const action = async (stageId: string) => {
+      const result = await tenantContext.run({ tenantId }, () => dispatchAction(
+        { type: 'move_deal_stage', config: { stageId } }, { 'deal.id': id }, tenantId, identity.userId));
+      expect(result.error).toBeUndefined();
+      return result;
+    };
+    const before = (await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).analytics;
+    try {
+      await scopedMove(stageIds[2]);
+      expect((await read()).metrics.forecastedRevenue).toBe(237000);
+      await scopedMove(stageIds[1]);
+      expect((await read()).metrics.forecastedRevenue).toBe(37000);
+      expect(await action(stageIds[2])).toMatchObject({ success: true, output: { movedDealIds: [id] } });
+      expect((await read()).metrics.forecastedRevenue).toBe(237000);
+      expect(await action(stageIds[0])).toMatchObject({ success: true, output: { movedDealIds: [id] } });
+      expect((await read()).metrics.forecastedRevenue).toBe(37000);
+      expect((await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).analytics).toBeGreaterThan(before);
+      expect((await db.deal.findUniqueOrThrow({ where: { id } })).value).toBe(200000);
+      expect(await db.dealStageHistory.count({ where: { tenantId, dealId: id, newStageId: stageIds[2] } })).toBe(2);
+    } finally { await scopedMove(stageIds[0]); }
+  });
+});
+
 describe('authoritative dashboard', () => {
   it('uses Manila boundaries, calendar validation and bounded custom ranges', () => {
     expect(dashboardPeriod({ range: 'today' }, new Date('2020-01-01T16:30:00Z')).from.toISOString()).toBe('2020-01-01T16:00:00.000Z');
@@ -261,7 +363,7 @@ describe('authoritative dashboard', () => {
       { id: 'converted-lead', tenantId: 'a', firstName: 'Converted', lastName: 'Lead', convertedAt: now },
     ] });
     const result = await report();
-    expect(result.metrics).toMatchObject({ totalRevenue: 45000, won: 1, lost: 1, winRate: 20, currentWon: 1, totalDeals: 5, activeDeals: 3, forecastedRevenue: 6000, openPipelineValue: 6000, totalLeads: 1, averageDealDays: 4 });
+    expect(result.metrics).toMatchObject({ totalRevenue: 45000, won: 1, lost: 1, winRate: 20, currentWon: 1, totalDeals: 5, activeDeals: 3, forecastedRevenue: 3000, openPipelineValue: 6000, totalLeads: 1, averageDealDays: 4 });
     expect(result.trend.reduce((sum, row) => sum + row.revenue, 0)).toBe(result.metrics.totalRevenue);
     expect(result.trend.reduce((sum, row) => sum + row.won, 0)).toBe(1);
     expect(result.trend.reduce((sum, row) => sum + row.lost, 0)).toBe(1);
@@ -281,7 +383,7 @@ describe('authoritative dashboard', () => {
     expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual(organization.leaderboard);
     expect(staff.leadSourcePerformance).toEqual(organization.leadSourcePerformance);
     expect(organization.metrics).toMatchObject({ totalRevenue: before.metrics.totalRevenue! + 21000, activeDeals: before.metrics.activeDeals! + 1,
-      totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue! + 2000, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
+      totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
     expect(organization.metrics).toMatchObject({ won: 2, lost: 1, currentWon: 2, totalDeals: 7, winRate: 28.6, averageDealDays: 4 });
     expect(organization.leaderboard.map(row => row.revenue).sort((a, b) => a! - b!)).toEqual([21000, 45000]);
     expect(organization.leaderboard.map(row => row.id).sort()).toEqual(['agent', 'other-agent']);
@@ -341,11 +443,11 @@ describe('authoritative dashboard', () => {
     await db.stage.update({ where: { id: 'lead' }, data: { probability: null } });
     await db.deal.update({ where: { id: 'open-lead' }, data: { expectedCloseDate: new Date('2030-01-01') } });
     const unweighted = await report();
-    expect(unweighted.metrics.forecastedRevenue).toBe(unweighted.metrics.openPipelineValue);
-    expect(unweighted.metrics.forecastedRevenue).toBe(6000);
+    expect(unweighted.metrics.forecastedRevenue).toBe(3000);
+    expect(unweighted.metrics.openPipelineValue).toBe(6000);
     await db.stage.update({ where: { id: 'lead' }, data: { probability: 10 } });
     await deal('missing-value', 'lead', null);
-    expect((await report()).metrics).toMatchObject({ forecastedRevenue: null, openPipelineValue: null, totalRevenue: 45250 });
+    expect((await report()).metrics).toMatchObject({ forecastedRevenue: 3000, forecastMissing: 0, openPipelineValue: null, totalRevenue: 45250 });
     await db.deal.update({ where: { id: 'missing-value' }, data: { isArchived: true } });
   });
   it('keeps current pipeline KPIs independent of period outcomes and excludes archive, deletion and other pipelines', async () => {
@@ -360,7 +462,7 @@ describe('authoritative dashboard', () => {
       const emptyPeriod = await scoped(() => dashboard(admin, { range: 'custom', start: '2020-01-12', end: '2020-01-13' }, now));
       expect(emptyPeriod.metrics).toMatchObject({ won: 0, lost: 0, totalRevenue: 0, currentWon: before.metrics.currentWon,
         totalDeals: before.metrics.totalDeals, winRate: before.metrics.winRate, activeDeals: before.metrics.activeDeals,
-        forecastedRevenue: before.metrics.openPipelineValue });
+        forecastedRevenue: before.metrics.forecastedRevenue });
       expect(emptyPeriod.leaderboard).toEqual([]);
       expect(emptyPeriod.trend.every(row => row.revenue === 0 && row.won === 0 && row.lost === 0)).toBe(true);
       expect(emptyPeriod.distribution.reduce((sum,row) => sum + row.percentage,0)).toBeCloseTo(100,0);
@@ -625,7 +727,7 @@ describe('authoritative dashboard', () => {
     expect(foreign.data.metrics.totalRevenue).toBe(0); expect(foreign.data.actions).toEqual([]);
     const response = await http('/reporting/dashboard/export?range=custom&start=2020-01-01&end=2020-01-31');
     expect(response.status).toBe(200); expect(response.headers.get('content-type')).toContain('text/csv');
-    const csv = await response.text(); expect(csv).toContain('Reporting period'); expect(csv).toContain('Current open pipeline');
+    const csv = await response.text(); expect(csv).toContain('Reporting period'); expect(csv).toContain('Current Qualified deals');
     const injected = { ...await report(), actions: [{ id: 'x', title: ' =HYPERLINK("evil")', kind: 'task' as const, dueDate: null, priority: 'High', overdue: false, href: '/x' }] };
     expect(dashboardCsv(injected)).toContain('"\' =HYPERLINK(""evil"")"');
     await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: false } });

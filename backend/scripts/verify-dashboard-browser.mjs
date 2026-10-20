@@ -198,7 +198,7 @@ try {
   const legacy = await prisma.deal.create({data:{tenantId:tenant.id,pipelineId:pipeline.id,stageId:stages[0].id,title:'Legacy amount correction',value:500,assignedUserId:agent.id,ownerId:agent.id}});
   // Product pricing is an immutable snapshot in normal CRM APIs. Exercise a
   // committed database correction as an integration write, without weakening it.
-  await mutation('Committed integration amount correction updates pipeline and forecast', () => prisma.deal.update({where:{id:legacy.id},data:{value:1800}}), () => expectValue('Forecasted Revenue', '₱2,800.00'));
+  await mutation('Committed early-stage amount correction preserves Qualified-only forecast', () => prisma.deal.update({where:{id:legacy.id},data:{value:1800}}), () => expectValue('Forecasted Revenue', '₱1,000.00'));
   await http(`/crm/deals/${legacy.id}/archive`,'PATCH'); await expectValue('Active Deals','1');
   await mutation('Won closure updates revenue, trend, counts, rate and attribution', () => http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[3].id }), async () => { await expectValue('Active Deals','0'); await expectValue('Total Revenue','₱1,000.00'); await expectValue('Win Rate','100%'); await page.getByRole('region', {name:'Sales Leaderboard',exact:true}).getByText('1 deal', { exact: true }).waitFor(); });
   const closeAt = (await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).closedAt;

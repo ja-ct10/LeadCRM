@@ -32,7 +32,7 @@ Revenue Trend defaults to calendar Month. Week (Monday start), Month and Year gr
 | --- | --- |
 | Total Revenue | Sum tenant-currency amounts of currently Closed Won eligible Deals with valid `closedAt` in period |
 | Revenue Trend | Identical revenue grouped by `closedAt`; sum reconciles with Total Revenue |
-| Forecasted Revenue | Current open amount × configured Stage probability / 100, summed; expectedCloseDate does not narrow current forecast |
+| Forecasted Revenue | Sum current Qualified-stage amounts in the authoritative Sales Pipeline, resolved by its validated Stage ID; probabilities and expectedCloseDate do not narrow or weight the forecast |
 | Active Deals | Distinct currently Lead, Contacted or Qualified Deals |
 | Total Leads | Current eligible Leads-module population |
 | Win Rate | Period Won / (Won + Lost) × 100; no outcomes means unavailable |
@@ -43,7 +43,7 @@ Revenue Trend defaults to calendar Month. Week (Monday start), Month and Year gr
 
 Valid closure means `createdAt <= closedAt <= generatedAt`. Missing/invalid closing timestamps are excluded and disclosed. Repeated same-stage closure preserves one timestamp and transition. Existing rules prohibit reopening Won; never-won Lost Deals may reopen into Qualified. Reopening clears `closedAt`, removes period outcome and restores current pipeline. Historical Lost milestones remain in conversion history.
 
-Currencies are never converted or mixed. Money uses tenant currency (PHP when unset); other/unknown currencies are excluded and warned, while counts remain currency-independent. Reporting normalizes each stored amount to two decimal places before summing, consistent with the Product price contract and currency presentation. This keeps bucket/stage sums reconciled even for legacy Float values with extra precision; stored amounts are not rewritten. Negative/nonfinite/missing same-currency amounts make affected monetary totals unavailable. Missing/invalid probability makes forecast unavailable. Configured zero is valid, never replaced with invented probability. Existing CRM APIs protect immutable Product/value snapshots; subscriptions also cover committed integration/database corrections.
+Currencies are never converted or mixed. Money uses tenant currency (PHP when unset); other/unknown currencies are excluded and warned, while counts remain currency-independent. Reporting normalizes each stored amount to two decimal places before summing, consistent with the Product price contract and currency presentation. This keeps bucket/stage sums reconciled even for legacy Float values with extra precision; stored amounts are not rewritten. Negative/nonfinite/missing same-currency amounts make affected monetary totals unavailable. Forecast is unavailable only when Qualified amounts are invalid; invalid Lead or Contacted amounts do not affect it. No Qualified Deals means zero forecast. Dashboard, Reports and CSV use this same forecast, while Open Pipeline Value retains the sum of all open stages. Existing CRM APIs protect immutable Product/value snapshots; subscriptions also cover committed integration/database corrections.
 
 ## Lead Source Performance
 

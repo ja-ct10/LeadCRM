@@ -44,11 +44,12 @@ const checks = [], pageErrors = [], transportErrors = [], serverErrors = [];
 const closingContexts = new WeakSet();
 let api, frontend, browser, page, apiBase, closing = false;
 const record = (label, detail = {}) => { checks.push({ label, passed: true, ...detail }); console.log(`PASS ${label}`); };
-try {
+async function runAcceptance() {
   const tenant = await prisma.tenant.create({ data: { name: 'Deal Actions Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Deal', lastName: 'Tester', email: 'deal-actions@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
   const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales Agent', permissions: { create: ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'inbox'].map(module => ({ module, canView: true, canEdit: true, canCreate: true })) } } });
   const agents = Array.from({length: 61}, (_, index) => ({ id: randomUUID(), tenantId: tenant.id, firstName: 'Agent', lastName: String(index).padStart(2,'0'), email: 'agent'+index+'@camxian.com', role: 'Sales Agent', status: 'ACTIVE', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() }));
+  agents[0].lastName = 'An exceptionally long assigned Agent family name';
   await prisma.user.createMany({data:agents}); await prisma.userRole.createMany({data:agents.map(agent=>({tenantId:tenant.id,userId:agent.id,roleId:role.id}))});
   const token = (await issueAuthSession(admin)).token;
   const readerRole = await prisma.roleDefinition.create({data:{tenantId:tenant.id,name:'Deal Reader',permissions:{create:{module:'deals',canView:true}}}});
@@ -65,7 +66,7 @@ try {
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
   const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
-  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
+  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: agents[0].id, productInterests: [] } });
   const fixtures = {};
   for (const title of ['Action Deal','Desktop Drag','Mobile Drag','Won Evidence','Lost Action']) {
     const deal = await prisma.deal.create({ data: { tenantId: tenant.id, title, pipelineId: pipeline.id, stageId: title==='Won Evidence'?qualified.id:initial.id, accountId: account.id, assignedUserId: agents[0].id, ownerId: admin.id, productsNormalized: true, productInterestId: product.id, productInterestIds: [product.id], value: 25000, productInterests: [product.name], tags: [] } });
@@ -142,25 +143,27 @@ try {
   await newDeal.getByRole('button',{name:'Product Interest',exact:true}).click();
   await page.getByRole('checkbox',{name:product.name,exact:true}).check();
   await page.keyboard.press('Escape');
-  for(const [entity,name] of [['contacts','Acceptance Contact'],['leads','Acceptance Lead']]) {
-    await newDeal.getByRole('combobox',{name:`Search ${entity}...`,exact:true}).click();
-    await page.getByRole('combobox',{name:`Search ${entity}`,exact:true}).fill('Acceptance');
-    await page.getByRole('listbox',{name:`${entity} options`,exact:true}).getByRole('option',{name:new RegExp(name)}).click();
-    await page.keyboard.press('Escape');
-  }
-  await newDeal.getByRole('combobox',{name:'Search users...',exact:true}).click();
-  await page.getByRole('combobox',{name:'Search users',exact:true}).fill('agent0@');
-  await page.getByRole('listbox',{name:'users options',exact:true}).getByRole('option',{name:/agent0@camxian\.com/}).click();
+  await newDeal.getByLabel('Associate Deal To',{exact:false}).selectOption('contact');
+  await newDeal.getByRole('combobox',{name:'Search contacts...',exact:true}).click();
+  await page.getByRole('combobox',{name:'Search contacts',exact:true}).fill('Acceptance');
+  await page.getByRole('listbox',{name:'contacts options',exact:true}).getByRole('option',{name:/Acceptance Contact/}).click();
+  await newDeal.getByLabel('Expected Close Date',{exact:true}).fill('2026-10-20');
   await newDeal.getByRole('button',{name:'Create Deal',exact:true}).click();
   await page.getByRole('button',{name:'Actions for Direct Sales Deal',exact:true}).waitFor();
   const direct=await prisma.deal.findFirstOrThrow({where:{tenantId:tenant.id,title:'Direct Sales Deal'}});
   assert.equal(direct.pipelineId,pipeline.id);assert.equal(direct.stageId,initial.id);assert.equal(direct.assignedUserId,agents[0].id);
   assert.equal(direct.productInterestId,product.id);assert.equal(Number(direct.value),25000);
-  assert.equal(await prisma.leadDeal.count({where:{dealId:direct.id,leadId:lead.id}}),1);
+  assert.equal(await prisma.leadDeal.count({where:{dealId:direct.id}}),0);
   assert.equal(await prisma.contactDeal.count({where:{dealId:direct.id,contactId:contact.id}}),1);
-  record('Direct New Deal saves the current pipeline, Lead stage, Product, Assigned Agent and both customer relationships and appears on the board');
-  await until(async()=>await page.getByText('Active Open Deals',{exact:true}).locator('..').innerText().then(text=>/\b6\b/.test(text)),'Created Deal did not refresh metrics');
+  record('Direct New Deal saves the current pipeline, Lead stage, Product, close date and Contact-derived Assigned Agent and appears on the board');
+  const directCard = page.locator(`[data-deal-id="${direct.id}"]`);
+  assert.equal(await directCard.getByTitle('Expected Close Date').count(),0);
+  const qualifiedCard = page.locator(`[data-deal-id="${fixtures['Won Evidence'].id}"]`);
+  assert.equal(await qualifiedCard.getByTitle('Expected Close Date').textContent(),'—');
+  await prisma.deal.update({where:{id:fixtures['Won Evidence'].id},data:{expectedCloseDate:new Date('2026-10-20T00:00:00Z')}});
+  await qualifiedCard.getByText('Oct 20, 2026',{exact:true}).waitFor();
   for await(const {theme,width} of responsiveMatrix(page)) {
+    for (const label of ['Active Open Deals','Total Open Value','Closed Won Revenue']) assert.equal(await page.getByText(label,{exact:true}).count(),0);
     const control=page.getByRole('textbox',{name:'Pipeline',exact:true});
     assert.equal(await control.inputValue(),pipeline.name);assert.equal(await control.evaluate(el=>el.readOnly&&!el.disabled),true);
     await control.click();await page.keyboard.type('Another pipeline');
@@ -170,9 +173,50 @@ try {
     assert.equal(await button.getAttribute('aria-haspopup'),null);assert.equal(await button.locator('.lucide-chevron-down,.lucide-chevron-up').count(),0);
     assert.equal(await page.getByText('Import File',{exact:true}).count(),0);
     const bounds=await control.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width+1);
+    const shell=await page.locator('[data-app-scroll]').evaluate(el=>({left:el.getBoundingClientRect().left,padding:parseFloat(getComputedStyle(el).paddingLeft),top:el.getBoundingClientRect().top,topPadding:parseFloat(getComputedStyle(el).paddingTop)}));
+    const title=await page.getByRole('heading',{name:'Deals',exact:true}).boundingBox();
+    assert.ok(Math.abs(title.x-shell.left-shell.padding)<2,'Header uses existing CRM shell horizontal padding');
+    assert.ok(title.y-shell.top-shell.topPadding<15,'Header has no duplicate top padding');
+    await qualifiedCard.scrollIntoViewIfNeeded();
+    const date=await qualifiedCard.getByTitle('Expected Close Date').boundingBox();
+    const assigned=qualifiedCard.getByTitle(`Assigned to ${agents[0].firstName} ${agents[0].lastName}`);
+    const agentBounds=await assigned.boundingBox();
+    assert.ok(Math.abs(date.y+date.height/2-agentBounds.y-agentBounds.height/2)<2,'Close date and Agent share one row');
+    assert.ok(date.x+date.width<=agentBounds.x+1,'Date and Agent do not overlap');
+    assert.equal(await assigned.locator('span').evaluate(el=>getComputedStyle(el).textOverflow),'ellipsis');
+    assert.ok(await qualifiedCard.getByRole('button',{name:'Actions for Won Evidence',exact:true}).isVisible());
+    assert.equal(await directCard.getByTitle('Expected Close Date').count(),0);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:resolve(output,`deals-toolbar-${theme.toLowerCase()}-${width}.png`)});
-    record(`${theme}/${width}px: readable Pipeline cannot be edited; direct create button, no import menu or page overflow`);
+    record(`${theme}/${width}px: CRM alignment, no KPIs, Qualified-only close date, long Agent name, card actions and no page overflow`);
+  }
+  if (process.argv.includes('--layout-only')) {
+    const search=page.getByRole('textbox',{name:'Search deals',exact:true});
+    await search.fill('Direct Sales Deal');
+    assert.equal(await board(page).getByRole('heading',{level:4}).count(),1);
+    await search.fill('');
+    const handle=page.getByRole('button',{name:'Drag Direct Sales Deal',exact:true});
+    await handle.scrollIntoViewIfNeeded();
+    const from=await handle.boundingBox();
+    const contacted=allStages.find(stage=>stage.name==='Contacted');
+    const targetColumn=board(page).getByRole('heading',{name:contacted.name,exact:true}).locator('xpath=ancestor::div[4]');
+    const to=await targetColumn.boundingBox();
+    await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();
+    await page.mouse.move(from.x+from.width/2+15,from.y+from.height/2,{steps:5});
+    await page.mouse.move(to.x+to.width/2,to.y+120,{steps:20});
+    await until(async()=>await targetColumn.getByRole('heading',{name:'Direct Sales Deal',exact:true}).count()===1,'Drag previews Contacted');
+    await page.mouse.up();
+    await until(async()=>(await prisma.deal.findUniqueOrThrow({where:{id:direct.id}})).stageId===contacted.id,'Drag commits Contacted');
+    assert.equal(await directCard.getByTitle('Expected Close Date').count(),0);
+    for (const stageId of [qualified.id,contacted.id]) {
+      const response=await page.request.patch(apiBase+'/crm/deals/'+direct.id+'/stage',{headers:{authorization:'Bearer '+token},data:{stageId}});
+      assert.equal(response.status(),200,await response.text());
+      await until(async()=>await directCard.getByTitle('Expected Close Date').count()===(stageId===qualified.id?1:0),'Date follows the current Qualified stage');
+    }
+    assert.ok((await prisma.deal.findUniqueOrThrow({where:{id:direct.id}})).expectedCloseDate);
+    await menu('Direct Sales Deal');await page.getByRole('menuitem',{name:/^Edit deal/}).waitFor();await page.keyboard.press('Escape');
+    record('Shared search, pointer drag, Qualified entry/exit date visibility and card actions preserve current Deal behavior and stored date');
+    return;
   }
   for(const [parameter,id] of [['leadId',lead.id],['contactId',contact.id],['accountId',account.id],['organizationId',account.id]]) {
     await page.goto(base+'/crm/deals?'+parameter+'='+id);
@@ -527,6 +571,9 @@ try {
   const ambiguous=await associate('ambiguous-thread',moved.id);assert.equal(ambiguous.status,409,await ambiguous.text());
   assert.equal(await prisma.mailboxThreadAssociation.count({where:{tenantId:tenant.id,threadId:'ambiguous-thread'}}),0);
   record('Existing email association API persists once, replays safely and rejects closed Deals and ambiguous people');
+}
+try {
+  await runAcceptance();
   assert.deepEqual(pageErrors,[]);assert.deepEqual(serverErrors,[]);assert.deepEqual(transportErrors,[]);
   writeFileSync(resolve(output,'results.json'),JSON.stringify({checks,pageErrors,transportErrors,serverErrors},null,2));
   console.log('Deal Actions acceptance passed: '+checks.length+' checks.');

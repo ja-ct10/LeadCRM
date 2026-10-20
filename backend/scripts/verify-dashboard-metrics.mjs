@@ -15,8 +15,8 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     assert.equal(report.metrics.won, report.trend.reduce((sum,row) => sum + row.won,0));
     assert.equal(report.metrics.lost, report.trend.reduce((sum,row) => sum + row.lost,0));
     assert.equal(report.metrics.activeDeals, report.distribution.reduce((sum,row) => sum + row.count,0));
-    assert.equal(report.metrics.forecastedRevenue, report.metrics.openPipelineValue);
-    assert.equal(report.metrics.forecastedRevenue, report.distribution.reduce((sum,row) => sum + row.value,0));
+    assert.equal(report.metrics.forecastedRevenue, report.distribution.find(row => row.id === stages[2].id)?.value ?? 0);
+    assert.equal(report.metrics.openPipelineValue, report.distribution.reduce((sum,row) => sum + row.value,0));
   };
   if (sourceOnly) {
     await create('Source chart open pipeline', 2500);
@@ -35,13 +35,13 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   }
   await create('Metrics open Lead', 100000);
   await create('Metrics open Contacted', 50000, 1);
-  const qualified = await create('Metrics open Qualified', 75000, 2);
+  const qualified = await create('Metrics open Qualified', 37000, 2);
   await prisma.stage.update({ where: { id: stages[0].id }, data: { probability: null } });
   await prisma.deal.update({ where: { id: qualified.id }, data: { expectedCloseDate: new Date('2030-01-01') } });
-  await expectValue('Forecasted Revenue', money(225000));
+  await expectValue('Forecasted Revenue', money(37000));
   await expectValue('Active Deals', '3');
   reconcile(await fetchReport('range=thisMonth'));
-  record('Unweighted Forecasted Revenue reconciles with three current stage values despite missing probability and future close date');
+  record('Forecasted Revenue matches only Qualified despite valued early stages, missing probability and future close date');
   const winner = await create('Metrics credited win', 1000, 3);
   await create('Metrics second credited win', 500, 3);
   await create('Metrics lost', 2000, 4);
@@ -147,7 +147,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await page.getByLabel('End date', { exact: true }).fill('2020-01-02');
   await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
   await expectValue('Total Revenue', money(0), false);
-  await expectValue('Win Rate', '42.9%', false); await expectValue('Forecasted Revenue', money(225000), false);
+  await expectValue('Win Rate', '42.9%', false); await expectValue('Forecasted Revenue', money(37000), false);
   assert.ok(await page.getByText('No won revenue in the selected period.').isVisible());
   assert.equal((await fetchReport('range=custom&start=2020-01-01&end=2020-01-02')).conversion.cohort, 7);
   record('Custom global date filter changes period charts while current KPIs and independent cohort stay consistent');
@@ -177,17 +177,19 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await expectSources(initial);
   const invalid = await create('Metrics missing money', 100, 0);
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: null } });
-  await expectValue('Forecasted Revenue', 'Unavailable');
+  await expectValue('Forecasted Revenue', money(37000));
   await page.getByRole('region', {name:'Pipeline Overview'}).getByText('Unavailable', {exact:true}).waitFor();
+  await http(`/crm/deals/${invalid.id}/stage`, 'PATCH', { stageId: stages[2].id });
+  await expectValue('Forecasted Revenue', 'Unavailable');
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: 1234567890.12 } });
-  await expectValue('Forecasted Revenue', money(1234792890.12));
+  await expectValue('Forecasted Revenue', money(1234604890.12));
   for (const width of [320,375,390,430,768,1024,1440]) {
     await page.setViewportSize({ width, height: 1000 }); await wait(250);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   }
   await prisma.deal.update({ where: { id: invalid.id }, data: { isArchived: true } });
-  await expectValue('Forecasted Revenue', money(225000));
-  record('Missing money is unavailable, long amounts fit all requested widths, and archival updates current metrics through SSE');
+  await expectValue('Forecasted Revenue', money(37000));
+  record('Invalid early-stage money preserves Forecast; moving into Qualified and archival refresh it through SSE; long amounts fit');
   await staffPage.getByRole('group', { name: 'Forecast', exact: true }).waitFor();
   reconcile(await fetchReport('range=thisMonth'));
 

@@ -19,7 +19,6 @@ vi.mock('./pipeline-kanban-board', () => ({ PipelineKanbanBoard: ({ pipeline, de
   {deals.map((deal: any) => <button key={deal.id} data-search-highlight={highlightDealId === deal.id || undefined} onClick={() => onDealClick(deal)}>{deal.title}</button>)}
 </div> }));
 vi.mock('./pipeline-stages-dialog', () => ({ PipelineStagesDialog: () => null }));
-vi.mock('./forecast-bar', () => ({ default: () => null }));
 import PipelinePage from './pipeline-page';
 beforeEach(() => { vi.clearAllMocks(); state.params = 'highlight=selected'; state.rows = [{ id: 'selected', title: 'Search-selected Deal', pipelineId: 'other', stageId: 'last', value: 10, priority: 'Low' }]; state.refetch.mockResolvedValue(undefined); state.get.mockResolvedValue({ data: state.rows[0] }); }); afterEach(cleanup);
 it('selects the exact pipeline and highlights its card without automatically opening details', async () => {

@@ -5,7 +5,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Settings }  from 'lucide-react';
+import { Settings }  from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
@@ -19,6 +19,7 @@ import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/modu
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { ModuleTabs } from '@/shared/components/crm/module-tabs';
+import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
@@ -28,7 +29,6 @@ import { PipelineStagesDialog } from './pipeline-stages-dialog';
 import KanbanBoardSkeleton from '@/shared/components/kanban-skeleton';
 import { Button, CreateButton } from '@/shared/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import ForecastBar from './forecast-bar';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
 
@@ -158,7 +158,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     try { const next = await moveDealStage(id, stageId, undefined, reason); patch(next); setLost(undefined); toast.success('Deal stage updated'); }
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); throw error; }
   };
-  return <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 sm:p-6">
+  return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <PageHeader title="Deals" subtitle="Track opportunities throughout your pipelines." actionsInlineWithTitle
       actions={pipeline && <div className="flex items-center gap-2">
         {canManageStages && <TooltipProvider><Tooltip><TooltipTrigger asChild>
@@ -172,8 +172,8 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     <ModuleTabs tabs={([{ id: 'all', label: 'All Deals' }, { id: 'my', label: 'My Deals' }] as const).filter(tab => !isClientAdmin || tab.id !== 'my')}
       activeTab={myDeals ? 'my' : 'all'} onTabChange={tab => setMyDeals(tab === 'my')} ariaLabel="Deals views" className="mb-3" />
     <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-      <label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label>
-      <div className="relative w-full min-w-0 sm:min-w-32 sm:flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div>
+      <label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-8 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label>
+      <ModuleSearchInput value={search} onChange={setSearch} placeholder="Search deals..." label="Search deals" />
       <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">
         <div className="flex shrink-0 items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, view: JSON.stringify(exportView) }} /></div>
         <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div>
@@ -182,7 +182,6 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
-        <ForecastBar deals={visible} pipelines={pipeline ? [pipeline] : []} tenant={tenant} />
         {(query.error || pipelineError) && <p role="alert" className="rounded border border-red-200 p-3 text-sm text-red-600">{query.error || pipelineError}</p>}
         {locatorMessage && <p role="alert" className="text-sm text-destructive">{locatorMessage}</p>}
         {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError && !locatorMessage) ? <KanbanBoardSkeleton /> : pipeline ? <div className="relative flex min-h-[440px] min-w-0 flex-1 overflow-hidden" aria-busy={refreshing || query.isRefreshing}>{(refreshing || query.isRefreshing) && <DataLoadingSpinner label="Refreshing deals..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}<PipelineKanbanBoard pipeline={pipeline} deals={visible} highlightDealId={!locatorMessage && locatedDeal?.id === highlightId ? highlightId : undefined} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
