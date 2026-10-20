@@ -91,7 +91,7 @@ function dashboardCsv(report) {
         ['Reporting period', `${report.period.start} through ${report.period.end}`, report.period.timezone],
         ['Generated at', report.generatedAt, report.scope],
         ['Total Revenue', report.metrics.totalRevenue, `Period / ${report.currency}`],
-        ['Forecasted Revenue', report.metrics.forecastedRevenue, `Current open pipeline / ${report.currency}`],
+        ['Forecasted Revenue', report.metrics.forecastedRevenue, `Current Qualified deals / ${report.currency}`],
         ['Active Deals', report.metrics.activeDeals, 'Current'], ['Total Leads', report.metrics.totalLeads, 'Current unconverted, unarchived'],
         ['Win Rate', report.metrics.winRate, 'Current eligible Sales Pipeline / %'],
         ['Current Won Deals', report.metrics.currentWon, 'Current eligible Sales Pipeline'], ['Total Deals', report.metrics.totalDeals, 'Current eligible Sales Pipeline'],

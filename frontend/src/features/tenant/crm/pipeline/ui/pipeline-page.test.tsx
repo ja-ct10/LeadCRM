@@ -28,7 +28,6 @@ vi.mock('./pipeline-kanban-board', () => ({ PipelineKanbanBoard: ({ deals, onDea
   {deals.map((deal: any) => <span key={deal.id}>{deal.title}</span>)}
   <button onClick={() => void onDealDragEnd('one', 'qualified')}>Move fixture Deal</button>
 </div> }));
-vi.mock('./forecast-bar', () => ({ default: () => null }));
 vi.mock('@/shared/components/crm/module-filter-rail', () => ({ ModuleFilterRail: ({ showFilters, onFilterToggle }: any) => showFilters ? <>
   <button onClick={() => onFilterToggle('stage', 'qualified')}>Filter Qualified</button>
   <button onClick={() => onFilterToggle('owner', 'other')}>Filter other owner</button>
@@ -47,6 +46,16 @@ beforeEach(() => {
   state.addDeals.mockResolvedValue(undefined); state.moveDealStage.mockResolvedValue({ ...state.rows[0], stageId: 'qualified' });
 });
 afterEach(cleanup);
+
+it('uses the CRM shell spacing and shared search without Deals KPI cards', () => {
+  const { container } = render(<PipelinePage />);
+  for (const label of ['Active Open Deals', 'Total Open Value', 'Closed Won Revenue']) expect(screen.queryByText(label)).toBeNull();
+  expect(container.firstElementChild?.className).not.toMatch(/(?:^|\s)(?:sm:)?p-\d/);
+  expect(screen.getByRole('textbox', { name: 'Search deals' }).className).toContain('h-8');
+  expect(screen.getByRole('textbox', { name: 'Pipeline' }).className).toContain('h-8');
+  expect(screen.getByRole('heading', { name: 'Deals' })).toBeTruthy();
+  expect(screen.getByTestId('board')).toBeTruthy();
+});
 
 it('omits My Deals for Client Admin and keeps All Deals selected for personal-view URLs', () => {
   state.role = 'Client Admin'; state.params = 'tab=my&view=my';

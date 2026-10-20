@@ -131,12 +131,12 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
           COUNT(*) FILTER (WHERE d."isWon" AND ${resolved} AND d.currency = ${currency} AND NOT COALESCE((${validMoney}),false) AND NOT COALESCE((${credited}),false))::int AS "unattributedMissing"
         FROM eligible d`))[0];
       Object.assign(result.metrics, {
-        totalRevenue: totals.wonMissing ? null : totals.revenue, forecastedRevenue: totals.openMissing ? null : totals.openValue,
+        totalRevenue: totals.wonMissing ? null : totals.revenue,
         activeDeals: totals.active, won: totals.won, lost: totals.lost, winRate: percent(totals.currentWon, totals.totalDeals) ?? 0,
         currentWon: totals.currentWon, totalDeals: totals.totalDeals, unattributedWon: totals.attributionMissing,
         unattributedRevenue: totals.unattributedMissing ? null : totals.unattributedRevenue,
         averageDealDays: totals.average === null ? null : Math.round(totals.average * 10) / 10,
-        openPipelineValue: totals.openMissing ? null : totals.openValue, forecastMissing: totals.openMissing,
+        openPipelineValue: totals.openMissing ? null : totals.openValue,
         monetaryMissing: totals.monetaryMissing, currencyExcluded: totals.currencyExcluded, closingDateMissing: totals.closingDateMissing,
       });
       result.trend = await raw<DashboardReport['trend']>(Prisma.sql`
@@ -154,6 +154,9 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
           COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE ${validMoney}),2),0)::float8 AS value,
           COUNT(*) FILTER (WHERE d.currency = ${currency} AND NOT COALESCE((${validMoney}),false))::int AS missing
         FROM "Deal" d WHERE ${scope} AND d."stageId" IN (${lead.id}, ${contacted.id}, ${qualified.id}) GROUP BY d."stageId"`);
+      const qualifiedTotals = groups.find(group => group.id === qualified.id);
+      result.metrics.forecastedRevenue = qualifiedTotals?.missing ? null : qualifiedTotals?.value ?? 0;
+      result.metrics.forecastMissing = qualifiedTotals?.missing ?? 0;
       result.distribution = pipeline.stages.slice(0, 3).map(stage => {
         const row = groups.find(group => group.id === stage.id);
         return { id: stage.id, name: stage.name, color: stage.color, count: row?.count ?? 0,

@@ -7,7 +7,6 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { apiClient } from '@/lib/api/client';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { PipelineKanbanBoard } from '@/features/tenant/crm/pipeline/ui/pipeline-kanban-board';
-import ForecastBar from '@/features/tenant/crm/pipeline/ui/forecast-bar';
 import type { Deal, Pipeline } from '../types';
 
 const state = vi.hoisted(() => ({ id: 'actor', tenant: 'tenant', denied: false }));
@@ -51,7 +50,7 @@ function View({ board = false }: { board?: boolean }) {
     revalidateOnInvalidation: true, fetchFn: async signal => (await apiClient.get<{ data: object[] }>('/crm/deals', { params: { pipelineId: pipeline.id }, signal })).data.map(toFrontendDeal) });
   return <><output data-testid="shared">{deals.map(deal => `${deal.id}:${deal.stageId}`).join(',')}</output>
     <button onClick={() => { void refreshDeals(); void refreshDeals(); }}>Refresh shared</button>
-    {board && <><ForecastBar deals={query.data ?? []} pipelines={[pipeline]} />
+    {board && <>
       <PipelineKanbanBoard pipeline={pipeline} deals={query.data ?? []} users={[]} canEdit={false} canDelete={false}
         onDealClick={vi.fn()} onDealDragEnd={vi.fn()} onAddDeal={vi.fn()} onLoadMore={vi.fn()} loadingStages={new Set()} hasMoreByStage={{}} /></>}</>;
 }
@@ -63,7 +62,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 
-it('updates shared Deals, the real Kanban card, counts, totals and summary through crm-change', async () => {
+it('updates shared Deals, the real Kanban card and stage counts through crm-change', async () => {
   render(<DataProvider><View board /></DataProvider>);
   await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:lead'));
   await screen.findByText('Live opportunity');
@@ -77,8 +76,6 @@ it('updates shared Deals, the real Kanban card, counts, totals and summary throu
   expect(within(leadColumn).queryByText('Live opportunity')).toBeNull();
   expect(within(leadColumn).getByText('0', { exact: true })).toBeTruthy();
   expect(within(lostColumn).getByText('1', { exact: true })).toBeTruthy();
-  const summary = screen.getByText('Total Open Value').parentElement!;
-  expect(summary.textContent).toContain('₱0');
   expect(sharedReads() - before).toBe(1);
   // Duplicate revisions must not refetch, including after reconciliation completed.
   act(() => source().emit('crm-change'));

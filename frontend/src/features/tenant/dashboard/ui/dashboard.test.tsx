@@ -27,7 +27,7 @@ beforeEach(() => {
     generatedAt: '2020-01-15T04:00:00Z', queryMs: 1, currency: 'PHP', scope: 'organization',
     period: { start: '2020-01-01', end: '2020-01-15', interval: 'month', timezone: 'Asia/Manila' },
     access: { deals: true, leads: true, tasks: true }, pipeline: { id: 'sales', name: 'Sales Pipeline', stages },
-    metrics: { totalRevenue: 45000, forecastedRevenue: 225000, activeDeals: 3, totalLeads: 1, won: 1, lost: 0,
+    metrics: { totalRevenue: 45000, forecastedRevenue: 37000, activeDeals: 3, totalLeads: 1, won: 1, lost: 0,
       currentWon: 2, totalDeals: 25, winRate: 8, averageDealDays: 4, openPipelineValue: 225000,
       forecastMissing: 0, monetaryMissing: 0, currencyExcluded: 0, closingDateMissing: 0, unattributedWon: 1, unattributedRevenue: 1000 },
     trend: [{ name: '2020-01-01', revenue: 45000, won: 1, lost: 0 }],
@@ -48,7 +48,8 @@ it('preserves Reports current all-time KPI counts and exact backend forecast, wi
   const rate = within(screen.getByRole('group', { name: 'Win Rate' }));
   expect(rate.getByText('8%')).toBeTruthy();
   expect(rate.getByText('2 won / 25 total deals · current')).toBeTruthy();
-  expect(within(screen.getByRole('group', { name: 'Forecasted Revenue' })).getByText('₱225,000.00')).toBeTruthy();
+  expect(within(screen.getByRole('group', { name: 'Forecasted Revenue' })).getByText('₱37,000.00')).toBeTruthy();
+  expect(within(screen.getByRole('group', { name: 'Forecasted Revenue' })).getByText('Current Qualified deals')).toBeTruthy();
   expect(screen.getByText('Historical Agent')).toBeTruthy();
   expect(screen.getByText('1 won deals · ₱1,000.00 without verified eligible sales credit')).toBeTruthy();
 });
@@ -92,7 +93,7 @@ it('renders exactly five mapped KPIs and the five requested sections in sample o
   expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Action Center', 'Revenue Trend', 'Pipeline Overview', 'Lead Source Performance', 'Sales Leaderboard']);
   for (const removed of ['Avg Deal Velocity', 'Deals Won vs. Lost', 'Pipeline Distribution', 'Pipeline Value by Stage']) expect(screen.queryByText(removed)).toBeNull();
   expect(within(screen.getByRole('group', { name: 'Revenue' })).getByLabelText('₱45,000.00').textContent).toBe('₱45K');
-  expect(within(screen.getByRole('group', { name: 'Forecast' })).getByLabelText('₱225,000.00').textContent).toBe('₱225K');
+  expect(within(screen.getByRole('group', { name: 'Forecast' })).getByLabelText('₱37,000.00').textContent).toBe('₱37K');
   expect(within(screen.getByRole('group', { name: 'Open Deals' })).getByText('3')).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Leads' })).getByText('1')).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Win Rate' })).getByText('8%')).toBeTruthy();

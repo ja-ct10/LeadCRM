@@ -118,12 +118,12 @@ try {
     await until(async () => await cardIn(page, 'Cancelled').count() === 1 && await cardIn(page, 'Contacted').count() === 0, 'Kanban did not reconcile for user ' + index, 10000);
     assert.equal(await column(page, 'Contacted').getByText('0', { exact: true }).count(), 1);
     assert.equal(await column(page, 'Cancelled').getByText('1', { exact: true }).count(), 1);
-    assert.match(await page.getByText('Total Open Value', { exact: true }).locator('..').textContent(), /₱0/);
-    assert.match(await page.getByText('Active Open Deals', { exact: true }).locator('..').textContent(), /0/);
+    assert.equal(await page.getByText('Total Open Value', { exact: true }).count(), 0);
+    assert.equal(await page.getByText('Active Open Deals', { exact: true }).count(), 0);
     await page.screenshot({ path: resolve(output, `user-${index + 1}.png`), fullPage: true });
   }
   timings.push({ bothKanbansMs: Date.now() - started });
-  record('Both Kanbans move automatically with correct stage counts and open-value summary');
+  record('Both Kanbans move automatically with correct stage counts and no retired KPI summary');
   assert.equal(navigations.length, navigationCount); record('Neither user reloads or navigates during the workflow change');
   assert.equal(await prisma.dealStageHistory.count({ where: { tenantId: tenant.id, dealId: deal.id, newStageId: stages[3].id } }), 1);
   assert.ok((await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId: tenant.id } })).content > before);

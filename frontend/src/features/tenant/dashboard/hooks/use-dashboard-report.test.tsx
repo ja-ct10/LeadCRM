@@ -53,6 +53,20 @@ it('reconciles current stage counts through the existing feed and manual refresh
   expect(hook.result.current.report?.conversion?.contactedToQualified).toBe(40);
   expect(Feed.instances).toHaveLength(1);
 });
+it('refreshes the authoritative Qualified forecast through existing analytics events and Sync Metrics', async () => {
+  mocks.get.mockResolvedValueOnce({ data: { metrics: { forecastedRevenue: 37000, openPipelineValue: 249995 } } });
+  const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
+  await waitFor(() => expect(hook.result.current.report?.metrics.forecastedRevenue).toBe(37000));
+  mocks.get.mockResolvedValueOnce({ data: { metrics: { forecastedRevenue: 57000, openPipelineValue: 249995 } } });
+  act(() => Feed.instances[0].emit('dashboard-change', { access: '1', analytics: '2' }));
+  await waitFor(() => expect(hook.result.current.report?.metrics.forecastedRevenue).toBe(57000));
+  mocks.get.mockResolvedValueOnce({ data: { metrics: { forecastedRevenue: 37000, openPipelineValue: 249995 } } });
+  await act(async () => { await hook.result.current.refresh(); });
+  expect(hook.result.current.report?.metrics.forecastedRevenue).toBe(37000);
+  expect(hook.result.current.report?.metrics.openPipelineValue).toBe(249995);
+  expect(Feed.instances).toHaveLength(1);
+});
+
 it('clears permission-sensitive results before receiving new scope data', async () => {
   const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
   await waitFor(() => expect(hook.result.current.report).not.toBeNull());
