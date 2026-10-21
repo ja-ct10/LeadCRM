@@ -8,6 +8,7 @@ import app from '../../../app';
 import { ensureSalesGroup } from './sales-group';
 import { deleteEmptyGroup } from './groups.repository';
 import { assignRoleToUser } from '../roles/roles.repository';
+import { EMPTY_PERMISSION_FLAGS, type PermissionFlags } from '@leadcrm/shared';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|campaign_test_\d+)$/.test(url.pathname);
@@ -109,7 +110,7 @@ it.skipIf(!disposable)('provisions a stable protected Sales group, retains membe
 const memberCount = (groupId: string) => scoped(() => prisma.tenantGroupMember.count({ where: { groupId, tenantId } }));
 const auditCount = (groupId: string) => scoped(() => prisma.auditLog.count({ where: { tenantId, entityId: groupId, action: 'group.member_added' } }));
 const revision = () => prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } });
-const newMember = (status = 'ACTIVE') => prisma.user.create({ data: {
+const newMember = (status: 'ACTIVE' | 'INACTIVE' | 'PENDING' = 'ACTIVE') => prisma.user.create({ data: {
   tenantId, status, email: `${randomUUID()}@camxian.com`, firstName: 'Batch', lastName: randomUUID(), role: 'Sales',
 } });
 
@@ -221,11 +222,13 @@ it.skipIf(!nativeConcurrency)('protects concurrent Group deletion without orphan
   expect(await scoped(() => prisma.tenantGroup.findFirst({ where: { id, tenantId } }))).toBeNull();
 });
 
-async function headCandidate(role = 'Sales Manager', status: 'ACTIVE' | 'INACTIVE' | 'PENDING' = 'ACTIVE', linked = true) {
+async function headCandidate(role = 'Sales Manager', status: 'ACTIVE' | 'INACTIVE' | 'PENDING' = 'ACTIVE', linked = true, withPermission = true) {
   return scoped(async () => {
     const definition = await prisma.roleDefinition.upsert({ where: { tenantId_name: { tenantId, name: role } }, create: { tenantId, name: role }, update: {} });
+    if (withPermission) await prisma.rolePermission.upsert({ where: { roleId_module: { roleId: definition.id, module: 'groups' } },
+      create: { tenantId, roleId: definition.id, module: 'groups', canView: true }, update: { ...EMPTY_PERMISSION_FLAGS, canView: true } });
     return prisma.user.create({ data: { tenantId, firstName: 'Head', lastName: randomUUID(), role, status, email: `${randomUUID()}@camxian.com`,
-      ...(linked ? { userRoles: { create: { tenantId, roleId: definition.id } } } : {}) } });
+      ...(linked ? { userRoles: { create: { roleId: definition.id } } } : {}) } });
   });
 }
 async function headFixture() {
@@ -269,18 +272,21 @@ it.skipIf(!disposable)('persists and replaces one Group Head with transactional 
   expect((await request('')).body.data.find((row: { id: string }) => row.id === id).members.every((row: { isHead: boolean }) => !row.isHead)).toBe(true);
 });
 
-it.skipIf(!disposable)('rejects inactive, pending, ordinary, unlinked and secondary-only manager identities without replacing the Head', async () => {
+it.skipIf(!disposable)('rejects inactive, pending, zero-grant, archived, unlinked and secondary-only identities without replacing the Head', async () => {
   const { id, first } = await headFixture();
   expect((await assignHead(id, first.id)).status).toBe(200);
   const invalid = [await headCandidate('Sales Manager', 'INACTIVE'), await headCandidate('Sales Manager', 'PENDING'),
-    await headCandidate('Sales Agent'), await headCandidate('Sales Representative'), await headCandidate('Sales Manager', 'ACTIVE', false)];
+    await headCandidate('Zero grants', 'ACTIVE', true, false), await headCandidate('Missing primary', 'ACTIVE', false), await headCandidate('Sales Manager', 'ACTIVE', false)];
+  const archived = await headCandidate('Archived head role');
+  await scoped(() => prisma.roleDefinition.update({ where: { tenantId_name: { tenantId, name: archived.role } }, data: { isArchived: true } }));
+  invalid.push(archived);
   const managerRole = await scoped(() => prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: 'Sales Manager' } } }));
-  await scoped(() => prisma.userRole.create({ data: { tenantId, userId: invalid[2].id, roleId: managerRole.id } }));
+  await scoped(() => prisma.userRole.create({ data: { tenantId, userId: invalid[3].id, roleId: managerRole.id } }));
   for (const person of invalid) {
     await scoped(() => prisma.tenantGroupMember.create({ data: { tenantId, groupId: id, userId: person.id } }));
     const failed = await assignHead(id, person.id);
     expect(failed.status, JSON.stringify(failed.body)).toBe(400);
-    expect(failed.body.error).toContain('primary role');
+    expect(failed.body.error).toContain('highest number of allowed permissions');
     const current = (await request('')).body.data.find((row: { id: string }) => row.id === id);
     expect(current.members.find((row: { userId: string }) => row.userId === person.id).canBeHead).toBe(false);
     expect(await headRows(id)).toEqual([{ userId: first.id }]);
@@ -291,8 +297,7 @@ it.skipIf(!disposable)('rejects inactive, pending, ordinary, unlinked and second
 it.skipIf(!disposable)('enforces Client Admin and tenant/membership boundaries even for staff with groups.edit', async () => {
   const { id, first } = await headFixture();
   const staff = await headCandidate('Group Head Editor');
-  const viewerRole = await scoped(() => prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: staff.role } } }));
-  await scoped(() => prisma.rolePermission.create({ data: { tenantId, roleId: viewerRole.id, module: 'groups', canView: true, canEdit: true } }));
+  await headPermissions(staff.role, 'groups', { canView: true, canEdit: true });
   const ready = await prisma.user.update({ where: { id: staff.id }, data: { mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
   const editorToken = (await issueAuthSession(ready)).token;
   const denied = await assignHead(id, first.id, editorToken);
@@ -306,7 +311,7 @@ it.skipIf(!disposable)('enforces Client Admin and tenant/membership boundaries e
   expect(await headRows(id)).toEqual([]);
 });
 
-it.skipIf(!disposable)('clears heads through membership removal, User Groups replacement, deactivation and role changes without restoring them', async () => {
+it.skipIf(!disposable)('clears heads on membership removal and deactivation, but preserves the designation through role changes', async () => {
   const { id, first, second } = await headFixture();
   expect((await assignHead(id, first.id)).status).toBe(200);
   expect((await request(`/${id}/members/${first.id}`, 'DELETE')).status).toBe(200);
@@ -323,7 +328,72 @@ it.skipIf(!disposable)('clears heads through membership removal, User Groups rep
   expect(await headRows(id)).toEqual([]);
   expect((await assignHead(id, second.id)).status).toBe(200);
   await scoped(() => prisma.user.update({ where: { id: second.id, tenantId }, data: { role: 'Sales Representative' } }));
-  expect(await headRows(id)).toEqual([]); expect(await memberCount(id)).toBe(1);
+  expect(await headRows(id)).toEqual([{ userId: second.id }]); expect(await memberCount(id)).toBe(1);
+});
+
+async function headPermissions(roleName: string, module: string, flags: Partial<PermissionFlags>) {
+  return scoped(async () => {
+    const role = await prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: roleName } } });
+    return prisma.rolePermission.upsert({ where: { roleId_module: { roleId: role.id, module } },
+      create: { tenantId, roleId: role.id, module, ...EMPTY_PERMISSION_FLAGS, ...flags }, update: { ...EMPTY_PERMISSION_FLAGS, ...flags } });
+  });
+}
+
+it.skipIf(!disposable)('ranks custom multi-role grants, refreshes ties and renames, and preserves a saved head when rankings change', async () => {
+  const id = (await request('', 'POST', { name: 'Dynamic role heads' })).body.data.id;
+  const first = await headCandidate('Custom coordinator'), second = await headCandidate('Custom reviewer'), lower = await headCandidate('Sales Manager');
+  await headPermissions(first.role, 'groups', { canView: true, canEdit: true });
+  const secondary = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Additional grants' } }));
+  await headPermissions(secondary.name, 'groups', { canView: true, canEdit: true });
+  await headPermissions(secondary.name, 'users', { canView: true });
+  await scoped(() => prisma.userRole.create({ data: { tenantId, userId: first.id, roleId: secondary.id } }));
+  await headPermissions(second.role, 'groups', { canView: true, canEdit: true, canCreate: true });
+  expect((await request(`/${id}/members`, 'POST', { userIds: [first.id, second.id, lower.id] })).status).toBe(200);
+  const read = async () => (await request('')).body.data.find((row: { id: string }) => row.id === id);
+  const eligible = (group: Awaited<ReturnType<typeof read>>) => group.members.filter((row: { canBeHead: boolean }) => row.canBeHead).map((row: { userId: string }) => row.userId).sort();
+  expect(eligible(await read())).toEqual([first.id, second.id].sort());
+  expect((await assignHead(id, lower.id)).status).toBe(400);
+  expect((await assignHead(id, first.id)).status).toBe(200);
+  const { updateRoleAndPermissions } = await import('../roles/roles.repository');
+  const primary = await scoped(() => prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: first.role } } }));
+  await scoped(() => updateRoleAndPermissions(primary.id, tenantId, { name: 'Renamed coordinator' }));
+  const renamed = await read();
+  expect(eligible(renamed)).toEqual([first.id, second.id].sort());
+  expect(renamed.members.find((row: { userId: string }) => row.userId === first.id).user.roleNames.sort()).toEqual(['Additional grants', 'Renamed coordinator']);
+  expect(JSON.stringify(renamed)).not.toContain('userRoles');
+  expect(JSON.stringify(renamed)).not.toContain('permissions');
+  expect(await headRows(id)).toEqual([{ userId: first.id }]);
+  await headPermissions(second.role, 'users', { canView: true });
+  expect(eligible(await read())).toEqual([second.id]);
+  expect(await headRows(id)).toEqual([{ userId: first.id }]);
+  expect((await assignHead(id, first.id)).status).toBe(400);
+  expect((await assignHead(id, second.id)).status).toBe(200);
+  expect(await headRows(id)).toEqual([{ userId: second.id }]);
+  await headPermissions(second.role, 'users', { canView: false, canEdit: true });
+  expect(eligible(await read())).toEqual([first.id, second.id].sort());
+});
+
+it.skipIf(!disposable)('has no eligible zero-grant members and ranks a member administrator through canonical grants', async () => {
+  const id = (await request('', 'POST', { name: 'Zero grants' })).body.data.id;
+  const zero = await headCandidate('Empty custom role', 'ACTIVE', true, false);
+  const added = await request(`/${id}/members`, 'POST', { userIds: [zero.id] });
+  expect(added.status).toBe(200); expect(added.body.data.members[0].canBeHead).toBe(false);
+  expect((await assignHead(id, zero.id)).status).toBe(400);
+  const withAdmin = await request(`/${id}/members`, 'POST', { userId });
+  expect(withAdmin.body.data.members.find((row: { userId: string }) => row.userId === userId).canBeHead).toBe(true);
+  expect((await assignHead(id, userId)).status).toBe(200);
+});
+
+it.skipIf(!nativeConcurrency)('rejects an assignment when competing permission changes invalidate its ranking during saving', async () => {
+  const { id, first, second } = await headFixture();
+  beforeHeadWrite = async () => { await headPermissions(second.role, 'groups', { canView: true, canEdit: true }); };
+  try {
+    const result = await assignHead(id, first.id);
+    expect(result.status, JSON.stringify(result.body)).toBe(409);
+  } finally { beforeHeadWrite = undefined; }
+  expect(await headRows(id)).toEqual([]);
+  expect((await assignHead(id, first.id)).status).toBe(400);
+  expect((await assignHead(id, second.id)).status).toBe(200);
 });
 
 it.skipIf(!disposable)('rolls back the new designation and revision if its audit cannot persist', async () => {

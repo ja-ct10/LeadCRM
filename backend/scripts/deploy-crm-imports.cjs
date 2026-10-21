@@ -161,6 +161,8 @@ function deploymentPlan(records, localNames) {
     '20261221000000_crm_tab_permissions',
     // Additive designation on existing membership rows; no membership or RBAC changes.
     '20261222000000_group_head_assignment',
+    // Preserve saved heads on role changes; retains inactive-account cleanup.
+    '20261223000000_dynamic_group_head',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

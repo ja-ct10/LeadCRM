@@ -166,7 +166,12 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     if (!active || !canManageMembers) return Promise.resolve();
     const groupId = active.id;
     return mutate(async () => {
-      const updated = (await groupsApi.setHead(groupId, userId)).data;
+      let updated: TenantGroup;
+      try { updated = (await groupsApi.setHead(groupId, userId)).data; }
+      catch (error) {
+        if ([400, 409].includes((error as { status?: number }).status ?? 0)) reloadPending.current = true;
+        throw error;
+      }
       setGroups(previous => previous.map(group => group.id === groupId ? updated : group));
       setHeadDialogOpen(false); close();
       toast.success(userId === null ? 'Group Head cleared.' : 'Group Head saved.');
@@ -209,7 +214,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       <div className="flex min-w-0 flex-wrap items-center gap-3 text-sm" aria-label="Group Head">
         <span className="font-medium text-muted-foreground">Group Head:</span>
         {head ? <GroupMemberIdentity user={head.user} canReadAvatars={canReadAvatars} /> : <span className="text-muted-foreground">Not assigned</span>}
-        {canManageMembers && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setSaveError(''); setHeadDialogOpen(true); }}>{head && <Edit2 size={12} />}{head ? 'Change Head' : 'Assign Head'}</Button>}
+        {canManageMembers && <Button disabled={busy} onClick={() => { setSaveError(''); setHeadDialogOpen(true); if (!USE_MOCK_DATA) void loadGroups(); }}>{head && <Edit2 size={12} />}{head ? 'Change Head' : 'Assign Head'}</Button>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <ModuleSearchInput value={memberSearch} onChange={setMemberSearch} placeholder="Search members..." />
@@ -258,7 +263,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         </form>
       </DialogContent>
     </Dialog>
-    {active && headDialogOpen && canManageMembers && <GroupHeadDialog key={active.id} group={active} busy={busy} error={saveError} canReadAvatars={canReadAvatars} onClose={() => setHeadDialogOpen(false)} onSave={userId => { void saveHead(userId); }} onClear={requestClearHead} />}
+    {active && headDialogOpen && canManageMembers && <GroupHeadDialog key={active.id} group={active} busy={busy} refreshing={loading} refreshError={loadError} error={saveError} canReadAvatars={canReadAvatars} onRetry={() => { void loadGroups(); }} onClose={() => setHeadDialogOpen(false)} onSave={userId => { void saveHead(userId); }} onClear={requestClearHead} />}
     <ConfirmActionDialog {...dialogProps} />
   </div>;
 }

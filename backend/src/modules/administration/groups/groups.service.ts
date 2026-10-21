@@ -21,9 +21,11 @@ export async function getAll(tenantId: string) {
 
 function presentGroup(group: Awaited<ReturnType<typeof repo.findAllGroups>>[number]) {
   const { systemKey, members, ...data } = group;
+  const candidates = repo.groupHeadCandidateIds(members);
   return { ...data, isDefault: systemKey === 'SALES', members: members.map(({ user, ...member }) => {
-    const { userRoles: _roles, ...publicUser } = user;
-    return { ...member, canBeHead: repo.canBeGroupHead(user), user: publicUser };
+    const { userRoles, ...publicUser } = user;
+    const roleNames = userRoles.filter(({ role }) => !role.isSystemRole).map(({ role }) => role.name);
+    return { ...member, canBeHead: candidates.has(member.userId), user: { ...publicUser, roleNames } };
   }) };
 }
 
