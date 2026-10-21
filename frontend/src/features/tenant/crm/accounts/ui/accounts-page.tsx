@@ -85,6 +85,8 @@ export default function AccountsPage(): React.ReactElement {
   const highlightId = getParam('highlight') ?? undefined;
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [panelTab, setPanelTab] = useState<'activity' | 'details'>('activity');
+  const editInDetails = (account: Account) => { setPanelTab('details'); setSelectedAccount(account); };
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [accountSelectedIds, setAccountSelectedIds] = useState<Set<string>>(new Set());
@@ -430,7 +432,7 @@ export default function AccountsPage(): React.ReactElement {
             onSelectionChange={setAccountSelectedIds}
             canEdit={canEdit}
             canArchive={canDelete}
-            onEdit={handleOpenEdit}
+            onEdit={editInDetails}
             onArchive={(account) => confirmArchive([account.id], account.name)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
@@ -519,9 +521,9 @@ export default function AccountsPage(): React.ReactElement {
       {/* ── Slide-Over Account Panel ──────────────────────────────── */}
       <AccountPanel
         open={!!selectedAccount}
-        onOpenChange={(open) => !open && setSelectedAccount(null)}
+        onOpenChange={(open) => { if (!open) { setSelectedAccount(null); setPanelTab('activity'); } }}
         account={selectedAccount}
-        onEdit={(acc) => handleOpenEdit(acc)}
+        initialTab={panelTab}
       />
 
       {/* Form Sheet */}

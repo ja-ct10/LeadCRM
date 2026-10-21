@@ -7,7 +7,7 @@ import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
-import { SESSION_IDLE_MESSAGE, StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
+import { SESSION_IDLE_MESSAGE, StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, INVALID_LOGIN_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
 import type { ApiRequestError } from '@/lib/api/client';
 import { CamxianBrandPanel } from './camxian-brand-panel';
 import { useLoginLockout } from '../auth/use-login-lockout';
@@ -101,7 +101,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
     }
 
     try {
-      const success = await login(email.trim().toLowerCase(), password);
+      const success = await login(email.trim().toLowerCase(), password, rememberMe);
       if (!success) {
         // Edge case: API returned 2xx but no user object — structural backend issue.
         // login() throws for all real errors (401, 403, 502, network), so this
@@ -112,6 +112,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
       // On success, AuthGuard's useEffect handles role-based navigation.
     } catch (err: unknown) {
       const requestError = err as ApiRequestError;
+      if (requestError.code === INVALID_LOGIN_CODE) { setEmail(''); setPassword(''); }
       if (requestError.code === LOGIN_LOCKOUT_CODE && lockout.activate(requestError)) {
         setPassword('');
         setError('');

@@ -3,6 +3,7 @@ import { aggregateDealEngagement, classifyCustomer, normalizeCrmStatus } from '@
 import { evaluateDealEngagement } from './deals/deal-engagement.service';
 import { ValidationError } from '../../shared/errors/http-error';
 import { AppError } from '../../shared/errors/app-error';
+import { communicationDealContext } from './leads/sales-context';
 import { assertCrmRecordMutation } from './access/crm-record-access.service';
 import { changeCustomerStatus, customerDealWhere, type CustomerLink } from './engagement.service';
 import { fireLeadStatusChanged, fireContactStatusChanged } from '../automation/triggers/triggers.service';
@@ -14,7 +15,7 @@ export async function hasQualifiedDeal(tx: Prisma.TransactionClient, tenantId: s
 }
 
 export async function classifyCustomerRecord(tx: Prisma.TransactionClient, tenantId: string, link: CustomerLink, actorId: string,
-  evidence: { genuineReply?: boolean; qualificationChanged?: boolean } = {}, now = new Date(), emit = true): Promise<void> {
+  evidence: { genuineReply?: boolean; qualificationChanged?: boolean; originDealId?: string } = {}, now = new Date(), emit = true): Promise<void> {
   const current = link.leadId ? await tx.lead.findFirst({ where: { tenantId, id: link.leadId, isArchived: false, deletedAt: null } })
     : await tx.contact.findFirst({ where: { tenantId, id: link.contactId, isArchived: false, deletedAt: null } });
   if (!current) return;
@@ -36,12 +37,13 @@ export async function classifyCustomerRecord(tx: Prisma.TransactionClient, tenan
   }
   const change = await changeCustomerStatus(tx, tenantId, actorId, link, status,
     deals.length ? 'Overall status calculated from related Deal engagement.' : 'Customer classification reevaluated from verified engagement evidence.', now);
-  if (change && link.leadId) await fireLeadStatusChanged({ tenantId, actorId, eventId: change.eventId, lead: { id: current.id, status }, prevStatus: change.prevStatus });
-  else if (change && link.contactId) await fireContactStatusChanged({ tenantId, actorId, eventId: change.eventId, contact: { id: current.id, status }, prevStatus: change.prevStatus });
+  if (change && link.leadId) await fireLeadStatusChanged({ tenantId, actorId, originDealId: evidence.originDealId, eventId: change.eventId, lead: { id: current.id, status }, prevStatus: change.prevStatus });
+  else if (change && link.contactId) await fireContactStatusChanged({ tenantId, actorId, originDealId: evidence.originDealId, eventId: change.eventId, contact: { id: current.id, status }, prevStatus: change.prevStatus });
 }
 
 /** Include removed participants so unlinking the last qualifying Deal releases protection. */
-export async function refreshDealClassification(tx: Prisma.TransactionClient, tenantId: string, dealId: string, actorId: string, previous: CustomerLink[] = [], now = new Date(), emit = true) {
+export async function refreshDealClassification(tx: Prisma.TransactionClient, tenantId: string, dealId: string, actorId: string, previous: CustomerLink[] = [], now = new Date(), emit = true, originDealId?: string) {
+  return communicationDealContext.run(originDealId ?? communicationDealContext.getStore(), async () => {
   const evaluated = await evaluateDealEngagement(tx, tenantId, dealId, actorId, now, emit);
   const [leads, contacts] = await Promise.all([
     tx.leadDeal.findMany({ where: { tenantId, dealId }, select: { leadId: true } }),
@@ -49,8 +51,9 @@ export async function refreshDealClassification(tx: Prisma.TransactionClient, te
   ]);
   const links: CustomerLink[] = [...previous, ...leads, ...contacts];
   const unique = new Map(links.map(link => [link.leadId ? `lead:${link.leadId}` : `contact:${link.contactId}`, link]));
-  for (const link of unique.values()) await classifyCustomerRecord(tx, tenantId, link, actorId, { qualificationChanged: true }, now, emit);
+  for (const link of unique.values()) await classifyCustomerRecord(tx, tenantId, link, actorId, { qualificationChanged: true, originDealId: communicationDealContext.getStore() }, now, emit);
   return evaluated;
+  });
 }
 
 /** Existing customer update routes retain explicit cancellation and reopening only. */

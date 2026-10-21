@@ -23,7 +23,7 @@ import { sendSms, SmsSubmissionError } from '../../../../shared/services/sms.ser
 import { processTextBeeEvent } from '../textbee-webhook';
 import { DEFAULT_CAMXIAN_TEMPLATES, seedCampaignTemplates } from '../../templates/default-templates';
 import { previewAudience, campaignVariableFields } from '../audiences.service';
-import { CUSTOM_FIELD_MODULES, campaignVariableChoices, defaultFieldLayout, SMS_DEFAULT_FOOTER, type CrmFieldCatalogEntry } from '@leadcrm/shared';
+import { CAMPAIGN_STATUSES, CUSTOM_FIELD_MODULES, campaignVariableChoices, defaultFieldLayout, SMS_DEFAULT_FOOTER, type CrmFieldCatalogEntry } from '@leadcrm/shared';
 import { sendMail, EmailSubmissionError } from '../../../../shared/services/email.service';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
@@ -583,7 +583,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await processTextBeeEvent(event('unknown', 'late-unknown'));
     expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('delivered');
     expect(await prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } })).toBe(9);
-    expect((await post(JSON.stringify({ webhookEvent: 'MESSAGE_RECEIVED', message: 'Ignored' }))).status).toBe(200);
+    expect((await post(JSON.stringify({ webhookEvent: 'MESSAGE_RECEIVED', message: 'Ignored' }))).status).toBe(400);
     const report = await request(`/marketing/campaigns/${campaign.id}/report`);
     expect(report.body.data).toMatchObject({ sentCount: 1, failedCount: 0, openedCount: 0, clickedCount: 0 });
     expect(report.body.data.recipients.find((r: { id: string }) => r.id === row.id)).toMatchObject({ phone: row.phone, email: null, deliveryStatus: 'Delivered' });
@@ -622,6 +622,19 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect(sendSms).toHaveBeenCalledTimes(2);
       await prisma.contact.delete({ where: { id: person.id } });
     });
+  });
+  it.each(['EMAIL', 'SMS'] as const)('%s filters every supported persisted status and restores the list when cleared', async type => {
+    const marker = `Status filter ${randomUUID()}`;
+    const fixtures = await Promise.all(CAMPAIGN_STATUSES.map(status => prisma.campaign.create({ data: { tenantId, name: `${marker} ${status}`, type, status, createdById: userId } })));
+    for (const fixture of fixtures) {
+      const result = await request(`/marketing/campaigns?type=${type}&status=${fixture.status}&search=${encodeURIComponent(marker)}`);
+      expect(result.status).toBe(200);
+      expect(result.body.data.map((row: { id: string }) => row.id)).toEqual([fixture.id]);
+    }
+    const cleared = await request(`/marketing/campaigns?type=${type}&search=${encodeURIComponent(marker)}`);
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.map((row: { id: string }) => row.id).sort()).toEqual(fixtures.map(row => row.id).sort());
+    expect(await prisma.campaign.findMany({ where: { tenantId, id: { in: fixtures.map(row => row.id) } }, select: { id: true, status: true } })).toHaveLength(CAMPAIGN_STATUSES.length);
   });
   it.each(['EMAIL', 'SMS'] as const)('%s persists the complete delivery matrix and filters canonical statuses', async type => {
     for (const removed of ['ACTIVE', 'PAUSED', 'COMPLETED']) expect((await request(`/marketing/campaigns?status=${removed}`)).status).toBe(400);

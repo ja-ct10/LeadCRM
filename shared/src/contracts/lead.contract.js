@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DeactivateUserSchema = exports.ConvertLeadSchema = exports.UpdateLeadSchema = exports.CreateLeadSchema = exports.LeadFieldsSchema = exports.OptionalLeadSourceSchema = exports.LeadPhoneSchema = exports.LeadNameSchema = void 0;
+exports.DeactivateUserSchema = exports.ConvertLeadSchema = exports.UpdateLeadSchema = exports.ManualCreateLeadSchema = exports.CreateLeadSchema = exports.LeadFieldsSchema = exports.OptionalLeadSourceSchema = exports.LeadPhoneSchema = exports.LeadNameSchema = void 0;
 const zod_1 = require("zod");
 const administration_user_schema_1 = require("../validation/administration-user.schema");
 const crm_email_1 = require("../validation/crm-email");
@@ -29,6 +29,9 @@ const fields = {
 exports.LeadFieldsSchema = zod_1.z.object(fields).strict();
 exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_experience_1.LeadStatusSchema.default('Inquiry'), requestId: zod_1.z.string().uuid().optional() })
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
+exports.ManualCreateLeadSchema = exports.CreateLeadSchema.refine(data => data.status === 'Inquiry', {
+    path: ['status'], message: 'Manually created Leads start with Inquiry status.',
+});
 exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial()
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 /** New Account details use the same contract as standalone and linked creation. */

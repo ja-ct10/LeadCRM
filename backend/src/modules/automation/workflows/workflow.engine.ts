@@ -12,7 +12,7 @@ import * as repo from './workflows.repository';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { evaluateCondition } from './workflow-conditions';
 import { dispatchAction, safeWorkflowError, type ActionResult } from '../actions/action-dispatcher';
-import { isStageEvent, workflowStageEvent, assertCurrentStageEntry, isSupersededStageEntry } from './workflow-stage-entry';
+import { isStageEvent, workflowStageEvent, assertCurrentStageEntry, isSupersededStageEntry, claimStageActions } from './workflow-stage-entry';
 import { assertWorkflowPermissions } from '../actions/action-permissions';
 import { validateConditionReferences, validateWorkflow } from './workflow-validation';
 export { evaluateCondition } from './workflow-conditions';
@@ -43,7 +43,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
   if (!currentContext && !prepared) throw new NotFoundError('Triggering record');
   const context = prepared?.eventContext ? { ...prepared.eventContext } : currentContext ?? { [`${trigger.entity}.id`]: params.entityId };
   // Only event metadata is accepted from emitters; saved record values remain authoritative.
-  for (const key of ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields']) if (key in params.context) context[key] = params.context[key];
+  for (const key of ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields', 'event.originDealId', 'event.continuationSourceId', 'event.continuationUpdateId']) if (key in params.context) context[key] = params.context[key];
   if (params.triggerType.endsWith('.status_changed')) {
     // Interpret historical enum/label snapshots without rewriting queued evidence.
     const canonical = (value: unknown) => typeof value === 'string' ? CRM_STATUSES.find(status => status.toLowerCase() === value.toLowerCase().replace('_', ' ')) ?? (value.toLowerCase() === 'closed' ? 'Closed Deal' : value) : value;
@@ -79,6 +79,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
       let errorMessage: string | undefined;
       let recordedSteps = 0;
       let pendingStepId: string | undefined;
+      let stageActionsClaimed = false;
       const stageHistoryId = isStageEvent(params.triggerType)
         ? String(context['event.stageHistoryId'] ?? (eventId.startsWith(`${params.triggerType}:`) ? eventId.slice(params.triggerType.length + 1) : '')) : undefined;
       try {
@@ -94,7 +95,9 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
         }
         if (stageHistoryId !== undefined) {
           const recorded = await workflowStageEvent(params.tenantId, params.entityId, params.triggerType, stageHistoryId);
-          if (recorded.eventId !== eventId) throw new ValidationError('The workflow event identifier does not match its recorded stage transition.');
+          const continuation = context['event.continuationSourceId'];
+          const expectedEventId = continuation ? `${recorded.eventId}:updated:${context['event.continuationUpdateId']}` : recorded.eventId;
+          if (expectedEventId !== eventId || continuation && !prepared) throw new ValidationError('The workflow event identifier does not match its recorded stage transition.');
           Object.assign(context, recorded.context);
           try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }
           catch (error) { if (!isSupersededStageEntry(error)) throw error; status = 'skipped'; errorMessage = error.message; }
@@ -122,7 +125,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
             continue;
           }
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
-          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived)) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
+          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || context['event.continuationSourceId'] && current.version !== workflow.version)) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
           const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
           // A stage follow-up belongs to this entry into the stage. Do not continue after moving away.
           if (status === 'completed' && stageHistoryId) try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }
@@ -136,6 +139,14 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
             continue;
           }
           await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById!);
+          if (stageHistoryId && !stageActionsClaimed) {
+            stageActionsClaimed = await workflowLeaseWrite(tx => claimStageActions(tx, params.tenantId, workflow.id, stageHistoryId, params.triggerType, run.id,
+              typeof context['event.continuationSourceId'] === 'string' ? context['event.continuationSourceId'] : undefined,
+              typeof context['event.continuationUpdateId'] === 'string' ? context['event.continuationUpdateId'] : undefined));
+            if (!stageActionsClaimed) { status = 'skipped'; errorMessage = 'Actions already started for this stage entry.';
+              await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped', output: { reason: errorMessage } }); recordedSteps++; continue; }
+          }
+          if (freshContext && context['event.originDealId']) freshContext['event.originDealId'] = context['event.originDealId'];
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
           await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));

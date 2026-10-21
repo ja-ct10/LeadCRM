@@ -114,7 +114,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 contactId = ids[0] ?? null;
               }
               if (contactId) await tx.lead.update({ where: { ...scope, id: lead.id }, data: { contactId } });
-              const converted = await convertClosedLead(tx, scope.tenantId, lead.id, live.createdById);
+              const converted = await convertClosedLead(tx, scope.tenantId, lead.id, live.createdById, { previousLead: lead });
               contact = converted.contact;
               contactId = contact.id;
             }

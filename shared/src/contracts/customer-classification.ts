@@ -42,6 +42,7 @@ export interface DealEngagementEvent { type: 'qualified' | 'reply' | 'outreach';
 export function classifyDealEngagement(events: DealEngagementEvent[], now = new Date(), outcome?: 'won' | 'lost'): CrmStatus {
   if (outcome) return outcome === 'won' ? 'Closed Deal' : 'Cancelled';
   let status: CrmStatus = 'Inquiry';
+  let qualified = false;
   let baseline: number | undefined;
   const age = (at: number) => {
     if (baseline === undefined) return;
@@ -52,9 +53,9 @@ export function classifyDealEngagement(events: DealEngagementEvent[], now = new 
   for (const event of events.filter(event => Number.isFinite(+event.at) && +event.at <= +now)
     .sort((a, b) => +a.at - +b.at || rank[a.type] - rank[b.type])) {
     age(+event.at);
-    if (event.type === 'qualified') { status = 'Hot'; baseline = +event.at; }
-    else if (event.type === 'reply') { status = status === 'Hot' ? 'Hot' : 'Warm'; baseline = +event.at; }
-    else if (baseline === undefined) baseline = +event.at;
+    if (event.type === 'qualified') { qualified = true; status = 'Hot'; baseline = +event.at; }
+    else if (event.type === 'reply') { status = qualified ? 'Hot' : 'Warm'; baseline = +event.at; }
+    else if (baseline === undefined) { status = 'Warm'; baseline = +event.at; }
   }
   age(+now);
   return status;

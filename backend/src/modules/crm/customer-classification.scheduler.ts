@@ -20,7 +20,7 @@ export async function sweepCustomerClassifications(now = new Date()) {
       const dealPosition = typeof positions.deal === 'string' ? positions.deal : '';
       const deals = await prisma.deal.findMany({ where: { tenantId, isArchived: false, deletedAt: null, pipeline: { isArchived: false }, ...(dealPosition ? { id: { gt: dealPosition } } : {}) },
         orderBy: { id: 'asc' }, take: 50, select: { id: true } });
-      for (const deal of deals) await salesTransaction(tx => refreshDealClassification(tx, tenantId, deal.id, actor.id, [], now));
+      for (const deal of deals) await salesTransaction(tx => refreshDealClassification(tx, tenantId, deal.id, actor.id, [], now, true, deal.id));
       next.deal = deals.length === 50 ? deals[deals.length - 1].id : '';
       for (const kind of ['lead', 'contact'] as const) {
         const position = typeof positions[kind] === 'string' ? positions[kind] as string : '';

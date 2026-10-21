@@ -100,7 +100,7 @@ function getWorkflowConditionFields(entity, trigger, customFields = [], layout) 
     if (entity !== 'account')
         definitions.push({ field: `${entity}.assignedUserId`, label: layout?.fields.assignedUserId?.label ?? 'Assigned Agent', type: 'user', nullable: true });
     if (entity === 'deal')
-        definitions.push({ field: 'deal.value', label: 'Deal Value', type: 'number' }, { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' }, { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
+        definitions.push({ field: 'deal.value', label: 'Deal Value', type: 'number' }, { ...text('deal.lostReason', 'Cancellation Reason'), nullable: true }, choice('deal.engagementStatus', 'Engagement Status', record_experience_1.CRM_STATUSES), { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' }, { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
     if (trigger === 'deal.stage_changed')
         definitions.push({ field: 'event.previousStageId', label: 'Previous Stage', type: 'stage' }, { field: 'event.newStageId', label: 'New Stage', type: 'stage' });
     if (trigger === 'lead.status_changed' || trigger === 'contact.status_changed')

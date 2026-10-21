@@ -1,6 +1,6 @@
 'use client';
 import { SmsReplyReviews } from './sms-reply-reviews';
-import { campaignEngagementRate } from '@leadcrm/shared';
+import { campaignEngagementRate, CAMPAIGN_STATUSES } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
@@ -325,15 +325,7 @@ export default function CampaignsPage() {
                 onClearFilters={searchTerm || statusFilter.length || typeFilter.length ? () => { setSearchTerm(''); setStatusFilter([]); setTypeFilter([]); } : undefined}
                 filterGroups={[
                   {
-                    id: 'status', label: 'Status', items: [
-                      { id: 'sent', label: 'Sent' },
-                      { id: 'partially_sent', label: 'Partially Sent' },
-                      { id: 'interrupted', label: 'Interrupted' },
-                      { id: 'delivered', label: 'Delivered' },
-                      { id: 'failed', label: 'Failed' },
-                      { id: 'draft', label: 'Draft' },
-                      { id: 'scheduled', label: 'Scheduled' },
-                    ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) }))
+                    id: 'status', label: 'Status', items: CAMPAIGN_STATUSES.map(status => ({ id: status.toLowerCase(), label: status.toLowerCase().split('_').map(word => word[0].toUpperCase() + word.slice(1)).join(' '), isChecked: statusFilter.includes(status.toLowerCase()) }))
                   },
                   {
                     id: 'type', label: 'Type', items: [

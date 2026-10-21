@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as service from './contacts-v2.service';
+import { ManualCreateClientContactSchema } from './contacts-v2.dto';
 
 /**
  * Contacts V2 Controller — serves data from the Contact table (formerly Customer).
@@ -23,7 +24,7 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
 
 export async function createContact(req: Request, res: Response, next: NextFunction) {
   try {
-    const { contact, replayed } = await service.createContact(req.user!.tenantId, req.body, req.user!.userId);
+    const { contact, replayed } = await service.createContact(req.user!.tenantId, ManualCreateClientContactSchema.parse(req.body), req.user!.userId);
     res.status(replayed ? 200 : 201).json({ success: true, data: contact });
   } catch (err) { next(err); }
 }

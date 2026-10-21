@@ -45,7 +45,7 @@ export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id'
   if (current.account.id !== account.id) throw new AppError('Mailbox changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   if (context.recordContext) {
     const { recordModule, recordId } = context.recordContext;
-    const where = { tenantId: account.tenantId, id: recordId, assignedUserId: account.userId, isArchived: false, deletedAt: null };
+    const where = { tenantId: account.tenantId, id: recordId, ...(current.permissions.clientAdmin ? {} : { assignedUserId: account.userId }), isArchived: false, deletedAt: null };
     const record = recordModule === 'leads' && current.permissions.leadsView ? await prisma.lead.findFirst({ where: { ...where, convertedAt: null }, select: { email: true } })
       : recordModule === 'contacts' && current.permissions.contactsView ? await prisma.contact.findFirst({ where, select: { email: true } }) : null;
     if (!record || !context.recipients.includes(mailboxAddress(record.email ?? '') ?? '')) throw new AppError('This email must include the selected record while it is assigned to you.', 403, 'MAILBOX_SCOPE_CHANGED');
@@ -58,7 +58,7 @@ export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id'
     const where = { id: recipientId, tenantId: account.tenantId, isArchived: false, deletedAt: null };
     const select = { assignedUserId: true, email: true };
     const recipient = recipientType === 'Lead' ? await prisma.lead.findFirst({ where, select }) : await prisma.contact.findFirst({ where, select });
-    if (!recipient || recipient.assignedUserId !== account.userId || context.recipients.length !== 1 || mailboxAddress(recipient.email ?? '') !== context.recipients[0]) {
+    if (!recipient || !current.permissions.clientAdmin && recipient.assignedUserId !== account.userId || context.recipients.length !== 1 || mailboxAddress(recipient.email ?? '') !== context.recipients[0]) {
       throw new AppError('You can only send quotations to the selected CRM record while it is assigned to you.', 403, 'CRM_ASSIGNMENT_REQUIRED');
     }
   }
@@ -72,7 +72,12 @@ export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id'
   await assertMailboxRecipients(current.account, current.scope, current.permissions, context.recipients, threadId);
   if (context.dealId) {
     if (!current.permissions.dealsView) throw new AppError('Deal view permission is required.', 403);
-    const deal = await prisma.deal.findFirst({ where: { tenantId: account.tenantId, id: context.dealId, isArchived: false, deletedAt: null, assignedUserId: account.userId },
+    if (threadId) {
+      const association = await prisma.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId } } });
+      const source = context.replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: context.replyToMessageId } }, select: { dealId: true } }) : null;
+      if (association && association.dealId !== context.dealId || source?.dealId && source.dealId !== context.dealId) throw new AppError('Start a separate email thread for this Deal.', 409, 'MAILBOX_DEAL_THREAD_CONFLICT');
+    }
+    const deal = await prisma.deal.findFirst({ where: { tenantId: account.tenantId, id: context.dealId, isArchived: false, deletedAt: null, ...(current.permissions.clientAdmin ? {} : { assignedUserId: account.userId }) },
       include: { leadDeals: { where: { tenantId: account.tenantId }, include: { lead: { select: { email: true } } } },
         contactDeals: { where: { tenantId: account.tenantId }, include: { contact: { select: { email: true } } } } } });
     const addresses = deal ? [...deal.leadDeals.map(link => mailboxAddress(link.lead.email ?? '')), ...deal.contactDeals.map(link => mailboxAddress(link.contact.email ?? ''))] : [];

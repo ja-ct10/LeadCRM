@@ -11,6 +11,11 @@ describe('canonical flat workflow context', () => {
     ['contains', 'Facebook Ads', 'book', true], ['not_contains', 'Referral', 'book', true],
     ['starts_with', 'Facebook', 'Face', true], ['ends_with', 'Facebook', 'book', true],
     ['is_empty', null, null, true], ['is_not_empty', 'HOT', null, true],
+    ['before', '2026-01-01', '2026-01-02', true], ['after', '2026-01-02', '2026-01-01', true],
+    ['before', '2026-01-02', '2026-01-02', false], ['after', '2026-01-02', '2026-01-02', false],
+    ['equals', false, false, true], ['equals', 0, 0, true],
+    ['contains', ['one', 'two'], 'two', true], ['not_contains', ['one'], 'two', true],
+    ['greater_than', '12', 10, false], ['less_than', Number.NaN, 10, false],
     ['less_than', null, 1, false], ['equals', 1, '1', false],
   ];
   it.each(cases)('%s evaluates literal dotted keys (%s)', (operator, actual, value, expected) => {
@@ -25,6 +30,14 @@ describe('canonical flat workflow context', () => {
     const context = { 'deal.value': 150000, 'deal.title': 'Proposal' };
     expect(evaluateCondition({ operator: 'AND', conditions }, context)).toBe(false);
     expect(evaluateCondition({ operator: 'OR', conditions }, context)).toBe(true);
+  });
+  it.each([null, undefined, '', ' ', '\t\r\n', []])('treats %j as empty without failing All conditions', actual => {
+    const context = actual === undefined ? {} : { 'deal.lostReason': actual };
+    expect(evaluateCondition({ operator: 'AND', conditions: [{ field: 'deal.lostReason', operator: 'is_empty', value: null }] }, context)).toBe(true);
+    expect(evaluateCondition({ operator: 'AND', conditions: [{ field: 'deal.lostReason', operator: 'is_not_empty', value: null }] }, context)).toBe(false);
+  });
+  it.each(['reason', '  reason  ', 0, false, ['value']])('does not confuse %j with empty', actual => {
+    expect(evaluateCondition({ operator: 'AND', conditions: [{ field: 'deal.lostReason', operator: 'is_not_empty', value: null }] }, { 'deal.lostReason': actual })).toBe(true);
   });
   it('matches public relationship labels and preserved uppercase status conditions', () => {
     for (const [actual, value] of [['WARM', 'Warm'], ['Warm', 'WARM'], ['Closed Deal', 'CLOSED_DEAL']]) {

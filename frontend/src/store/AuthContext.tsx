@@ -85,7 +85,7 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   applyOrganizationSettings: (settings: import('@leadcrm/shared').OrganizationSettings) => void;
   applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
-  login: (email: string, password?: string) => Promise<boolean>;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<PasswordRecoveryResponse>;
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
@@ -371,10 +371,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => source.close();
   }, [user?.id, user?.tenantId, user?.mustChangePassword, onboardingComplete, isLoading, authError]);
 
-  const login = async (email: string, password?: string): Promise<boolean> => {
+  const login = async (email: string, password?: string, rememberMe = false): Promise<boolean> => {
     if (USE_MOCK_AUTH) return mockLogin(email);
     const generation = ++requestGeneration.current;
-    const response = await authApi.login({ email, password: password ?? '' });
+    const response = await authApi.login({ email, password: password ?? '', rememberMe });
     if (generation !== requestGeneration.current) return false;
     applyAuthUser(response.data.user);
     return true;

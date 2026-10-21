@@ -106,6 +106,7 @@ function databaseFor(file) {
   if (file.includes('organization-polish.integration')) return 'leadcrm_crm_polish_test_1';
   if (file.includes('/gmail/')) return 'leadcrm_mailbox_test_1';
   if (file.includes('/workflows/') || file.includes('/tasks/')) return 'leadcrm_workflow_test_1';
+  if (file.includes('quotations.integration')) return 'leadcrm_quotation_test_1';
   if (file.includes('/campaigns/') || file.includes('contact-relations') || file.includes('/groups/')) return 'leadcrm_campaign_test_1';
   if (file.includes('/permissions/') || file.includes('/roles/')) return 'leadcrm_environment_test_1';
   if (file.includes('crm-completion')) return 'leadcrm_completion_test_1';

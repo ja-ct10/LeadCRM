@@ -1,4 +1,4 @@
-import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Real cookies, Next proxy (including streamed SSE), Express and disposable SQL.
 // Requires backend and frontend production builds; pass an installed Playwright package as argv[2].
 import { PGlite } from '@electric-sql/pglite';
@@ -52,7 +52,7 @@ try {
   const tenant = await prisma.tenant.create({ data: { name: 'Dashboard Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Dashboard', lastName: 'Admin', email: 'dashboard@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales Agent' } });
-  const grants = ['dashboard','deals','leads','contacts','accounts','tasks'].map(module => ({ module, canView: true, canEdit: module !== 'dashboard', canCreate: module !== 'dashboard', canDelete: false, canArchive: module !== 'dashboard', ...(module === 'tasks' ? { canComplete: true } : {}) }));
+  const grants = ['dashboard','deals','leads','contacts','accounts','tasks'].map(module => ({ module, canView: true, canViewAll: ['deals', 'leads', 'contacts', 'accounts'].includes(module), canEdit: module !== 'dashboard', canCreate: module !== 'dashboard', canDelete: false, canArchive: module !== 'dashboard', ...(module === 'tasks' ? { canComplete: true } : {}) }));
   await prisma.rolePermission.createMany({ data: grants.map(grant => ({ ...grant, tenantId: tenant.id, roleId: role.id })) });
   const agents = [];
   for (const firstName of ['First','Second']) {
@@ -186,7 +186,7 @@ try {
     const { verifyDashboardLeadsUi } = await import('./verify-dashboard-leads-ui.mjs');
     await verifyDashboardLeadsUi({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly: process.argv.includes('--leads-only'), dashboardOnly: process.argv.includes('--dashboard-only') });
   } else {
-  const lead = await mutation('Another agent creates a lead visible to both reporting users', () => http('/crm/leads', 'POST', { firstName: 'Browser', lastName: 'Lead', email: 'browser@example.test', status: 'Warm', assignedUserId: replacement.id }, replacementToken), () => expectValue('Total Leads', '1'));
+  const lead = await mutation('Another agent creates a lead visible to both reporting users', () => http('/crm/leads', 'POST', { firstName: 'Browser', lastName: 'Lead', email: 'browser@example.test', status: 'Inquiry', assignedUserId: replacement.id }, replacementToken), () => expectValue('Total Leads', '1'));
   const created = await mutation('Deal creation updates all current charts', () => http('/crm/deals', 'POST', { pipelineId: pipeline.id, stageId: stages[0].id, title: 'Browser Deal', productInterestIds: [products[0].id], assignedUserId: agent.id }), () => expectValue('Active Deals', '1'));
   const deal = created;
   for (const index of [1,2,0,2]) {
@@ -262,7 +262,9 @@ try {
     if (currentEnd !== fixtureEnd) { fixtureEnd = currentEnd; await applyFixtureDates(); }
     await expectValue('Total Revenue','₱2,800.00');
   });
-  await page.getByText('Second Agent',{exact:true}).waitFor(); await staffSession.tab.getByText('Second Agent',{exact:true}).waitFor();
+  await page.getByText('Second Agent',{exact:true}).waitFor();
+  assert.equal(await staffSession.tab.getByRole('heading', { name: 'Sales Leaderboard', exact: true }).count(), 0);
+  assert.equal(await staffSession.tab.getByText('Second Agent', { exact: true }).count(), 0);
   for (const interval of ['Week','Month','Year']) {
     await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click();
     await page.getByRole('menuitem',{name:interval,exact:true}).click();
@@ -314,15 +316,10 @@ try {
   if (await pipelineNav.count()) await pipelineNav.click();
   const observerSession = await session(adminToken);
   await observerSession.tab.goto(base+'/crm/deals',{waitUntil:'domcontentloaded',timeout:60000});
-  await pipelineSession.tab.getByRole('button',{name:'Manage pipeline stages',exact:true}).click();
-  const manager = pipelineSession.tab.getByRole('dialog',{name:'Manage pipeline stages',exact:true});
+  assert.equal(await pipelineSession.tab.getByRole('button',{name:'Manage pipeline stages',exact:true}).count(),0);
   for (const [index, stage] of stages.entries()) {
     const color = `#12345${index}`;
-    await manager.getByLabel(`Stage Color for ${stage.name}`,{exact:true}).fill(color);
-    const saveResponse = pipelineSession.tab.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith(`/crm/stages/${stage.id}`));
-    await manager.getByRole('button',{name:'Save Changes',exact:true}).nth(index).click();
-    const saved = await saveResponse; assert.ok(saved.ok(),await saved.text());
-    await until(async()=>!(await manager.getByRole('button',{name:'Saving…',exact:true}).count()),'Color save complete');
+    await http(`/crm/stages/${stage.id}`, 'PUT', { color });
     const persisted = await http(`/crm/pipelines/${pipeline.id}`);
     assert.equal(persisted.stages[index].color,color);
     await until(async()=>{
@@ -337,11 +334,11 @@ try {
   }
   await pipelineSession.context.close(); await observerSession.context.close();
   const reopened = await session(adminToken); await reopened.tab.goto(base+'/crm/deals',{waitUntil:'domcontentloaded',timeout:60000});
-  await reopened.tab.getByRole('button',{name:'Manage pipeline stages',exact:true}).click();
-  assert.equal(await reopened.tab.getByLabel('Stage Color for Lead',{exact:true}).inputValue(),'#123450');
+  assert.equal(await reopened.tab.getByRole('button',{name:'Manage pipeline stages',exact:true}).count(),0);
+  assert.equal((await http(`/crm/pipelines/${pipeline.id}`)).stages[0].color,'#123450');
   for (const width of [1440,768,390,320]) {
     await reopened.tab.setViewportSize({width,height:1000});
-    const bounds=await reopened.tab.getByRole('dialog',{name:'Manage pipeline stages',exact:true}).boundingBox();
+    const bounds=await reopened.tab.getByRole('combobox',{name:'Pipeline',exact:true}).boundingBox();
     assert.ok(bounds.x>=0 && bounds.x+bounds.width<=width+1);
     await reopened.tab.screenshot({path:resolve(output,`stages-${width}.png`)});
   }
@@ -364,10 +361,8 @@ try {
   await page.getByRole('button',{name:'Retry',exact:true}).click();
   await until(async () => await page.getByRole('alert').filter({hasText:'Acceptance database unavailable'}).count() === 0,'Error recovery'); record('Backend failure retains labeled stale data and Retry recovers');
   await wait(5000); // Let verification toasts expire before visual inspection.
-  for (const theme of ['light','dark']) {
-    await page.evaluate(theme => { localStorage.setItem('app_theme',theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange',{detail:{theme,mode:theme === 'dark' ? 'Dark' : 'Light'}})); },theme);
-    await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((el, dark) => el.classList.contains('dark') === dark, theme === 'dark'), `${theme} theme applied`);
-    assert.equal(await page.locator('.crm-shell[data-theme-container]').evaluate(el=>el.classList.contains('dark')),theme === 'dark');
+  for (const theme of ['Classic','Light','Dark','System']) {
+    await setAcceptanceTheme(page,theme);
     for (const width of [320,375,390,430,768,1024,1440,1920]) {
       await page.setViewportSize({width,height:1000}); await wait(300);
       const dimensions = await page.evaluate(() => ({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:document.documentElement.scrollWidth > innerWidth+1,

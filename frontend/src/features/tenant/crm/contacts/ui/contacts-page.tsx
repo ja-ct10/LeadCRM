@@ -75,6 +75,7 @@ export default function ContactsPage(): React.ReactElement {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const contactCreation = useRef<{ intent: string; requestId: string } | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
+  const [panelTab, setPanelTab] = useState<'activity' | 'details'>('activity');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
@@ -399,7 +400,7 @@ export default function ContactsPage(): React.ReactElement {
                 getAssignedUserName={(userId) => assignedAgentName(users, userId)}
                 canEdit={canEdit}
                 canArchive={canDelete}
-                onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}
+                onEdit={(contact) => { setPanelTab('details'); setSelectedContact(contact); }}
                 onArchive={(contact) => confirmArchive([contact.id], getName(contact))}
                 onHideColumn={async (columnId) => {
                   const updated = effectiveColumns.map((col) =>
@@ -498,12 +499,9 @@ export default function ContactsPage(): React.ReactElement {
     {/* ── Contact Slide-Over Panel ─────────────────────────────── */}
     <ContactPanel
       open={!!selectedContact}
-      onOpenChange={(open) => !open && setSelectedContact(null)}
+      onOpenChange={(open) => { if (!open) { setSelectedContact(null); setPanelTab('activity'); } }}
       contact={selectedContact}
-      onEdit={(c) => {
-        setEditingContact(c);
-        setIsFormOpen(true);
-      }}
+      initialTab={panelTab}
     />
 
     {/* ── Contact Form Sheet ──────────────────────────────────── */}

@@ -39,3 +39,17 @@ export async function assertCurrentStageEntry(tenantId: string, dealId: string, 
 export function isSupersededStageEntry(error: unknown): error is AppError {
   return error instanceof AppError && error.code === STAGE_ENTRY_SUPERSEDED;
 }
+
+/** The original immutable stage event owns one durable side-effect claim across attempts. */
+export async function claimStageActions(tx: Prisma.TransactionClient, tenantId: string, workflowId: string, historyId: string,
+  triggerType: string, runId: string, continuationSourceId?: string, updateId?: string): Promise<boolean> {
+  const source = await tx.workflowTriggerRecord.findFirst({ where: { tenantId, workflowId, eventId: `${triggerType}:${historyId}` }, select: { id: true } });
+  if (!source || continuationSourceId && source.id !== continuationSourceId) throw new ValidationError('The original stage event is unavailable.');
+  const current = await tx.workflowTriggerRecord.findFirstOrThrow({ where: { id: source.id, tenantId }, include: { runs: { include: { steps: true } } } });
+  const payload = current.payload && typeof current.payload === 'object' && !Array.isArray(current.payload) ? current.payload : {};
+  if (payload.stageActionRunId && payload.stageActionRunId !== runId) return false;
+  if (current.runs.some(run => run.id !== runId && (run.status === 'completed' || run.steps.some(step => step.status !== 'skipped')))) return false;
+  if (continuationSourceId && !updateId) throw new ValidationError('The committed field-update identity is required.');
+  const claim = await tx.workflowTriggerRecord.updateMany({ where: { id: source.id, tenantId, payload: { equals: payload } }, data: { payload: { ...payload, stageActionRunId: runId } } });
+  return claim.count === 1;
+}

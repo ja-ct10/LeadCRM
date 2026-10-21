@@ -19,5 +19,8 @@ const ContactFields = ContactCreationIdentitySchema.extend({
 const exclusiveProducts = (data: { productInterestIds?: string[]; productInterests?: string[] }) => data.productInterestIds === undefined || data.productInterests === undefined;
 export const CreateClientContactSchema = ContactFields.refine(exclusiveProducts, 'Supply Product IDs or legacy names, not both.')
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
+export const ManualCreateClientContactSchema = CreateClientContactSchema.refine(data => data.status === 'Inquiry', {
+  path: ['status'], message: 'Manually created Contacts start with Inquiry status.',
+});
 export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().strict()
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });

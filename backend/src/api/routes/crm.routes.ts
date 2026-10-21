@@ -1,4 +1,4 @@
-import { MoveDealPipelineSchema } from '@leadcrm/shared';
+import { MoveDealPipelineSchema, ManualCreateLeadSchema } from '@leadcrm/shared';
 import { exportCrm } from '../../modules/crm/exports/crm-export.controller';
 import { CreateDealBatchSchema } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
@@ -81,7 +81,7 @@ router.post('/leads/imports/upload', authorize('leads.import'), validate(CsvUplo
 router.post('/leads/imports/preview', authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.previewImport);
 router.post(  '/leads/imports',      authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.createImport);
 router.get(   '/leads/:id',          authorize('leads.view'),   leadController.getContactById);
-router.post(  '/leads',              authorize('leads.create'), validate(CreateContactSchema),  leadController.createContact);
+router.post(  '/leads',              authorize('leads.create'), validate(ManualCreateLeadSchema),  leadController.createContact);
 router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema), (req, res, next) => req.body.status === 'Closed Deal' ? authorizeAll('contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view')(req, res, next) : next(), leadController.updateContact);
 router.patch( '/leads/:id/archive',  authorize('leads.archive'), leadController.archiveContact);
 router.patch( '/leads/:id/restore',  authorizeAll('archived_data.restore', 'leads.view'), leadController.restoreContact);

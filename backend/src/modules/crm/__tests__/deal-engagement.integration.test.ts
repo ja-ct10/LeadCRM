@@ -13,11 +13,13 @@ import { backfillDealAttribution } from '../../../integrations/gmail/mailbox-dea
 import { updateContact } from '../contacts-v2/contacts-v2.repository';
 import { duplicateDeal, restoreDeal } from '../deals/deals.service';
 import { bulkArchive } from '../deals/bulk-deals.service';
+import { createWorkflow } from '../../automation/workflows/workflows.service';
+import { flushWorkflowQueue } from '../../automation/workflows/__tests__/workflow-queue-test-helper';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_[a-z0-9_]+$/.test(url.pathname);
 describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
-  let tenantId: string, actorId: string, pipelineId: string, leadId: string, leadStage: string, qualified: string, lost: string, won: string, accountId: string;
+  let tenantId: string, actorId: string, pipelineId: string, leadId: string, leadStage: string, contacted: string, qualified: string, lost: string, won: string, accountId: string;
   const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, () => crmActor.run({ tenantId, userId: actorId }, work));
   const now = new Date(), ago = (days: number) => new Date(+now - days * 86_400_000);
   const refresh = (id: string, date = now) => scope(() => salesTransaction(tx => refreshDealClassification(tx, tenantId, id, actorId, [], date)));
@@ -39,13 +41,29 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     actorId = (await prisma.user.create({ data: { tenantId, firstName: 'Fixture', lastName: 'Admin', email: 'staff@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: now, emailVerified: now } })).id;
     pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Sales Pipeline' } })).id;
     leadStage = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Lead', order: 0, isDefault: true } })).id;
-    qualified = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 1 } })).id;
-    lost = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Cancelled', order: 2, isLost: true } })).id;
+    contacted = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Contacted', order: 1 } })).id;
+    qualified = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 2 } })).id;
+    lost = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Cancelled', order: 4, isLost: true } })).id;
     won = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Closed Deal', order: 3, isWon: true } })).id;
     accountId = (await prisma.emailAccount.create({ data: { tenantId, userId: actorId, email: 'staff@camxian.com', accessToken: 'fixture', scopes: [], syncCursor: 'fixture', lastSyncAt: now } })).id;
   });
   beforeEach(async () => {
+    await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } });
     leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Fixture', email: `${randomUUID()}@example.test`, assignedUserId: actorId } })).id;
+  });
+  it('retains originating Deal context through communication-driven stage and customer automation', async () => {
+    const a = await deal(), b = await deal();
+    const workflow = await scope(() => createWorkflow(tenantId, actorId, { name: 'Reply provenance', trigger: 'lead.status_changed', isActive: true,
+      conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Warm' }] },
+      actions: [{ type: 'move_deal_stage', config: { stageId: contacted, currentStageId: leadStage, targetMode: 'all_matching' } }] }));
+    await reply(a.id, 0);
+    await scope(() => salesTransaction(tx => refreshDealClassification(tx, tenantId, a.id, actorId, [], now, true, a.id)));
+    await flushWorkflowQueue(tenantId);
+    expect(await read(a.id)).toMatchObject({ stageId: contacted, engagementStatus: 'Warm' });
+    expect(await read(b.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Inquiry' });
+    const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, workflowId: workflow.id } });
+    expect(run.status).toBe('completed');
+    expect((run.dispatchContext as any).context['event.originDealId']).toBe(a.id);
   });
   it('isolates Deal replies, aggregates customers, and retains values and stages', async () => {
     const a = await deal(), b = await deal();
@@ -54,7 +72,7 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     expect((await read(a.id)).engagementStatus).toBe('Warm');
     expect((await read(b.id)).engagementStatus).toBe('Inquiry');
     expect((await person()).status).toBe('Warm');
-    expect((await read(a.id))).toMatchObject({ value: 12000, stageId: leadStage });
+    expect((await read(a.id))).toMatchObject({ value: 12000, stageId: contacted });
     await scope(() => moveDealStage(b.id, tenantId, qualified, actorId));
     expect((await read(b.id)).engagementStatus).toBe('Hot');
     expect((await person()).status).toBe('Hot');
@@ -67,6 +85,57 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: b.id } })).toBe(history);
     await scope(() => archiveDeal(a.id, tenantId, 'Fixture', actorId));
     await scope(() => salesTransaction(tx => assertCustomerStatusEdit(tx, tenantId, { leadId }, { status: 'Cold', manualCancellation: false }, 'Hot'))).then(() => { throw Error('Expected derived-status rejection'); }, error => expect(error.message).toContain('calculated'));
+  });
+  it('records verified outreach as Contacted/Warm and restores cooled Qualified engagement on its own reply', async () => {
+    const a = await deal(), b = await deal();
+    const message = await reply(a.id, 0);
+    await prisma.mailboxMessage.update({ where: { id: message.id }, data: { direction: 'outbound', meaningful: false } });
+    await prisma.mailboxSendReceipt.create({ data: { tenantId, accountId, requestId: randomUUID(), payloadHash: 'fixture', operation: 'send', status: 'sent', providerMessageId: message.providerMessageId } });
+    await refresh(a.id);
+    expect(await read(a.id)).toMatchObject({ stageId: contacted, engagementStatus: 'Warm' });
+    expect(await read(b.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Inquiry' });
+    await scope(() => moveDealStage(a.id, tenantId, qualified, actorId));
+    const entry = await prisma.dealStageHistory.findFirstOrThrow({ where: { tenantId, dealId: a.id, newStageId: qualified } });
+    for (const [days, status] of [[8 - 1 / 86400000, 'Hot'], [8, 'Warm'], [30, 'Cold']] as const) {
+      await refresh(a.id, new Date(+entry.movedAt + days * 86400000));
+      expect(await read(a.id)).toMatchObject({ stageId: qualified, engagementStatus: status });
+    }
+    await reply(a.id, -31); await refresh(a.id, new Date(+now + 31 * 86400000 + 1000));
+    expect(await read(a.id)).toMatchObject({ stageId: qualified, engagementStatus: 'Hot' });
+    expect(await read(b.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Inquiry' });
+  });
+  it.each([true, false])('qualifies only a provider-accepted quotation for its own Deal (matching=%s)', async matching => {
+    const a = await deal(), b = await deal();
+    const message = await reply(a.id, 0);
+    await prisma.mailboxMessage.update({ where: { id: message.id }, data: { direction: 'outbound', meaningful: false } });
+    const receipt = await prisma.mailboxSendReceipt.create({ data: { tenantId, accountId, requestId: randomUUID(), payloadHash: 'quotation fixture', operation: 'send', status: 'reserved', providerMessageId: message.providerMessageId,
+      authorizationContext: { quotation: { fingerprint: 'a'.repeat(64), draft: { quotationId: randomUUID(), templateId: randomUUID(), recipientType: 'Lead', recipientId: leadId,
+        dealId: matching ? a.id : b.id, products: [{ productId: randomUUID(), quantity: 1 }], quotationDate: '2026-10-01', validUntil: '2026-11-01', notes: '' } } } } });
+    await refresh(a.id);
+    expect(await read(a.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Inquiry' });
+    await prisma.mailboxSendReceipt.update({ where: { id: receipt.id }, data: { status: 'sent' } });
+    await refresh(a.id, new Date(+now + 100));
+    expect(await read(a.id)).toMatchObject({ stageId: matching ? qualified : contacted, engagementStatus: matching ? 'Hot' : 'Warm' });
+    expect(await read(b.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Inquiry' });
+    const history = await prisma.dealStageHistory.count({ where: { tenantId, dealId: a.id } });
+    await refresh(a.id, new Date(+now + 200));
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: a.id } })).toBe(history);
+  });
+  it('retains verified communication when Contacted entry requirements are incomplete, then advances once satisfied', async () => {
+    const a = await deal();
+    await prisma.stage.update({ where: { id: contacted }, data: { requiredFields: ['leadSource'] } });
+    try {
+      await reply(a.id, 0);
+      await refresh(a.id);
+      expect(await read(a.id)).toMatchObject({ stageId: leadStage, engagementStatus: 'Warm' });
+      expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: a.id, newStageId: contacted } })).toBe(0);
+      await prisma.deal.update({ where: { id: a.id }, data: { leadSource: 'Website' } });
+      await refresh(a.id, new Date(+now + 100));
+      expect(await read(a.id)).toMatchObject({ stageId: contacted, engagementStatus: 'Warm' });
+      expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: a.id, newStageId: contacted } })).toBe(1);
+    } finally {
+      await prisma.stage.update({ where: { id: contacted }, data: { requiredFields: [] } });
+    }
   });
   it('requires loss reasons and cancels the customer only after every Deal is cancelled', async () => {
     const a = await deal(), b = await deal();

@@ -28,6 +28,7 @@ import { CrmRecordPanel } from './crm-record-view';
 import { DealStageDialog } from './deal-stage-dialog';
 import { dealStagePipeline } from '@/shared/utils/deal-stage-pipeline';
 import { DealLostDialog } from './deal-lost-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 interface DealCardMenuProps {
   dealId: string; dealTitle: string; deal?: Deal;
@@ -106,7 +107,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
       const links = [...(canEmailLead ? (deal.leadIds ?? (deal.leadId ? [deal.leadId] : [])).map(id => ({ id, module: 'leads' })) : []), ...(canEmailContact ? (deal.contactIds ?? (deal.contactId ? [deal.contactId] : [])).map(id => ({ id, module: 'contacts' })) : [])];
       const rows = await Promise.allSettled(links.map(async link => {
         const person = USE_MOCK_DATA ? data.contacts.find(p => p.id === link.id) : await requestPageCache<Record<string, unknown>>(link.module, tenant?.id ?? user?.tenantId ?? '', { query: { recordId: link.id }, userId: user?.id, role: user?.role }, async signal => (await apiClient.get<{ data: Record<string, unknown> }>('/crm/' + link.module + '/' + encodeURIComponent(link.id), { signal })).data, controller.signal);
-        if (!person || person.isArchived || person.deletedAt || person.assignedUserId !== user?.id || link.module === 'leads' && person.convertedAt || !CrmEmailSchema.safeParse(person.email).success) return null;
+        if (!person || person.isArchived || person.deletedAt || user?.role !== 'Client Admin' && person.assignedUserId !== user?.id || link.module === 'leads' && person.convertedAt || !CrmEmailSchema.safeParse(person.email).success) return null;
         return { email: String(person.email), name: [person.firstName, person.lastName].filter(Boolean).join(' ') || String(person.email) };
       }));
       if (controller.signal.aborted) return;
@@ -138,7 +139,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
       const incomplete = state.fields.filter(field => field.active).some(field => state.errors[field.id] || closingValueError(field, state.values[field.id]) || field.type === 'File Upload' && state.values[field.id] && !state.files.some(file => file.id === state.values[field.id]));
       if (incomplete) { show('won'); return; }
       setAction(null);
-      confirm({ title: 'Mark deal as won?', description: 'The closing evidence will be validated and locked.', confirmLabel: 'Mark as won', onConfirm: async () => { const next = await data.moveDealStage(dealId, won[0].id); changed(next); toast.success('Deal closed as won'); } });
+      confirm({ title: 'Mark as Closed Deal?', description: 'The closing evidence will be validated and locked.', confirmLabel: 'Mark as Closed Deal', onConfirm: async () => { const next = await data.moveDealStage(dealId, won[0].id); changed(next); toast.success('Deal closed'); } });
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to check closing evidence.'); }
     finally { submitting.current = false; setPending(false); }
   };
@@ -146,24 +147,24 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
   const item = (label: string, Icon: typeof Pencil, select: () => void, reason = '', description = '') => <DropdownMenuItem disabled={pending || !!reason} title={reason || description || undefined} onSelect={select}><Icon className="h-4 w-4 shrink-0" /><span className="min-w-0">{label}{(reason || description) && <span className="block text-[11px] font-normal text-muted-foreground">{reason || description}</span>}</span></DropdownMenuItem>;
   return <div onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
     {!hostedAction && <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label={'Actions for ' + dealTitle}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+      <TooltipProvider><Tooltip><DropdownMenuTrigger asChild><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label={'Actions for ' + dealTitle}><MoreHorizontal className="h-4 w-4" /></Button></TooltipTrigger></DropdownMenuTrigger><TooltipContent>More deal actions</TooltipContent></Tooltip></TooltipProvider>
       <DropdownMenuContent align="end" className="w-64">
         {canEdit && item('Edit deal', Pencil, () => show('edit'), unavailable)}
         {canTask && recordAccess.canMutate(deal) && item('Add a task', ListPlus, () => show('task'), unavailable)}
         {canEdit && item('Add a note', StickyNote, () => show('note'), unavailable)}
         {(canEmailLead || canEmailContact) && item('Send an email', Mail, () => recipients.length === 1 ? send(recipients[0]) : show('recipient'), emailReason)}
-        {canEdit && <><DropdownMenuSeparator />{item('Mark as won', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as lost', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason, pipeline ? 'Current pipeline: ' + pipeline.name : '')}</>}
+        {canEdit && <><DropdownMenuSeparator />{item('Mark as Closed Deal', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as Cancelled', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason, pipeline ? 'Current pipeline: ' + pipeline.name : '')}</>}
         {canArchive && <><DropdownMenuSeparator /><DropdownMenuItem destructive disabled={pending || !!unavailable} onSelect={() => {
           setOpen(false); confirm({ title: 'Archive deal?', description: 'This Deal will leave active views. You can restore it from Archived Data.', confirmLabel: 'Archive', variant: 'destructive', onConfirm: async () => { await (onArchive ?? data.deleteDeal)(dealId); changed(deal ? { ...deal, isArchived: true } : undefined); toast.success('Deal archived'); } });
         }}><Archive className="h-4 w-4" />Archive</DropdownMenuItem></>}
       </DropdownMenuContent>
     </DropdownMenu>}
     {actionAllowed && <>
-      {action === 'edit' && deal && <DealFormSheet isOpen mode="edit" initialData={editSnapshot ?? deal} onClose={closeAction} onSubmit={async values => { const next = await data.updateDeal(dealId, values as Partial<Deal>); changed(next); closeAction(); toast.success('Deal updated'); }} />}
+      {action === 'edit' && deal && <CrmRecordPanel module="deals" id={dealId} open initialTab="details" onOpenChange={value => { if (!value) { closeAction(); changed(); } }} />}
       {action === 'task' && <TaskEditor links={{ dealIds: [dealId] }} preserveContextLinks onClose={closeAction} />}
       {(action === 'note' || action === 'won') && <CrmRecordPanel module="deals" id={dealId} open onOpenChange={value => { if (!value) { closeAction(); changed(); } }} focusNote={action === 'note'} focusClosing={action === 'won'} />}
       {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={closeAction} onMove={async stageId => { const next = await data.moveDealStage(dealId, stageId); changed(next); toast.success('Deal stage updated'); }} />}
-      {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={closeAction} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal closed as lost'); }} />}
+      {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={closeAction} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal cancelled'); }} />}
       {action === 'recipient' && <Dialog open onOpenChange={value => { if (!value) closeAction(); }}><DialogContent aria-label="Choose an email recipient" className="max-w-sm"><DialogHeader><DialogTitle>Choose an email recipient</DialogTitle></DialogHeader><div className="space-y-2">{recipients.map(person => <Button key={person.email} variant="outline" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => send(person)}>{person.name} · {person.email}</Button>)}</div><Button variant="ghost" onClick={closeAction}>Cancel</Button></DialogContent></Dialog>}
     </>}
     <ConfirmActionDialog {...dialogProps} />

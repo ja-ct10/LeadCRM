@@ -3,6 +3,8 @@ import type { Prisma } from '@prisma/client';
 
 /** Exposes only the transaction to durable event enqueueing, never external dispatch. */
 export const salesContext = new AsyncLocalStorage<Prisma.TransactionClient>();
+/** Trusted mailbox/sweep provenance survives nested stage and classification calls. */
+export const communicationDealContext = new AsyncLocalStorage<string | undefined>();
 
 const queuedTransactions = new WeakSet<Prisma.TransactionClient>();
 let wakeWorkflowWorker: (() => void) | undefined;

@@ -6,7 +6,21 @@ import { resolveMailboxScope, messageInScope, projectMailboxScope, scopedMessage
 const account = { id: 'account', tenantId: 'tenant', userId: 'actor', email: 'actor@example.test' } as EmailAccount;
 const permissions = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: false, dealsView: false };
 const lead = (id: string, email: string, assignedUserId = 'actor', extra = {}) => ({ id, email, assignedUserId, isArchived: false, deletedAt: null, convertedAt: null, contactId: null, ...extra });
+it('allows Client Admin same-tenant recipients without assignment but keeps unavailable duplicate vetoes', async () => {
+  db.lead.findMany.mockResolvedValue([lead('other', 'other@example.test', 'other-agent'), lead('archived', 'blocked@example.test', 'other-agent', { isArchived: true }), lead('duplicate', 'blocked@example.test')]);
+  db.contact.findMany.mockResolvedValue([]); db.mailboxMessage.findMany.mockResolvedValue([]);
+  const scope = await resolveMailboxScope(account, { ...permissions, clientAdmin: true });
+  expect(scope.addresses).toContain('other@example.test');
+  expect(scope.addresses).not.toContain('blocked@example.test');
+  expect(db.lead.findMany.mock.calls[0][0].where.tenantId).toBe(account.tenantId);
+});
 beforeEach(() => { vi.resetAllMocks(); db.lead.findMany.mockResolvedValue([lead('own', 'own@example.test')]); db.contact.findMany.mockResolvedValue([]); db.mailboxMessage.findMany.mockResolvedValue([]); });
+
+it('normalizes omitted administrator flags and permission property order in scope revisions', async () => {
+  const before = await resolveMailboxScope(account, permissions);
+  const after = await resolveMailboxScope(account, { clientAdmin: false, ...permissions });
+  expect(after.hash).toBe(before.hash);
+});
 
 it.each(['from', 'to', 'cc', 'bcc', 'replyToAddresses'] as const)('an unauthorized CRM participant in %s vetoes fixed-sender mail', async field => {
   db.lead.findMany.mockResolvedValue([lead('own', 'own@example.test'), lead('foreign', 'foreign@example.test', 'other')]);

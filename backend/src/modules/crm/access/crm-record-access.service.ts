@@ -97,6 +97,7 @@ function readWhere(policy: ReadPolicy, module: CrmModule, requested?: CrmReadSco
     ...(scope === 'active' ? { isArchived: false, deletedAt: null, status: { in: module === 'leads' ? ['Inquiry', 'Hot', 'Warm', 'INQUIRY', 'HOT', 'WARM'] : ['INQUIRY', 'HOT', 'WARM'] } } : {}),
   };
 }
+export { readWhere as crmPolicyReadWhere };
 
 /** A tab narrows the authorized record scope; browser owner filters never establish it. */
 export async function crmReadWhere(db: Tx, tenantId: string, module: CrmModule, requested?: CrmReadScope): Promise<Args> {

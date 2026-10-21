@@ -56,16 +56,17 @@ export async function createAcceptanceContext(browser, options = {}) {
 export async function setAcceptanceTheme(page, mode, { allowUnscoped = false } = {}) {
   await page.evaluate(mode => {
     localStorage.setItem('app_theme', mode);
-    window.dispatchEvent(new CustomEvent('themechange', { detail: { mode, theme: mode === 'Dark' ? 'dark' : 'light' } }));
+    window.dispatchEvent(new Event('themechange'));
   }, mode);
   await page.waitForFunction(({ mode, allowUnscoped }) => {
     const scopes = [...document.querySelectorAll('[data-theme-container]')];
-    return document.documentElement.dataset.appTheme === (mode === 'Dark' ? 'dark' : 'light') &&
-      (scopes.length > 0 || allowUnscoped) && scopes.every(scope => scope.classList.contains('dark') === (mode === 'Dark'));
+    const expected = mode === 'Classic' ? 'classic' : mode === 'Dark' || mode === 'System' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return document.documentElement.dataset.appTheme === expected &&
+      (scopes.length > 0 || allowUnscoped) && scopes.every(scope => scope.classList.contains('dark') === (expected === 'dark'));
   }, { mode, allowUnscoped });
 }
 export async function* responsiveMatrix(page, options = {}) {
-  for (const theme of ['Light', 'Dark']) {
+  for (const theme of options.themes ?? ['Light', 'Dark']) {
     await setAcceptanceTheme(page, theme, options);
     for (const width of acceptanceWidths) {
       await page.setViewportSize({ width, height: 900 });

@@ -96,11 +96,11 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     thanks.rfcInReplyTo = outbound.rfcMessageId;
     await ingest([outbound], permissions, { dealId: c.deals[0].id });
     await ingest([thanks]);
-    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Contacted');
     const inbound = message(c.thread, c.email, 'inbound', 'How does the product work?', 7);
     inbound.rfcInReplyTo = outbound.rfcMessageId;
     await ingest([inbound]);
-    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Contacted');
     const activity = await prisma.activity.findFirstOrThrow({ where: { leadId: c.lead.id, type: 'email', createdAt: new Date(inbound.date) } });
     expect(activity.metadata).toMatchObject({ direction: 'inbound', providerMessageId: inbound.id });
     expect(activity.dealId).toBe(c.deals[0].id);
@@ -180,10 +180,10 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     // Advance the saved association barrier into the past to represent a subsequent real response.
     await prisma.mailboxThreadAssociation.update({ where: { accountId_threadId: { accountId: account.id, threadId: c.thread } }, data: { linkedAt: before(3) } });
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed with the product.', 2)]);
-    expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
+    expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Contacted');
     await expect(scope(() => associateMailboxDeal(otherTenant, userId, c.thread, c.deals[0].id))).rejects.toBeDefined();
   });
-  it('preserves validated thread Activity links and revokes Deal email visibility after reassignment', async () => {
+  it('preserves validated thread Activity links and Client Admin visibility after reassignment', async () => {
     const c = await customer(2), incoming = message(c.thread, c.email, 'inbound', 'Customer response');
     await ingest([incoming]);
     const original = await prisma.activity.findFirstOrThrow({ where: { tenantId, leadId: c.lead.id, type: 'email' } });
@@ -196,7 +196,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`)).body.data).toEqual([]);
     const next = await prisma.user.findFirstOrThrow({ where: { tenantId, email: 'other-mail@camxian.com' } });
     await prisma.lead.update({ where: { id: c.lead.id }, data: { assignedUserId: next.id } });
-    expect((await call(`/crm/activities?dealId=${c.deals[0].id}&type=email`)).body.data).toEqual([]);
+    expect((await call(`/crm/activities?dealId=${c.deals[0].id}&type=email`)).body.data.map((row: { id: string }) => row.id)).toEqual([original.id]);
     expect(await prisma.activity.count({ where: { id: original.id } })).toBe(1);
   });
   it('repairs a missing Deal link during ingestion replay without changing email identity or content', async () => {
@@ -221,13 +221,17 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('makes message ingestion and activity idempotent, including concurrent repeats', async () => {
     const c = await customer(1, 'Inquiry'), inbound = message(c.thread, c.email, 'inbound', 'We want to proceed.');
-    const historyBefore = await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } });
     await ingest([inbound]);
     await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[0].id, { messageId: inbound.id }));
+    // Finish the first canonical post-association classification before replaying
+    // the same provider identity concurrently. Customer and Deal transitions are distinct.
+    await ingest([inbound]);
+    const stageChangesBefore = await prisma.activity.count({ where: { leadId: c.lead.id, type: 'stage_change' } });
+    const historyBefore = await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } });
     await Promise.all([ingest([inbound]), ingest([inbound])]); await ingest([inbound]);
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, providerMessageId: inbound.id } })).toBe(1);
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
-    expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'stage_change' } })).toBe(1);
+    expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'stage_change' } })).toBe(stageChangesBefore);
     expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(historyBefore);
   });
   it('keeps a recent qualification Hot without changing the stage for unverified old replies', async () => {
@@ -404,7 +408,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await prisma.deal.update({ where: { id: c.deals[1].id }, data: { productInterestId: product.id } });
     const workflow = await prisma.workflow.create({ data: { tenantId, name: `Reply workflow ${randomUUID()}`, trigger: 'lead.status_changed', isActive: true, status: 'ACTIVE', activatedById: userId,
       conditions: { operator: 'AND', conditions: [{ field: 'lead.email', operator: 'equals', value: c.email }, { field: 'lead.status', operator: 'equals', value: 'Warm' }] },
-      actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted, currentStageId: stages.Lead, productInterestId: product.id } }] } });
+      actions: [{ type: 'move_deal_stage', config: { stageId: stages.Qualified, currentStageId: stages.Contacted, productInterestId: product.id } }] } });
     try {
       const definitions = await prisma.closingFieldDefinition.count({ where: { tenantId } });
       const skippedPreview = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: c.lead.id });
@@ -424,12 +428,12 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       expect(preview.body.data.conditions.matched).toBe(true);
       expect(preview.body.data.actions[0].status).toBe('ready');
       expect(preview.body.data.actions[0].message).toContain(c.deals[1].id);
-      expect(await stageOf(c.deals[1].id)).toBe('Lead');
+      expect(await stageOf(c.deals[1].id)).toBe('Contacted');
       expect(await prisma.closingFieldDefinition.count({ where: { tenantId } })).toBe(definitions);
       await scope(() => dispatchQueuedWorkflows());
       expect(await stageOf(c.deals[0].id)).toBe('Lead');
       expect(await prisma.workflowExecutionRun.findFirst({ where: { workflowId: workflow.id, status: 'completed' }, include: { steps: true } })).toMatchObject({ status: 'completed' });
-      expect(await stageOf(c.deals[1].id)).toBe('Contacted');
+      expect(await stageOf(c.deals[1].id)).toBe('Qualified');
       expect(await prisma.workflowExecutionRun.count({ where: { tenantId, workflowId: workflow.id, status: 'completed' } })).toBe(1);
     } finally { await prisma.workflow.update({ where: { id: workflow.id }, data: { isActive: false } }); }
   });
@@ -476,7 +480,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     for (const module of ['leads', 'contacts']) {
       const response = await call(`/crm/${module}`, 'POST', { firstName: 'Closed Deal', lastName: 'Blocked', email: 'closed@example.test', status: 'Closed Deal', requestId: randomUUID() });
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Closed Deal');
+      expect(response.body.error).toContain('Inquiry');
     }
     const c = await customer();
     expect((await call(`/crm/stages/${stages.Lead}`, 'PUT', { isWon: true })).status).toBe(400);
@@ -529,7 +533,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     try {
       Object.assign(mailConfig.gmail, { testMailboxOverride: JSON.stringify(exception) });
       await prisma.emailAccount.update({ where: { id: account.id }, data: { email: exception.mailboxEmail } });
-      expect(await scope(() => mailboxPermissions(tenantId, userId))).toEqual(permissions);
+      expect(await scope(() => mailboxPermissions(tenantId, userId))).toEqual({ ...permissions, clientAdmin: true });
       expect((await call('/integrations/gmail/status')).body).toMatchObject({ isConnected: true, email: exception.mailboxEmail });
       Object.assign(mailConfig.gmail, { testMailboxOverride: JSON.stringify({ ...exception, expiresAt: new Date(Date.now() - 1).toISOString() }) });
       await expect(scope(() => mailboxPermissions(tenantId, userId))).rejects.toMatchObject({ statusCode: 403 });

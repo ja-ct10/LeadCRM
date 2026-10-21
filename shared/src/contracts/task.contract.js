@@ -168,7 +168,7 @@ exports.TaskOptionsQuerySchema = zod_1.z
     .strict();
 /** Task visibility uses the current primary role, independently of CRM edit restrictions. */
 function isTaskAssignmentRestrictedRole(role) {
-    return ['salesagent', 'salesrepresentative'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
+    return ['sales', 'salesagent', 'salesrepresentative', 'salesrep', 'salesstaff'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
 }
 function isTaskManagerRole(role) {
     return ['salesmanager', 'headofsales'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));

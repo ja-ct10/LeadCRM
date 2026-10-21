@@ -25,6 +25,7 @@ export async function resolveDealTargets(action: WorkflowAction, entity: Workflo
   const relation = entity === 'lead' ? { leadDeals: { some: { tenantId, leadId: String(context['lead.id']) } } }
     : { contactDeals: { some: { tenantId, contactId: String(context['contact.id']) } } };
   const deals = await prisma.deal.findMany({ where: { tenantId, isArchived: false, deletedAt: null, pipelineId: stage.pipelineId,
+    ...(typeof context['event.originDealId'] === 'string' ? { id: context['event.originDealId'] } : {}),
     stage: { isWon: false, isLost: false }, ...relation,
     ...(action.config.currentStageId ? { stageId: String(action.config.currentStageId) } : {}),
     ...(action.config.productInterestId ? { productInterestId: String(action.config.productInterestId) } : {}),

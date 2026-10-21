@@ -32,11 +32,20 @@ let failWorkflowRead = false;
 
 const { saveField } = require('../dist/backend/src/modules/crm/closing-requirements/closing-requirements.service.js');
 const workflows = require('../dist/backend/src/modules/automation/workflows/workflows.service.js');
+async function readDraft(id) {
+  const saved = await prisma.workflow.findUniqueOrThrow({ where: { id } });
+  return { ...saved, ...(saved.draftDefinition || {}) };
+}
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Workflow Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Workflow', lastName: 'Tester', email: 'workflow-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin);
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
+  const publishDraft = async id => {
+    const saved = await readDraft(id);
+    const { name, description, trigger, conditions, actions } = saved;
+    return scope(() => workflows.publishWorkflowDraft(id, tenant.id, admin.id, { draft: { name, ...(typeof description === 'string' ? { description } : {}), trigger, conditions, actions }, expectedVersion: saved.version, expectedDraftRevision: saved.draftRevision }));
+  };
   const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const records = {};
   records.lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Workflow', lastName: 'Lead', email: 'lead@example.test', assignedUserId: admin.id } });
@@ -82,7 +91,7 @@ try {
 
   const record = label => { checks.push({ label }); console.log('PASS', label); };
   async function responsive(label) {
-    for await (const { theme, width } of responsiveMatrix(page)) {
+    for await (const { theme, width } of responsiveMatrix(page, { themes: ['Classic', 'Light', 'Dark', 'System'] })) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(300);
       const dimensions = await page.evaluate(() => ({ width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth + 1, outside: [...document.querySelectorAll('input, select, textarea')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label')) }));
@@ -108,17 +117,17 @@ try {
     assert.deepEqual(await page.getByLabel('New value', { exact: true }).locator('option').allTextContents(), ['Choose…', 'Standard', 'Restricted']);
     await responsive(entity + '-custom-update');
     await page.getByLabel('New value', { exact: true }).selectOption('Restricted');
-    await page.getByText('Testing uses the last saved version', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Test', exact: true }).isDisabled(), true);
-    await page.getByRole('button', { name: entity === 'lead' ? 'Save changes' : 'Save draft', exact: true }).click();
-    await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Test')?.disabled);
-    const persisted = await prisma.workflow.findUniqueOrThrow({ where: { id: saved[entity].id } });
+    await page.getByText('Testing uses the last saved draft', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Test draft', exact: true }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Test draft')?.disabled);
+    const persisted = await readDraft(saved[entity].id);
     assert.equal(persisted.status, entity === 'lead' ? 'PAUSED' : 'DRAFT'); assert.equal(persisted.isActive, false);
     assert.equal(persisted.actions[0].config.value, 'Restricted'); record(entity + ' save persisted correct lifecycle');
     await page.reload();
     await page.getByRole('button', { name: /Configure action: 1. Update Fields/ }).click();
     assert.equal(await page.getByLabel('New value', { exact: true }).inputValue(), 'Restricted');
-    await page.getByRole('button', { name: 'Test', exact: true }).click();
+    await page.getByRole('button', { name: 'Test draft', exact: true }).click();
     await page.getByLabel('Sample record', { exact: false }).selectOption(records[entity].id);
     const before = await prisma.customFieldValue.count({ where: { tenantId: tenant.id } });
     await page.getByRole('button', { name: 'Run check', exact: true }).click();
@@ -164,19 +173,19 @@ try {
   assert.equal(await numericInput.getAttribute('type'), 'number');
   assert.equal(await numericInput.inputValue(), '');
   assert.deepEqual(await page.getByLabel('Condition 1 operator', { exact: true }).locator('option').allTextContents(), ['Equals', 'Not equals', 'Greater than', 'Greater than or equal', 'Less than', 'Less than or equal']);
-  const priorCondition = (await prisma.workflow.findUniqueOrThrow({ where: { id: saved.lead.id } })).conditions;
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  assert.deepEqual((await prisma.workflow.findUniqueOrThrow({ where: { id: saved.lead.id } })).conditions, priorCondition);
+  const priorCondition = (await readDraft(saved.lead.id)).conditions;
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  assert.deepEqual((await readDraft(saved.lead.id)).conditions, priorCondition);
   await numericInput.fill('0');
   await page.getByLabel('Condition 1 operator', { exact: true }).selectOption('greater_than_or_equal');
   await scope(() => saveField(tenant.id, admin.id, { name: 'Current Acceptance Score' }, score.id));
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await page.getByRole('option', { name: 'Current Acceptance Score', exact: true }).waitFor({ state: 'attached' });
   assert.equal(await numericInput.inputValue(), '0');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await page.getByRole('button', { name: 'Test', exact: true }).waitFor();
-  await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Test')?.disabled);
-  const numericDraft = await prisma.workflow.findUniqueOrThrow({ where: { id: saved.lead.id } });
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Test draft', exact: true }).waitFor();
+  await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Test draft')?.disabled);
+  const numericDraft = await readDraft(saved.lead.id);
   assert.deepEqual(numericDraft.conditions.conditions, [{ field: 'lead.customFieldValues.' + score.id, operator: 'greater_than_or_equal', value: 0 }]);
   assert.equal(numericDraft.isActive, false);
   await page.reload();
@@ -198,7 +207,7 @@ try {
   await responsive('linked-stage-template');
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await page.waitForURL(/\/automation\/workflows\/[^/]+\/edit$/);
-  const routingDraft = await prisma.workflow.findUniqueOrThrow({ where: { id: page.url().split('/').at(-2) } });
+  const routingDraft = await readDraft(page.url().split('/').at(-2));
   assert.equal(routingDraft.isActive, false);
   assert.equal(routingDraft.actions[0].config.stageId, routingStages[1].id);
   assert.deepEqual(routingDraft.conditions.conditions, [{ field: 'deal.pipelineId', operator: 'equals', value: pipeline.pipeline.id }, { field: 'deal.stageId', operator: 'equals', value: routingStages[0].id }]);
@@ -225,10 +234,10 @@ try {
   await responsive('assignment-group');
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await page.getByText('Draft saved. This workflow is inactive.', { exact: true }).waitFor();
-  const assignedDraft = await prisma.workflow.findUniqueOrThrow({ where: { id: assignment.id } });
+  const assignedDraft = await readDraft(assignment.id);
   assert.deepEqual(assignedDraft.actions[0].config.assignmentTarget, { type: 'group', id: pool.id, strategy: 'round_robin' });
-  assert.equal(assignedDraft.version, 2);
-  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  assert.equal(assignedDraft.version, 1); assert.equal(assignedDraft.draftRevision, 1);
+  await page.getByRole('button', { name: 'Test draft', exact: true }).click();
   await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
@@ -236,17 +245,18 @@ try {
   assert.equal(await prisma.task.count({ where: { tenantId: tenant.id } }), 0);
   record('Group dry-run previews a Task specialist without writing Tasks or assignment rotation');
 
-  await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
+  const publishedAssignment = await publishDraft(assignment.id);
   const { fireWorkflowTrigger } = require('../dist/backend/src/modules/automation/workflows/workflow.engine.js');
   await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
   await scope(() => workflows.updateWorkflow(assignment.id, tenant.id, admin.id, { actions: [{ type: 'create_task', config: { title: 'Revised follow-up', assignmentTarget: { type: 'group', id: pool.id, strategy: 'round_robin' } } }] }));
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
-  await page.getByText('Definition used in this run · v2', { exact: true }).waitFor({ state: 'attached' });
+  const historyVersionLabel = 'Definition used in this run · v' + publishedAssignment.version;
+  await page.getByText(historyVersionLabel, { exact: true }).waitFor({ state: 'attached' });
   await page.locator('details').first().locator('summary').first().click();
   await page.getByText('Assigned to Ana Specialist', { exact: false }).waitFor();
-  await page.getByText('Definition used in this run · v2', { exact: true }).click();
-  const savedDefinition = page.getByText('Definition used in this run · v2', { exact: true }).locator('..');
+  await page.getByText(historyVersionLabel, { exact: true }).click();
+  const savedDefinition = page.getByText(historyVersionLabel, { exact: true }).locator('..');
   await savedDefinition.getByText('Follow up with lead', { exact: true }).waitFor();
   assert.match(await savedDefinition.innerText(), /Follow up with lead/);
   assert.doesNotMatch(await savedDefinition.innerText(), /Revised follow-up/);
@@ -275,18 +285,18 @@ try {
       await page.getByLabel('Ana Specialist capacity limit', { exact: true }).fill('50');
     }
     if (filter !== 'none') await responsive('assignment-' + filter);
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
     await page.getByText('Changes saved. This workflow is paused.', { exact: true }).waitFor();
-    const definition = await prisma.workflow.findUniqueOrThrow({ where: { id: assignment.id } });
+    const definition = await readDraft(assignment.id);
     assert.equal(definition.actions[0].config.assignmentTarget.strategy, 'round_robin');
     await page.reload();
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
     assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), 'round_robin');
-    await page.getByRole('button', { name: 'Test', exact: true }).click();
+    await page.getByRole('button', { name: 'Test draft', exact: true }).click();
     await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
     await page.getByRole('button', { name: 'Run check', exact: true }).click();
     await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
-    await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
+    await publishDraft(assignment.id);
     await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
     const history = await scope(() => workflows.getWorkflowExecutions(assignment.id, tenant.id));
     assert.equal(history[0].status, 'completed');
@@ -294,11 +304,16 @@ try {
     await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
     record('Round-robin with ' + filter + ' filter saves, reloads, previews and executes through real domain services');
   }
+  // Assignment actions above can transfer CRM ownership. Preserve the normal
+  // deactivation guard while testing an inactive member of this assignment pool.
+  for (const model of [prisma.lead, prisma.contact, prisma.deal]) {
+    await model.updateMany({ where: { tenantId: tenant.id, assignedUserId: specialist.id }, data: { assignedUserId: admin.id } });
+  }
   await prisma.user.update({ where: { id: specialist.id }, data: { status: 'INACTIVE' } });
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
   await page.getByText('2 members · 0 eligible', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByRole('button', { name: 'Test draft', exact: true }).click();
   await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('no active members eligible', { exact: false }).waitFor();

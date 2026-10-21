@@ -8,7 +8,7 @@ import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
 import { revokeSession, validateSession } from './session.service';
 import { SESSION_IDLE_MS } from '@leadcrm/shared';
 import { readAuthUser } from './auth-user';
-import { AUTH_COOKIE_NAME as COOKIE_NAME, AUTH_COOKIE_OPTIONS as COOKIE_OPTIONS } from './auth-session';
+import { AUTH_COOKIE_NAME as COOKIE_NAME, AUTH_COOKIE_OPTIONS as COOKIE_OPTIONS, loginCookieOptions } from './auth-session';
 import { ensureSalesGroup } from '../../modules/administration/groups/sales-group';
 import { tenantContext } from '../tenant/tenant-context';
 export {
@@ -27,7 +27,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
     res.setHeader('Cache-Control', 'no-store');
     // Token stored in HttpOnly cookie — never accessible from JS
-    res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
+    res.cookie(COOKIE_NAME, result.token, loginCookieOptions(req.body.rememberMe === true));
 
     res.json({ success: true, data: { user: result.user, session: sessionMetadata(await validateSession(result.token)) } });
   } catch (err) {

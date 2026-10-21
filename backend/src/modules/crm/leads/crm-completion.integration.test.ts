@@ -51,7 +51,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const agent = await user('sales', 'Sales Rep'); agentId = agent.id; agentToken = (await issueAuthSession(agent)).token;
     const other = await user('other', 'Sales Rep'); otherAgentId = other.id; otherToken = (await issueAuthSession(other)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Rep' } });
-    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'tasks'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'tasks', 'campaigns'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canViewMy: true, canCreate: true, canEdit: true })) });
     await prisma.userRole.createMany({ data: [agentId, otherAgentId].map(userId => ({ tenantId, roleId: role.id, userId })) });
     const foreign = await prisma.tenant.create({ data: { name: 'Foreign', slug: randomUUID() } });
     foreignId = (await user('foreign', 'Client Admin', foreign.id)).id;
@@ -62,6 +62,33 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
+  it.each(['leads', 'contacts'])('enforces manual Inquiry through %s HTTP and preserves existing status on edit', async module => {
+    const count = () => module === 'leads' ? prisma.lead.count({ where: { tenantId } }) : prisma.contact.count({ where: { tenantId } });
+    const initialCount = await count();
+    const input = { firstName: 'Manual', lastName: 'Inquiry', assignedUserId: agentId, email: `${randomUUID()}@example.test`, requestId: randomUUID() };
+    for (const status of ['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed Deal']) {
+      const denied = await call(`/crm/${module}`, 'POST', { ...input, requestId: randomUUID(), status });
+      expect(denied.status, JSON.stringify(denied.body)).toBe(400);
+    }
+    expect(await count()).toBe(initialCount);
+    const created = await call(`/crm/${module}`, 'POST', input);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.data.status).toBe('Inquiry');
+    const id = created.body.data.id;
+    if (module === 'leads') await prisma.lead.update({ where: { id }, data: { status: 'Cold' } });
+    else await prisma.contact.update({ where: { id }, data: { status: 'COLD' } });
+    const edited = await call(`/crm/${module}/${id}`, 'PUT', { firstName: 'Edited' });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200); expect(edited.body.data.status).toBe('Cold');
+    expect(module === 'leads' ? (await prisma.lead.findUniqueOrThrow({ where: { id } })).status : (await prisma.contact.findUniqueOrThrow({ where: { id } })).status).toBe(module === 'leads' ? 'Cold' : 'COLD');
+  });
+  it.each(['leads', 'contacts'])('creates manual %s for the logged-in Sales agent and rejects another assignee', async module => {
+    const input = { firstName: 'Sales', lastName: 'Self', email: `${randomUUID()}@example.test`, assignedUserId: agentId, requestId: randomUUID() };
+    const created = await call(`/crm/${module}`, 'POST', input, agentToken);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.data).toMatchObject({ status: 'Inquiry', assignedUserId: agentId });
+    const denied = await call(`/crm/${module}`, 'POST', { ...input, email: `${randomUUID()}@example.test`, requestId: randomUUID(), assignedUserId: otherAgentId }, agentToken);
+    expect(denied.status, JSON.stringify(denied.body)).toBe(403);
+  });
   it('converts Closed transactionally, hides the Lead, preserves all Deals and exposes source activity', async () => {
     const { lead, deals } = await customer();
     const activity = await prisma.activity.create({ data: { tenantId, leadId: lead.id, createdById: adminId, type: 'note', title: 'Original audit history' } });
@@ -191,7 +218,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { tenantId } })).toBe(count);
     expect(await prisma.notification.count({ where: { tenantId, userId: otherAgentId } })).toBe(0);
-    expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type: 'deal_won' } })).toBeGreaterThan(0);
+    expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type: 'deal_won' } })).toBeGreaterThan(0);
+    expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type: 'deal_won' } })).toBe(0);
     for (const type of ['closing_requirements_completed', 'customer_hot', 'record_restored']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, type: 'customer_cancelled' } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type: 'customer_reply' } })).toBeGreaterThan(0);
@@ -270,7 +298,9 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const mailbox = await prisma.emailAccount.update({ where: { tenantId_userId_provider: { tenantId, userId: agentId, provider: 'gmail' } }, data: { isActive: false } });
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { userId: otherAgentId, entityId: lead.id, type: 'lead_assigned' } })).toBe(1);
-    for (const type of ['deal_lost', 'workflow_failed', 'campaign_failed', 'user_created', 'user_status_changed', 'form_processing_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
+    for (const type of ['user_created', 'user_status_changed']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
+    for (const type of ['deal_lost', 'campaign_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type } }), type).toBeGreaterThan(0);
+    for (const type of ['workflow_failed', 'form_processing_failed']) expect(await prisma.notification.count({ where: { tenantId, type } }), type).toBe(0);
     await prisma.emailAccount.update({ where: { id: mailbox.id }, data: { isActive: true, syncError: 'Persistent test error' } });
     await scope(() => dispatchTenantNotifications(tenantId));
     await scope(() => dispatchTenantNotifications(tenantId, new Date(Date.now() + 16 * 60000)));

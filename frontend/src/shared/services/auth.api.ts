@@ -4,10 +4,7 @@ import { apiClient } from '@/lib/api/client';
 import type { AuthResponse } from '@leadcrm/shared';
 export type { AuthResponse } from '@leadcrm/shared';
 
-export interface LoginPayload {
-  email: string;
-  password: string;
-}
+export type LoginPayload = import('@leadcrm/shared').LoginInput;
 
 /**
  * authApi — calls the real Express backend.
