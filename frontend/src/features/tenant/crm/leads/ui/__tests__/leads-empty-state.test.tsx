@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   arrays: {} as Record<string, string[]>,
   data: {
     leads: [] as Lead[], meta: { total: 0 }, facets: {},
-    isInitialLoad: false, isRefreshing: false, error: null as string | null,
+    isInitialLoad: false, isRefreshing: false, isManualRefreshing: false, error: null as string | null,
     refetch: vi.fn(),
   },
   columnsLoading: false,
@@ -46,7 +46,7 @@ vi.mock('@/shared/components/manage-columns-drawer', () => ({ ManageColumnsDrawe
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.canCreate = true; mocks.role = 'Sales'; mocks.params = {}; mocks.arrays = {}; mocks.columnsLoading = false;
-  Object.assign(mocks.data, { leads: [], meta: { total: 0 }, isInitialLoad: false, isRefreshing: false, error: null });
+  Object.assign(mocks.data, { leads: [], meta: { total: 0 }, isInitialLoad: false, isRefreshing: false, isManualRefreshing: false, error: null });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -221,9 +221,13 @@ it('preserves loading, retry, empty-card refresh and populated table transitions
   const heading = screen.getByRole('heading', { name: 'No leads yet' });
   mocks.data.isRefreshing = true;
   rerender(<LeadsPage />);
+  expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'No leads yet' })).toBe(heading);
+  mocks.data.isManualRefreshing = true;
+  rerender(<LeadsPage />);
   expect(screen.getByRole('status', { name: 'Refreshing data...' })).toBeTruthy();
   expect(screen.queryByRole('heading', { name: 'No leads yet' })).toBeNull();
-  mocks.data.isRefreshing = false;
+  mocks.data.isRefreshing = false; mocks.data.isManualRefreshing = false;
   rerender(<LeadsPage />);
   expect(screen.getByRole('heading', { name: 'No leads yet' })).toBe(heading);
   mocks.data.leads = [{ id: 'lead', firstName: 'Jordan', lastName: 'Lee' } as Lead];

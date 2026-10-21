@@ -53,8 +53,10 @@ it('orders later pages, Deal Details refreshes and Workflow invalidations consis
   expect(state.get.mock.calls.map(call => call[1].params.page)).toEqual([1, 2]);
 
   fireEvent.click(document.querySelector('[data-deal-id="resident"]')!);
-  state.pages[1] = [raw('resident', '2026-10-19T00:00:00Z', '2026-10-21T00:00:00Z')];
   fireEvent.click(screen.getByRole('button', { name: 'Close Deal Details' }));
+  expect(state.get).toHaveBeenCalledTimes(2);
+  state.pages[1] = [raw('resident', '2026-10-19T00:00:00Z', '2026-10-21T00:00:00Z')];
+  act(() => invalidatePageCache('deals', 'tenant'));
   await waitFor(() => expect(order()).toEqual(['resident', 'older-moved']));
   expect(state.get).toHaveBeenCalledTimes(4);
 

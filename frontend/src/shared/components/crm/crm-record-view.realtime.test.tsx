@@ -56,6 +56,7 @@ beforeEach(() => {
 
 it.each(['leads', 'contacts', 'deals'] as const)('pauses a disconnected %s timeline stream and recovers through explicit retry', async module => {
   render(<CrmRecordView module={module} id="record" />);
+  await screen.findByRole('heading', { name: module === 'deals' ? 'Customer Deal' : 'Customer Test' });
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
   await waitFor(() => expect(streams).toHaveLength(1));
   const timeline = screen.getByRole('region', { name: 'Activity Timeline' });

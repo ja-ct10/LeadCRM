@@ -435,7 +435,8 @@ export default function TaskBoard() {
         sort={sort}
         onSortChange={next => { setSort(next); setPage(1); }}
         onResetColumns={columnPreferences.resetWidths}
-        refreshing={data.refreshing}
+        refreshing={data.isManualRefreshing}
+        fetching={data.refreshing}
         directManageColumns
       >
         {(error || data.error || ownerError) && (

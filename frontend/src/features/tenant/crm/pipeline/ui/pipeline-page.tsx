@@ -107,7 +107,6 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const [createStage, setCreateStage] = useState<string>();
   const [lost, setLost] = useState<{ id: string; stageId: string }>();
   const query = useCachedPage<Deal[]>({ module: 'deals', params: { pipelineId: pipeline?.id, scope: activeTab }, disabled: USE_MOCK_DATA || !pipeline || !activeTab,
-    intervalMs: 30_000, pauseWhenHidden: true,
     revalidateOnInvalidation: true, fetchFn: async signal => {
       const records: Deal[] = [];
       for (let page = 1; ; page++) {
@@ -123,9 +122,9 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     let current = true;
     // A second search in the same pipeline must revalidate its list too: a newly
     // created or moved Deal may not be in the previously loaded board snapshot.
-    void Promise.resolve(query.refetch()).then(() => { if (current) setLocatedTargetKey(targetKey); });
+    void query.refetchSilently().then(() => { if (current) setLocatedTargetKey(targetKey); });
     return () => { current = false; };
-  }, [targetKey, target?.id, pipeline?.id, query.refetch]);
+  }, [targetKey, target?.id, pipeline?.id, query.refetchSilently]);
   const reloadPipelines = async () => {
     setPipelineError('');
     try { await refreshPipelines(); }
@@ -138,7 +137,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     try { await Promise.all([query.refetch(), reloadPipelines()]); } finally { refreshPending.current = false; setRefreshing(false); }
   };
   const patch = (deal?: Deal) => {
-    if (!deal) { void query.refetch(); return; }
+    if (!deal) { void query.refetchSilently(); return; }
     const rows = query.data ?? [];
     query.setData(deal.isArchived || deal.pipelineId !== pipeline?.id ? rows.filter(d => d.id !== deal.id) : rows.some(d => d.id === deal.id) ? rows.map(d => d.id === deal.id ? deal : d) : [...rows, deal]);
     setSelected(current => current?.id === deal.id ? deal : current);
@@ -188,7 +187,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
         <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} />
           <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">Pipeline<Input type="text" readOnly aria-label="Pipeline" value={pipeline?.name ?? ''} size={pipeline?.name.length || 1} className="h-8 w-auto min-w-0 max-w-[min(18rem,calc(100vw-5rem))] rounded-lg border-border bg-card px-2 py-0 text-xs text-foreground dark:border-border dark:bg-card" /></label>
         </div>
-        <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div>
+        <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} disabled={query.isRefreshing || query.isInitialLoad} refreshing={refreshing} /></div>
       </div>
     </div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
@@ -196,11 +195,11 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         {(query.error || pipelineError) && <p role="alert" className="rounded border border-red-200 p-3 text-sm text-red-600">{query.error || pipelineError}</p>}
         {locatorMessage && <p role="alert" className="text-sm text-destructive">{locatorMessage}</p>}
-        {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError && !locatorMessage) ? <KanbanBoardSkeleton /> : pipeline ? <div className="relative flex min-h-[440px] min-w-0 flex-1 overflow-hidden" aria-busy={refreshing || query.isRefreshing}>{(refreshing || query.isRefreshing) && <DataLoadingSpinner label="Refreshing deals..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}<PipelineKanbanBoard pipeline={pipeline} deals={visible} highlightDealId={!locatorMessage && locatedDeal?.id === activeHighlightId ? activeHighlightId : undefined} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={openDeal} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
+        {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError && !locatorMessage) ? <KanbanBoardSkeleton /> : pipeline ? <div className="relative flex min-h-[440px] min-w-0 flex-1 overflow-hidden" aria-busy={refreshing || query.isRefreshing}>{refreshing && <DataLoadingSpinner label="Refreshing deals..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}<PipelineKanbanBoard pipeline={pipeline} deals={visible} highlightDealId={!locatorMessage && locatedDeal?.id === activeHighlightId ? activeHighlightId : undefined} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={openDeal} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
       </div>
     </div>
-    <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) { setSelected(null); void query.refetch(); } }} />
-    <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeals(values); setCreateStage(undefined); await query.refetch(); }} />
+    <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) setSelected(null); }} />
+    <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeals(values); setCreateStage(undefined); await query.refetchSilently(); }} />
     {lost && <DealLostDialog onClose={() => setLost(undefined)} onSave={reason => move(lost.id, lost.stageId, reason)} />}
 
   </div>;

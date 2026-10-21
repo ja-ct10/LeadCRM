@@ -144,7 +144,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
     finally { submitting.current = false; setPending(false); }
   };
   const emailReason = unavailable || (closed ? 'Contextual email is available for open deals. Use Inbox for follow-up email.' : recipientStatus);
-  const item = (label: string, Icon: typeof Pencil, select: () => void, reason = '', description = '') => <DropdownMenuItem disabled={pending || !!reason} title={reason || description || undefined} onSelect={select}><Icon className="h-4 w-4 shrink-0" /><span className="min-w-0">{label}{(reason || description) && <span className="block text-[11px] font-normal text-muted-foreground">{reason || description}</span>}</span></DropdownMenuItem>;
+  const item = (label: string, Icon: typeof Pencil, select: () => void, reason = '') => <DropdownMenuItem disabled={pending || !!reason} title={reason || undefined} onSelect={select}><Icon className="h-4 w-4 shrink-0" /><span className="min-w-0">{label}</span></DropdownMenuItem>;
   return <div onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
     {!hostedAction && <DropdownMenu open={open} onOpenChange={setOpen}>
       <TooltipProvider><Tooltip><DropdownMenuTrigger asChild><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label={'Actions for ' + dealTitle}><MoreHorizontal className="h-4 w-4" /></Button></TooltipTrigger></DropdownMenuTrigger><TooltipContent>More deal actions</TooltipContent></Tooltip></TooltipProvider>
@@ -153,7 +153,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
         {canTask && recordAccess.canMutate(deal) && item('Add a task', ListPlus, () => show('task'), unavailable)}
         {canEdit && item('Add a note', StickyNote, () => show('note'), unavailable)}
         {(canEmailLead || canEmailContact) && item('Send an email', Mail, () => recipients.length === 1 ? send(recipients[0]) : show('recipient'), emailReason)}
-        {canEdit && <><DropdownMenuSeparator />{item('Mark as Closed Deal', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as Cancelled', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason, pipeline ? 'Current pipeline: ' + pipeline.name : '')}</>}
+        {canEdit && <><DropdownMenuSeparator />{item('Mark as Closed Deal', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as Cancelled', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason)}</>}
         {canArchive && <><DropdownMenuSeparator /><DropdownMenuItem destructive disabled={pending || !!unavailable} onSelect={() => {
           setOpen(false); confirm({ title: 'Archive deal?', description: 'This Deal will leave active views. You can restore it from Archived Data.', confirmLabel: 'Archive', variant: 'destructive', onConfirm: async () => { await (onArchive ?? data.deleteDeal)(dealId); changed(deal ? { ...deal, isArchived: true } : undefined); toast.success('Deal archived'); } });
         }}><Archive className="h-4 w-4" />Archive</DropdownMenuItem></>}

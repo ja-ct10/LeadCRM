@@ -32,8 +32,10 @@ export interface UseLeadsDataReturn {
   meta: UseLeadsDataMeta | null;
   isInitialLoad: boolean;
   isRefreshing: boolean;
+  isManualRefreshing: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  refetchSilently: () => Promise<void>;
   invalidate: () => void;
 }
 
@@ -50,8 +52,10 @@ export function useLeadsData(params: UseLeadsDataParams): UseLeadsDataReturn {
     meta: result.meta,
     isInitialLoad: result.isInitialLoad,
     isRefreshing: result.isRefreshing,
+    isManualRefreshing: result.isManualRefreshing,
     error: result.error,
     refetch: result.refetch,
+    refetchSilently: result.refetchSilently,
     invalidate,
   };
 }

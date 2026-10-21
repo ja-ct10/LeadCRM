@@ -108,7 +108,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const [lostReason, setLostReason] = useState('');
   const [taskCount, setTaskCount] = useState<number>();
   const [savingField, setSavingField] = useState<string | null>(null);
-  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, intervalMs: 30000, pauseWhenHidden: true, revalidateOnInvalidation: true,
+  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal })).data });
   const [activityFilters, setActivityFilters] = useState<RecordActivityFilters>({});
   const relatedQuery = useRecordRelationships<Relationships>(module, id, module === 'deals' || USE_MOCK_DATA || !detailsVisited || !recordQuery.data);
@@ -225,7 +225,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload);
         // A committed Workflow can already have advanced this Deal while its
         // original edit response was in flight. Reconcile through the guarded read.
-        if (module === 'deals') await recordQuery.refetch();
+        if (module === 'deals') await recordQuery.refetchSilently();
         else if (response.data) recordQuery.setData(response.data);
       }
       toast.success(`${label} updated`);
@@ -238,8 +238,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     if (module !== 'deals') { await save({ status }); return; }
     setSaving(true);
     try {
-      await apiClient.put(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status });
-      await Promise.all([customerQuery.refetch(), recordQuery.refetch()]);
+      const response = await apiClient.put<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status });
+      customerQuery.setData(response.data);
+      await recordQuery.refetchSilently();
       toast.success('Customer status updated');
     } catch (error) { showCrmMutationError(error, 'Unable to update customer status'); }
     finally { setSaving(false); }
@@ -260,7 +261,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const addressOption = apiField === 'addressSource' ? addressContext.options.find(option => dealAddressKey(option) === normalized) : undefined;
         const sourceValue = addressOption ? { type: addressOption.type, id: addressOption.id } : null;
         const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'addressSource' ? sourceValue : module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
-        if (module === 'deals') await recordQuery.refetch();
+        if (module === 'deals') await recordQuery.refetchSilently();
         else if (response.data) recordQuery.setData(response.data);
       }
       toast.success('Field updated');

@@ -8,7 +8,7 @@ const { gunzipSync } = require('node:zlib');
 
 const SHARDS = 3;
 const IMPORT_SUITE = 'backend/src/modules/crm/imports/imports.integration.test.ts';
-const NATIVE_BROWSERS = ['verify-deal-address-browser.mjs', 'verify-deal-actions-browser.mjs', 'verify-crm-improvements-browser.mjs', 'verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-task-workflow-integrity-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-mailbox-activities-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs', 'verify-workflow-policy-browser.mjs'];
+const NATIVE_BROWSERS = ['verify-crm-stability-browser.mjs', 'verify-deal-address-browser.mjs', 'verify-deal-actions-browser.mjs', 'verify-crm-improvements-browser.mjs', 'verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-task-workflow-integrity-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-mailbox-activities-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs', 'verify-workflow-policy-browser.mjs'];
 const REQUIRED_JOBS = ['quality', 'backend_unit', 'frontend_unit', 'database', 'build', 'acceptance_matrix', 'containers'];
 const PR_REQUIRED_JOBS = ['typecheck', 'backend_unit', 'frontend_unit', 'build'];
 const BUILD_PATHS = ['shared/dist', 'backend/dist', 'frontend/.next'];

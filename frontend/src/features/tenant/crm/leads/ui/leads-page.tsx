@@ -185,8 +185,10 @@ export default function LeadsPage(): React.ReactElement {
     meta: leadsMeta,
     isInitialLoad: isLeadsInitialLoad,
     isRefreshing: isLeadsRefreshing,
+    isManualRefreshing: isLeadsManualRefreshing,
     error: leadsError,
     refetch: refetchLeads,
+    refetchSilently: refetchLeadsSilently,
   } = useLeadsData({
     disabled: !tabAccess.firstId,
     page: highlightId ? 1 : currentPage,
@@ -421,7 +423,8 @@ export default function LeadsPage(): React.ReactElement {
         onViewModeChange={setViewMode}
         onRefresh={refetchLeads}
         refreshDisabled={isLeadsInitialLoad || isLeadsRefreshing}
-        refreshing={isLeadsRefreshing}
+        refreshing={isLeadsManualRefreshing}
+        fetching={isLeadsRefreshing}
         loading={(isLeadsInitialLoad || isColumnsLoading)}
         loadingLabel={isLeadsInitialLoad ? 'Loading leads...' : 'Loading columns...'}
         onManageColumns={openManageColumns}
@@ -507,7 +510,7 @@ export default function LeadsPage(): React.ReactElement {
         {!isColumnsLoading && !isLeadsInitialLoad && leads.length > 0 && serverTotal > 0 && (
           <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize}
             onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
-            refreshing={isLeadsRefreshing} />
+            refreshing={isLeadsManualRefreshing} />
         )}
 
       </ModuleWorkspace>
@@ -585,7 +588,7 @@ export default function LeadsPage(): React.ReactElement {
           entityType="lead"
           primaryId={mergingLead.id}
           secondaryId={mergeSecondaryId}
-          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); void refetchLeads(); }}
+          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); void refetchLeadsSilently(); }}
         />
       )}
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { subscribePageCacheInvalidation, buildCacheKey, createPageCacheGuard, getPageCache, requestPageCache, invalidatePageCache, setPageCache } from '@/shared/cache/page-cache';
+import { subscribePageCacheInvalidation, buildCacheKey, createPageCacheGuard, getPageCache, getPageCacheGeneration, requestPageCache, invalidatePageCache, setPageCache } from '@/shared/cache/page-cache';
 
 interface CachedPageOptions<T> {
   module: string;
@@ -24,20 +24,26 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
   const key = buildCacheKey(module, tenantId, scopedParams);
   const enabled = !disabled && !isLoading && !authError && !!tenantId && !!user?.id;
   const cached = enabled ? getPageCache<T>(module, tenantId, scopedParams) : null;
+  const generation = getPageCacheGeneration();
+  const evictionVersion = useRef(0);
+  const currentEvictionVersion = evictionVersion.current;
   const [state, setState] = useState<{
-    key: string; data?: T; fetching: boolean; error: string | null; errorStatus?: number;
+    key: string; data?: T; fetching: boolean; manual?: boolean; error: string | null; errorStatus?: number;
   }>(() => ({ key, data: cached?.data, fetching: enabled, error: null }));
-  const latest = useRef({ key, fetchFn, scopedParams });
-  latest.current = { key, fetchFn, scopedParams };
+  const latest = useRef({ key, fetchFn, scopedParams, enabled });
+  latest.current = { key, fetchFn, scopedParams, enabled };
   const activeRequest = useRef<AbortController | null>(null);
   const pending = useRef<{ key: string; valid: () => boolean; promise: Promise<void> } | null>(null);
   const mounted = useRef(false);
 
-  const refetch = useCallback((): Promise<void> => {
+  const fetchPage = useCallback((silent: boolean): Promise<void> => {
     if (!enabled || !mounted.current || latest.current.key !== key) return Promise.resolve();
     // Manual and background readers await the same current request. Invalidation
     // makes its guard obsolete, so a post-mutation read still supersedes it.
-    if (pending.current?.key === key && pending.current.valid() && !activeRequest.current?.signal.aborted) return pending.current.promise;
+    if (pending.current?.key === key && pending.current.valid() && !activeRequest.current?.signal.aborted) {
+      if (!silent) setState(previous => previous.key === key ? { ...previous, manual: true } : previous);
+      return pending.current.promise;
+    }
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
@@ -45,7 +51,8 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
     const request = latest.current;
     const current = () => mounted.current && !controller.signal.aborted && latest.current.key === key && validCache();
     const initial = getPageCache<T>(module, tenantId, request.scopedParams);
-    setState((prev) => ({ key, data: prev.key === key ? prev.data : initial?.data, fetching: true, error: null }));
+    setState((prev) => ({ key, data: prev.key === key ? prev.data : initial?.data, fetching: true,
+      manual: !silent || prev.key === key && prev.fetching && prev.manual, error: null }));
     const run = async () => { try {
       const data = await requestPageCache(module, tenantId, request.scopedParams, request.fetchFn, controller.signal);
       if (!current()) return;
@@ -57,7 +64,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
       // Every shared reader must clear an authoritative denial. The first reader's
       // eviction invalidates guards belonging to the other readers of this request.
       if (!mounted.current || controller.signal.aborted || latest.current.key !== key || (!unavailable && !validCache())) return;
-      if (unavailable) invalidatePageCache(module, tenantId, false);
+      if (unavailable) { evictionVersion.current++; invalidatePageCache(module, tenantId, false); }
       setState((prev) => ({
         ...prev,
         // Do not keep showing previously authorized data after access is revoked.
@@ -76,21 +83,23 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
     pending.current = { key, valid: validCache, promise };
     return promise;
   }, [key, enabled, module, tenantId]);
+  const refetch = useCallback(() => fetchPage(false), [fetchPage]);
+  const refetchSilently = useCallback(() => fetchPage(true), [fetchPage]);
 
   useEffect(() => {
     mounted.current = true;
-    void refetch();
+    void refetchSilently();
     return () => {
       mounted.current = false;
       activeRequest.current?.abort();
     };
-  }, [refetch]);
+  }, [refetchSilently]);
 
   useEffect(() => {
     if (!enabled || !intervalMs) return;
     const refresh = () => {
       if ((pauseWhenHidden && document.hidden) || (activeRequest.current && !activeRequest.current.signal.aborted)) return;
-      void refetch();
+      void refetchSilently();
     };
     const interval = setInterval(refresh, intervalMs);
     window.addEventListener('focus', refresh);
@@ -100,22 +109,23 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
       window.removeEventListener('focus', refresh);
       if (pauseWhenHidden) document.removeEventListener('visibilitychange', refresh);
     };
-  }, [enabled, intervalMs, pauseWhenHidden, refetch]);
+  }, [enabled, intervalMs, pauseWhenHidden, refetchSilently]);
 
   useEffect(() => {
     if (!enabled) return;
     let queued: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribePageCacheInvalidation((changedModule, changedTenant, evict) => {
       if (changedModule === '*' || evict && changedModule === module && (!changedTenant || changedTenant === tenantId)) {
+        evictionVersion.current++;
         setState({ key, data: undefined, fetching: true, error: null });
-        clearTimeout(queued); void refetch(); return;
+        clearTimeout(queued); void refetchSilently(); return;
       }
       if (changedModule === '*' || revalidateOnInvalidation && changedModule === module && (!changedTenant || changedTenant === tenantId)) {
-        clearTimeout(queued); queued = setTimeout(() => void refetch(), 0);
+        clearTimeout(queued); queued = setTimeout(() => void refetchSilently(), 0);
       }
     });
     return () => { unsubscribe(); clearTimeout(queued); };
-  }, [enabled, revalidateOnInvalidation, module, tenantId, key, refetch]);
+  }, [enabled, revalidateOnInvalidation, module, tenantId, key, refetchSilently]);
 
   const data = enabled ? (state.key === key ? state.data : cached?.data) : undefined;
   const fetching = enabled && (state.key === key ? state.fetching : true);
@@ -123,11 +133,16 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
     data,
     isInitialLoad: fetching && data === undefined,
     isRefreshing: fetching && data !== undefined,
+    isManualRefreshing: fetching && state.key === key && !!state.manual,
     error: enabled && state.key === key ? state.error : null,
     errorStatus: enabled && state.key === key ? state.errorStatus : undefined,
     refetch,
+    refetchSilently,
     setData: (data: T) => {
-      if (!enabled) return;
+      // Mutation responses can outlive their record, session or access scope.
+      // Ordinary content invalidations still allow the server's canonical result.
+      if (!enabled || !latest.current.enabled || !mounted.current || latest.current.key !== key
+        || generation !== getPageCacheGeneration() || currentEvictionVersion !== evictionVersion.current) return;
       setPageCache(module, tenantId, latest.current.scopedParams, data);
       setState({ key, data, fetching: false, error: null });
     },

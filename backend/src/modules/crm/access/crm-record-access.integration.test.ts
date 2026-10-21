@@ -412,4 +412,34 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     for (const name of ['User', 'Operations', 'Viewer', 'Client Admin', 'Presales Support']) expect(isSalesRoleName(name)).toBe(false);
     expect((await resolveCrmActor(prisma, { tenantId, userId: a.id })).assignmentRestricted).toBe(true);
   });
+
+  it.each(['leads', 'contacts'] as const)('%s manual status writes use role grants and persist canonical values without moving Deals', async module => {
+    const model = db[delegates[module]];
+    const histories = await prisma.dealStageHistory.count({ where: { tenantId } });
+    for (const actor of [admin, b, ordinary]) {
+      const customer = await model.create({ data: { tenantId, firstName: 'Status', lastName: randomUUID(), assignedUserId: actor.id } });
+      for (const status of ['Hot', 'Warm', 'Cold', 'Inquiry', 'Cancelled', 'Inquiry']) {
+        const result = await call(`/${module}/${customer.id}`, actor, 'PUT', { status });
+        expect(result.status, JSON.stringify(result.body)).toBe(200);
+        expect(result.body.data.status).toBe(status);
+        const persisted = await model.findUniqueOrThrow({ where: { id: customer.id } });
+        expect(persisted.status).toBe(module === 'contacts' ? status.toUpperCase() : status);
+        expect(persisted.manualCancellation).toBe(status === 'Cancelled');
+      }
+      const before = await model.findUniqueOrThrow({ where: { id: customer.id } });
+      expect((await call(`/${module}/${customer.id}`, viewer, 'PUT', { status: 'Hot' })).status).toBe(403);
+      expect((await call(`/${module}/${customer.id}`, actor, 'PUT', { status: 'Unsupported' })).status).toBe(400);
+      expect((await call(`/${module}/${customer.id}`, actor, 'PUT', { status: 'Closed Deal' })).status).toBe(400);
+      expect(await model.findUniqueOrThrow({ where: { id: customer.id } })).toEqual(before);
+    }
+    expect(await prisma.dealStageHistory.count({ where: { tenantId } })).toBe(histories);
+    expect((await call(`/${module}/${records[module].foreign.id}`, ordinary, 'PUT', { status: 'Hot' })).status).toBe(404);
+  });
+
+  it('rejects direct writes to calculated Deal engagement even for Client Admin', async () => {
+    const id = records.deals.own.id;
+    const before = await prisma.deal.findUniqueOrThrow({ where: { id } });
+    expect((await call(`/deals/${id}`, admin, 'PUT', { engagementStatus: 'Hot' })).status).toBe(400);
+    expect(await prisma.deal.findUniqueOrThrow({ where: { id } })).toEqual(before);
+  });
 });

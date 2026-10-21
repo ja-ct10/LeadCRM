@@ -166,6 +166,7 @@ export default function AccountsPage(): React.ReactElement {
     isFormOpen,
     isLoading,
     isRefreshing,
+    isManualRefreshing,
     error: accountsError,
     refetch: refetchAccounts,
     editTarget,
@@ -391,7 +392,8 @@ export default function AccountsPage(): React.ReactElement {
         searchPlaceholder="Search accounts..."
         onRefresh={refetchAccounts}
         refreshDisabled={isLoading || isRefreshing}
-        refreshing={isRefreshing}
+        refreshing={isManualRefreshing}
+        fetching={isRefreshing}
         loading={isLoading || isColumnsLoading}
         loadingLabel={isLoading ? 'Loading accounts...' : 'Loading columns...'}
         onManageColumns={openManageColumns}
