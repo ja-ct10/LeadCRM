@@ -88,7 +88,6 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'imported' | 'failed' | 'duplicate'>('all');
 
   const pageSize = 25;
 
@@ -118,12 +117,9 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
     setResultsLoading(true);
     setResultsError(null);
     try {
-      const params: Record<string, unknown> = { page, limit: pageSize };
-      if (statusFilter !== 'all') params.status = statusFilter;
-
       const response = await apiClient.get<PaginatedResponse<ApiResultRow>>(
         `${config.importApiPath}/${importId}/results`,
-        { params },
+        { params: { page, limit: pageSize } },
       );
       if (version !== resultRequest.current) return;
       setResults(response.data);
@@ -137,7 +133,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
     } finally {
       if (version === resultRequest.current) setResultsLoading(false);
     }
-  }, [config.importApiPath, importId, page, statusFilter]);
+  }, [config.importApiPath, importId, page]);
 
   useEffect(() => {
     fetchImport();
@@ -267,28 +263,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
 
           {/* Results Card */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">Import Results</h3>
-              <div className="flex flex-wrap items-center gap-0.5 border border-slate-200 dark:border-slate-700 rounded-lg p-[2px]">
-                {(['all', 'imported', 'failed', 'duplicate'] as const).map((filter) => {
-                  const labels = { all: 'All', imported: 'Imported', failed: 'Failed', duplicate: 'Duplicate' };
-                  return (
-                    <button
-                      key={filter}
-                      onClick={() => { setPage(1); setStatusFilter(filter); }}
-                      className={cn(
-                        'px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer',
-                        statusFilter === filter
-                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300',
-                      )}
-                    >
-                      {labels[filter]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">Import Results</h3>
 
             {/* Results Table */}
             {resultsLoading ? (
@@ -302,7 +277,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
               </div>
             ) : results.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-sm text-slate-500 dark:text-slate-400">No results found for this filter.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">No import results found.</p>
               </div>
             ) : (
               <div className="max-w-full overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">

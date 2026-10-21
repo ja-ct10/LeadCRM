@@ -140,14 +140,56 @@ describe.each<CrmImportModule>(['leads', 'contacts', 'accounts'])('%s import UI'
     fireEvent.click(screen.getByRole('button', { name: 'All Imports' }));
     await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith(getImportConfig(module).importApiPath, expect.objectContaining({ params: expect.objectContaining({ page: 1, status: undefined }) })));
   });
-  it('preserves Failed row results and the linked imported record in Details', async () => {
-    mocks.get.mockImplementation(async (path: string) => path.endsWith('/results') ? { data: [{ id: 'failed', rowNumber: 4, status: 'failed', remarks: 'Row 4: Invalid email address.' },
-      { id: 'saved', rowNumber: 5, status: 'imported', recordId: 'created-record' }], meta: { total: 2 } } : { data: job(module) });
+  it('shows all historical outcomes and record links across Details pages without status filters', async () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      id: `row-${index + 1}`, rowNumber: index + 1, firstName: `Person ${index + 1}`, name: `Company ${index + 1}`,
+      status: index === 1 ? 'failed' : index === 2 ? 'duplicate' : 'imported',
+      remarks: index === 1 ? 'Row 2: Invalid email address.' : index === 2 ? 'Row 3: Duplicate record.' : null,
+      recordId: index === 1 || index === 2 ? null : `created-record-${index + 1}`,
+    }));
+    mocks.get.mockImplementation(async (path: string, options?: { params: { page: number } }) => path.endsWith('/results')
+      ? { data: rows.slice((options!.params.page - 1) * 25, options!.params.page * 25), meta: { total: rows.length } }
+      : { data: { ...job(module), totalRecords: 26, successfulRecords: 24, duplicateRecords: 1, failedRecords: 1 } });
     render(<ImportDetailsPage moduleKey={module} importId="job" />);
-    await screen.findByText('Row 4: Invalid email address.');
-    expect(screen.getByRole('link', { name: `View ${getImportConfig(module).moduleSingular}` }).getAttribute('href')).toBe(`/crm/${module}/created-record`);
-    fireEvent.click(screen.getByRole('button', { name: 'Failed' }));
-    await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith(`${getImportConfig(module).importApiPath}/job/results`, expect.objectContaining({ params: expect.objectContaining({ status: 'failed' }) })));
+    await screen.findByText('Row 2: Invalid email address.');
+    const table = screen.getByRole('table');
+    expect(screen.getByRole('heading', { name: 'Import Results' })).toBeTruthy();
+    expect(within(table).getByText('Failed')).toBeTruthy();
+    expect(within(table).getByText('Duplicate')).toBeTruthy();
+    expect(within(table).getAllByText('Imported')).toHaveLength(23);
+    expect(within(table).getByText('Row 3: Duplicate record.')).toBeTruthy();
+    for (const label of ['Row', 'Status', 'Remarks', getImportConfig(module).requiredFields[0].label]) {
+      expect(within(table).getByRole('columnheader', { name: label })).toBeTruthy();
+    }
+    for (const label of ['All', 'Imported', 'Failed', 'Duplicate']) expect(screen.queryByRole('button', { name: label })).toBeNull();
+    expect(screen.getByText('24 / 26')).toBeTruthy();
+    expect(screen.getByText('1 duplicates')).toBeTruthy();
+    expect(screen.getByText('1 failed')).toBeTruthy();
+    expect(screen.getByText('26 total results')).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: `View ${getImportConfig(module).moduleSingular}` })[0].getAttribute('href')).toBe(`/crm/${module}/created-record-1`);
+    expect(mocks.get).toHaveBeenLastCalledWith(`${getImportConfig(module).importApiPath}/job/results`, { params: { page: 1, limit: 25 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByRole('link', { name: `View ${getImportConfig(module).moduleSingular}` });
+    expect(screen.getByRole('link').getAttribute('href')).toBe(`/crm/${module}/created-record-26`);
+    expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+    expect(mocks.get).toHaveBeenLastCalledWith(`${getImportConfig(module).importApiPath}/job/results`, { params: { page: 2, limit: 25 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+    await screen.findByText('Row 3: Duplicate record.');
+  });
+  it('retries an unfiltered results request and shows an accurate empty state', async () => {
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path.endsWith('/results')) throw new Error('Results temporarily unavailable');
+      return { data: job(module) };
+    });
+    render(<ImportDetailsPage moduleKey={module} importId="job" />);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Results temporarily unavailable'));
+    mocks.get.mockResolvedValue({ data: [], meta: { total: 0 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry results' }));
+    await screen.findByText('No import results found.');
+    expect(screen.getByRole('heading', { name: 'Import Results' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Next page' })).toBeNull();
+    expect(mocks.get).toHaveBeenLastCalledWith(`${getImportConfig(module).importApiPath}/job/results`, { params: { page: 1, limit: 25 } });
   });
 });
 

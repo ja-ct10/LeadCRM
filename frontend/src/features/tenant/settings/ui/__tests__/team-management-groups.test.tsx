@@ -8,7 +8,7 @@ vi.mock('@/shared/services/groups.api', () => ({ groupsApi: mocks }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { role: mocks.role }, userCan: () => true }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
-const user = { id: 'julie', firstName: 'Julie Ann', lastName: 'Tiron', email: 'julie@example.com', role: 'Sales Marketing', status: 'ACTIVE', avatarUrl: null };
+const user = { id: 'julie', firstName: 'Julie Ann', lastName: 'Tiron', email: 'julie@example.com', role: 'Sales Marketing', roleNames: ['Sales Marketing'], status: 'ACTIVE', avatarUrl: null };
 const group = (members = true): TenantGroup => ({ id: 'sales', tenantId: 'tenant', name: 'Sales', createdAt: '', updatedAt: '', members: members ? [{ id: 'membership', userId: user.id, isHead: false, canBeHead: false, user }] : [] });
 const mount = () => render(<GroupsSubTab tenantUsers={[user] as never} />);
 const openGroup = async () => { fireEvent.click(await screen.findByRole('button', { name: 'Open Sales' })); };
@@ -192,14 +192,16 @@ it('uses one batch and one toast when creating a Group with optional members', a
 });
 
 const managers = [
-  { ...user, id: 'manager', firstName: 'Juan', lastName: 'Dela Cruz', role: 'Sales Manager' },
-  { ...user, id: 'head', firstName: 'Mica', lastName: 'Calingo', role: 'Head of Sales' },
-  { ...user, id: 'inactive', firstName: 'Inactive', role: 'Sales Manager', status: 'INACTIVE' },
+  { ...user, id: 'manager', firstName: 'Juan', lastName: 'Dela Cruz', role: 'Sales Manager', roleNames: ['Sales Manager'] },
+  { ...user, id: 'head', firstName: 'Mica', lastName: 'Calingo', role: 'Head of Sales', roleNames: ['Head of Sales'] },
+  { ...user, id: 'inactive', firstName: 'Inactive', role: 'Sales Manager', roleNames: ['Sales Manager'], status: 'INACTIVE' },
 ];
 const headGroup = (headId?: string): TenantGroup => ({ ...group(), members: [user, ...managers].map(person => ({ id: `m-${person.id}`, userId: person.id, isHead: person.id === headId, canBeHead: person.id !== user.id && person.status === 'ACTIVE', user: person })) });
 const openHeadDialog = async (changing = false) => {
   await openGroup(); fireEvent.click(screen.getByRole('button', { name: changing ? 'Change Head' : 'Assign Head' }));
-  return screen.getByRole('dialog', { name: 'Assign Group Head' });
+  const dialog = screen.getByRole('dialog', { name: 'Assign Group Head' });
+  await waitFor(() => expect(within(dialog).queryByRole('status')).toBeNull());
+  return dialog;
 };
 const chooseHead = (dialog: HTMLElement, name: string) => {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Group Head' }));
@@ -226,7 +228,7 @@ it('filters and searches eligible members in a keyboard-accessible head picker',
   mocks.getAll.mockResolvedValue({ data: [saved] }); mount();
   const dialog = await openHeadDialog(true);
   expect(within(dialog).getByText('Select a member to assign as the head of this group.')).toBeTruthy();
-  expect(within(dialog).getByText('The group head should be a manager responsible for this team.')).toBeTruthy();
+  expect(within(dialog).getByText('The Group Head is selected from members with the highest number of allowed permissions in this group.')).toBeTruthy();
   expect(within(dialog).getByRole('button', { name: 'Change Head' }).hasAttribute('disabled')).toBe(true);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Group Head' }));
   expect(screen.getAllByRole('menuitemradio')).toHaveLength(2);
@@ -269,7 +271,7 @@ it('retains a failed selection, prevents duplicate saves and shows the persisted
   expect(screen.getByText('Head')).toBeTruthy();
   expect(screen.getByLabelText('Group Head').textContent).toContain('Juan Dela Cruz');
   expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Group Head saved.');
-  expect(mocks.getAll).toHaveBeenCalledTimes(1);
+  expect(mocks.getAll).toHaveBeenCalledTimes(2);
   view.unmount(); mocks.getAll.mockResolvedValue({ data: [headGroup('manager')] }); mount(); await openGroup();
   expect(screen.getByLabelText('Group Head').textContent).toContain('Juan Dela Cruz');
 });
@@ -282,7 +284,9 @@ it('replaces the head and clears only after confirmation, preserving membership'
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(screen.getByLabelText('Group Head').textContent).toContain('Mica Calingo');
   expect(screen.getAllByText('Head')).toHaveLength(1);
+  mocks.getAll.mockResolvedValue({ data: [headGroup('head')] });
   fireEvent.click(screen.getByRole('button', { name: 'Change Head' })); dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(within(dialog).queryByRole('status')).toBeNull());
   fireEvent.click(within(dialog).getByRole('button', { name: 'Clear Head' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
   expect(mocks.setHead).toHaveBeenCalledTimes(1);
@@ -299,7 +303,7 @@ it('replaces the head and clears only after confirmation, preserving membership'
 it('shows an accurate empty picker and leaves assignment disabled without eligible members', async () => {
   mount(); const dialog = await openHeadDialog();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Group Head' }));
-  expect(screen.getByText('No active Sales Managers or Heads of Sales in this group.')).toBeTruthy();
+  expect(screen.getByText('No eligible group members available.')).toBeTruthy();
   expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(true);
   expect(mocks.setHead).not.toHaveBeenCalled();
 });
@@ -318,4 +322,71 @@ it('removes the head display when the existing Remove Member action succeeds', a
   await waitFor(() => expect(screen.getByLabelText('Group Head').textContent).toContain('Not assigned'));
   expect(screen.getByText('3 Members')).toBeTruthy();
   expect(mocks.setHead).not.toHaveBeenCalled();
+});
+
+it('shows actual custom role names for a single backend candidate without selecting or assigning automatically', async () => {
+  const custom = headGroup();
+  custom.members[1].user = { ...custom.members[1].user, role: 'Coordinator', roleNames: ['Coordinator', 'Reviewer'] };
+  custom.members[2].canBeHead = false;
+  mocks.getAll.mockResolvedValue({ data: [custom] }); mount();
+  const dialog = await openHeadDialog();
+  expect(within(dialog).getByRole('button', { name: 'Group Head' }).textContent).toContain('Select a group member');
+  expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Group Head' }));
+  fireEvent.change(screen.getByLabelText('Search group members'), { target: { value: 'Reviewer' } });
+  expect(screen.getAllByRole('menuitemradio')).toHaveLength(1);
+  const candidate = screen.getByRole('menuitemradio', { name: 'Juan Dela Cruz Coordinator, Reviewer' });
+  expect(within(candidate).getByText('Coordinator, Reviewer')).toBeTruthy();
+  expect(candidate.getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(candidate);
+  expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(false);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(mocks.setHead).not.toHaveBeenCalled();
+});
+
+it('refreshes candidates through authorization and membership events and clears an ineligible selection while preserving the saved head', async () => {
+  mocks.getAll.mockResolvedValue({ data: [headGroup('manager')] }); mount();
+  const dialog = await openHeadDialog(true);
+  let finish!: (value: unknown) => void;
+  mocks.getAll.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => window.dispatchEvent(new CustomEvent('leadcrm:groups-changed', { detail: { source: 'authorization' } })));
+  expect(within(dialog).getByRole('status').textContent).toContain('Refreshing eligible');
+  expect(within(dialog).getByRole('button', { name: 'Group Head' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.submit(dialog.querySelector('form')!); expect(mocks.setHead).not.toHaveBeenCalled();
+  const changed = headGroup('manager'); changed.members[1].canBeHead = false;
+  await act(async () => finish({ data: [changed] }));
+  expect(screen.getByText('Group Head:').parentElement!.textContent).toContain('Juan Dela Cruz');
+  expect(within(dialog).getByRole('button', { name: 'Group Head' }).textContent).toContain('Select a group member');
+  chooseHead(dialog, 'Mica Calingo Head of Sales');
+  changed.members = changed.members.filter(member => member.userId !== 'head');
+  mocks.getAll.mockResolvedValueOnce({ data: [changed] });
+  await act(async () => window.dispatchEvent(new Event('leadcrm:groups-changed')));
+  expect(within(dialog).getByRole('button', { name: 'Group Head' }).textContent).toContain('Select a group member');
+  expect(within(dialog).getByRole('button', { name: 'Change Head' }).hasAttribute('disabled')).toBe(true);
+});
+
+it('blocks stale candidates after a failed opening refresh and retries inside the modal', async () => {
+  mocks.getAll.mockResolvedValue({ data: [headGroup()] }); mount(); await openGroup();
+  mocks.getAll.mockRejectedValueOnce(new Error('Unable to refresh candidates'));
+  fireEvent.click(screen.getByRole('button', { name: 'Assign Head' }));
+  const dialog = screen.getByRole('dialog');
+  expect((await within(dialog).findByRole('alert')).textContent).toContain('Unable to refresh candidates');
+  expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.submit(dialog.querySelector('form')!); expect(mocks.setHead).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull());
+  chooseHead(dialog, 'Juan Dela Cruz Sales Manager');
+  expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(false);
+});
+
+it('refreshes after a save conflict and requires a new eligible selection', async () => {
+  mocks.getAll.mockResolvedValue({ data: [headGroup()] }); mount();
+  const dialog = await openHeadDialog(); chooseHead(dialog, 'Juan Dela Cruz Sales Manager');
+  const changed = headGroup(); changed.members[1].canBeHead = false;
+  mocks.setHead.mockRejectedValueOnce(Object.assign(new Error('Group changed'), { status: 409 }));
+  mocks.getAll.mockResolvedValueOnce({ data: [changed] });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Assign Head' }));
+  await waitFor(() => expect(mocks.getAll).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Group Head' }).textContent).toContain('Select a group member'));
+  expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(true);
 });

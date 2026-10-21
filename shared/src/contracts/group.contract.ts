@@ -16,17 +16,12 @@ export type GroupMemberInput = z.infer<typeof GroupMemberSchema>;
 export const GroupHeadSchema = z.object({ userId: z.string().uuid('Invalid user ID').nullable() }).strict();
 export type GroupHeadInput = z.infer<typeof GroupHeadSchema>;
 
-/** Group responsibility follows the current primary role and grants no permissions. */
-export function isGroupHeadRole(role: string): boolean {
-  return ['salesmanager', 'headofsales'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
-}
-
 export interface TenantGroupMember {
   id: string;
   userId: string;
   isHead: boolean;
   canBeHead: boolean;
-  user: { id: string; firstName: string; lastName: string; email: string; role: string; status: string; avatarUrl: string | null };
+  user: { id: string; firstName: string; lastName: string; email: string; role: string; roleNames: string[]; status: string; avatarUrl: string | null };
 }
 
 export interface TenantGroup {

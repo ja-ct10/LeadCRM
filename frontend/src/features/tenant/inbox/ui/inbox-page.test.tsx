@@ -8,8 +8,6 @@ const mocks = vi.hoisted(() => ({ status: vi.fn(), list: vi.fn(), sync: vi.fn(),
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search), useRouter: () => ({ replace: vi.fn() }) }));
 vi.mock('../services/gmail.service', () => ({ getGmailStatus: mocks.status, fetchGmailEmails: mocks.list, syncGmail: mocks.sync, disconnectGmail: mocks.disconnect, setGmailConversationReadState: mocks.read, setGmailThreadReadState: mocks.readThread }));
 vi.mock('./inbox-current-empty', () => ({ default: () => <div>Connect email</div> }));
-vi.mock('./inbox-done-empty', () => ({ default: () => <div>No done emails</div> }));
-vi.mock('./inbox-future-empty', () => ({ default: () => <div>No future emails</div> }));
 vi.mock('./email-conversation-view', () => ({ default: ({ onBack, readError, readPending, onRetryRead, retryAt }: any) => <div>Conversation<button onClick={() => onBack()}>Back to inbox</button>{readError && <div role="alert">{readError}<button disabled={readPending || retryAt > Date.now()} onClick={onRetryRead}>Retry marking as read</button></div>}</div> }));
 vi.mock('./compose-modal', () => ({ default: () => null }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial: _i, animate: _a, exit: _e, transition: _t, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
@@ -216,7 +214,7 @@ describe('Persisted scoped Inbox', () => {
   });
   it('has only the final filters and no categories or title dropdown', async () => {
     render(<InboxPage />); await flush();
-    for (const label of ['Current', 'Primary', 'Promotions', 'Social', 'Updates']) expect(screen.queryByText(label)).toBeNull();
+    for (const label of ['Current', 'Future', 'Done', 'Primary', 'Promotions', 'Social', 'Updates']) expect(screen.queryByText(label)).toBeNull();
     fireEvent.click(screen.getByLabelText('Filter emails'));
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
     fireEvent.click(screen.getByText('Unread only')); await flush();

@@ -78,19 +78,20 @@ const widths = [1440, 768, 390, 375, 320];
       await page.getByRole('heading', { name: 'Import Partially Succeeded', exact: true }).waitFor();
       await capture(module, 'result');
       const keyUrl = page.url();
+      const failedResults = '**/api/proxy/crm/leads/imports/*/results*';
+      if (module === 'leads') {
+        await page.route(failedResults, route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Results temporarily unavailable' }) }));
+      }
       await page.getByRole('button', { name: 'View Details', exact: true }).click();
       await page.getByRole('heading', { name: 'Import Details', exact: true }).waitFor();
       await page.getByRole('heading', { name: 'Import Results', exact: true }).waitFor();
       if (module === 'leads') {
-        const failedResults = '**/api/proxy/crm/leads/imports/*/results*';
-        await page.route(failedResults, route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Results temporarily unavailable' }) }));
-        await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
         await page.getByRole('button', { name: 'Retry results', exact: true }).waitFor();
         await page.unroute(failedResults);
         await page.getByRole('button', { name: 'Retry results', exact: true }).click();
         await page.getByText('Duplicate email address', { exact: false }).waitFor();
-        await page.getByRole('button', { name: 'All', exact: true }).click();
       }
+      for (const label of ['All', 'Imported', 'Failed', 'Duplicate']) assert.equal(await page.getByRole('button', { name: label, exact: true }).count(), 0);
       await capture(module, 'details');
       // Re-open the same request key and re-select the source, simulating refresh recovery.
       await page.goto(keyUrl);

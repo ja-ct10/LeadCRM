@@ -108,9 +108,9 @@ export function TaskTable({
       case "action":
         return canManageTask(task, user, groupAccess) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
           <Button
-            size="sm"
-            variant="outline"
-            className="h-7 rounded-lg px-2.5 font-normal"
+            size={task.status === "completed" ? "sm" : "default"}
+            variant={task.status === "completed" ? "outline" : "default"}
+            className={task.status === "completed" ? "h-7 rounded-lg px-2.5 font-normal" : undefined}
             disabled={busy}
             onClick={(event) => {
               event.stopPropagation();

@@ -123,8 +123,13 @@ const encode = rows => {
             await page.getByRole('heading', { name: 'Import Details', exact: true }).waitFor();
             await page.getByRole('link', { name: /^View / }).first().waitFor();
             await capture(module, 'details');
-            await page.getByRole('button', { name: 'Failed', exact: true }).click();
             await page.getByText('Missing Browser Product', { exact: false }).first().waitFor();
+            for (const label of ['All', 'Imported', 'Failed', 'Duplicate']) assert.equal(await page.getByRole('button', { name: label, exact: true }).count(), 0);
+            for (const [label, count] of [['Imported', valid], ['Duplicate', duplicate], ['Failed', invalid]]) {
+              assert.equal(await page.getByRole('cell', { name: label, exact: true }).count(), count);
+            }
+            const links = await page.getByRole('link', { name: /^View / }).evaluateAll(items => items.map(item => item.getAttribute('href')));
+            assert.deepEqual(links, results.data.filter(row => row.recordId).map(row => `/crm/${module}/${encodeURIComponent(row.recordId)}`));
             await page.getByRole('button', { name: 'Back to Import', exact: true }).click();
             await page.getByRole('button', { name: 'History', exact: true }).click();
             await page.getByRole('table', { name: 'Import history' }).waitFor();

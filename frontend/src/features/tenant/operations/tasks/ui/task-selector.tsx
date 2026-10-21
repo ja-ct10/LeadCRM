@@ -379,7 +379,7 @@ export function TaskSelector(props: TaskSelectorProps) {
             )}
           </div>
           {kind === 'deal' && <div className="flex items-center justify-between border-t border-border px-3 py-2"><Button type="button" size="sm" variant="ghost" disabled={page <= 1 || loading || selectingAll} onClick={() => setPage(value => value - 1)}>Previous</Button><span className="text-xs">Page {page}</span><Button type="button" size="sm" variant="ghost" disabled={!hasMore || loading || selectingAll} onClick={() => setPage(value => value + 1)}>Next</Button></div>}
-          <div className="flex items-center justify-between gap-2 border-t border-border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-3">
             {onCreate ? (
               <Button
                 type="button"
@@ -412,8 +412,6 @@ export function TaskSelector(props: TaskSelectorProps) {
             )}
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
               onClick={() => {
                 setOpen(false);
                 trigger.current?.focus();

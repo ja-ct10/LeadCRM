@@ -2,13 +2,14 @@
 // Business logic lives in groups.service.ts.
 
 import prisma from '../../../config/database.config';
-import { isGroupHeadRole, type GroupMemberInput } from '@leadcrm/shared';
+import { permissionKeys, type GroupMemberInput } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { assertPermissions } from '../../../core/permissions/permission.service';
+import { resolveEffectivePermissions } from '../roles/roles.repository';
 
-const GROUP_SELECT = {
+const groupSelect = (tenantId: string) => ({
   id:        true,
   tenantId:  true,
   name:      true,
@@ -16,6 +17,7 @@ const GROUP_SELECT = {
   createdAt: true,
   updatedAt: true,
   members: {
+    where: { tenantId, user: { tenantId } },
     select: {
       id:     true,
       userId: true,
@@ -29,21 +31,26 @@ const GROUP_SELECT = {
           role:      true,
           status:    true,
           avatarUrl: true,
-          userRoles: { where: { role: { isArchived: false, isSystemRole: false } }, select: { role: { select: { name: true } } } },
+          userRoles: {
+            where: { tenantId, role: { tenantId, isArchived: false } },
+            include: { role: { include: { permissions: { where: { tenantId } } } } },
+          },
         },
       },
     },
   },
-} as const;
+} as const);
 
-export function canBeGroupHead(user: { status: string; role: string; userRoles: { role: { name: string } }[] }): boolean {
-  return user.status === 'ACTIVE' && isGroupHeadRole(user.role) && user.userRoles.some(link => link.role.name === user.role);
+export function groupHeadCandidateIds(members: Array<{ userId: string; user: Parameters<typeof resolveEffectivePermissions>[0] }>): Set<string> {
+  const counts = members.map(member => ({ userId: member.userId, count: permissionKeys(resolveEffectivePermissions(member.user)).length }));
+  const highest = counts.reduce((maximum, member) => Math.max(maximum, member.count), 0);
+  return new Set(counts.filter(member => member.count > 0 && member.count === highest).map(member => member.userId));
 }
 
 export async function findAllGroups(tenantId: string) {
   return prisma.tenantGroup.findMany({
     where:   { tenantId },
-    select:  GROUP_SELECT,
+    select:  groupSelect(tenantId),
     orderBy: { name: 'asc' },
   });
 }
@@ -51,14 +58,14 @@ export async function findAllGroups(tenantId: string) {
 export async function findGroupById(id: string, tenantId: string) {
   return prisma.tenantGroup.findFirst({
     where:  { id, tenantId },
-    select: GROUP_SELECT,
+    select: groupSelect(tenantId),
   });
 }
 
 export async function createGroup(tenantId: string, name: string) {
   return prisma.tenantGroup.create({
     data:   { tenantId, name },
-    select: GROUP_SELECT,
+    select: groupSelect(tenantId),
   });
 }
 
@@ -66,7 +73,7 @@ export async function updateGroup(id: string, tenantId: string, name: string) {
   return prisma.tenantGroup.update({
     where:  { id, tenantId },
     data:   { name },
-    select: GROUP_SELECT,
+    select: groupSelect(tenantId),
   });
 }
 
@@ -79,7 +86,7 @@ export async function deleteEmptyGroup(id: string, tenantId: string) {
 
 export async function addGroupMembers(groupId: string, input: GroupMemberInput, tenantId: string, actorId: string) {
   return prisma.$transaction(async tx => {
-    const group = await tx.tenantGroup.findFirst({ where: { id: groupId, tenantId }, select: GROUP_SELECT });
+    const group = await tx.tenantGroup.findFirst({ where: { id: groupId, tenantId }, select: groupSelect(tenantId) });
     if (!group) throw new NotFoundError('Group');
     const userIds = 'userIds' in input ? input.userIds : [input.userId];
     const users = await tx.user.findMany({
@@ -100,7 +107,7 @@ export async function addGroupMembers(groupId: string, input: GroupMemberInput, 
       tenantId, userId: actorId, action: 'group.member_added', entityType: 'TenantGroup', entityId: groupId,
       changeset: { before: null, after: { userId } },
     })) });
-    return tx.tenantGroup.findFirstOrThrow({ where: { id: groupId, tenantId }, select: GROUP_SELECT });
+    return tx.tenantGroup.findFirstOrThrow({ where: { id: groupId, tenantId }, select: groupSelect(tenantId) });
   }, { isolationLevel: 'Serializable' });
 }
 
@@ -120,13 +127,13 @@ export async function setGroupHead(groupId: string, userId: string | null, tenan
     const actor = await tx.user.findFirst({ where: { id: actorId, tenantId, status: 'ACTIVE', role: 'Client Admin' } });
     if (!actor) throw new ForbiddenError('Only an active Client Admin can manage the Group Head.');
     await assertPermissions({ userId: actorId, tenantId, role: actor.role }, ['groups.edit'], tx);
-    const group = await tx.tenantGroup.findFirst({ where: { id: groupId, tenantId }, select: GROUP_SELECT });
+    const group = await tx.tenantGroup.findFirst({ where: { id: groupId, tenantId }, select: groupSelect(tenantId) });
     if (!group) throw new NotFoundError('Group');
     if (userId !== null) {
       const member = group.members.find(row => row.userId === userId);
       if (!member) throw new NotFoundError('Group member');
-      if (!canBeGroupHead(member.user)) {
-        throw new ValidationError('Choose an active Group member whose primary role is Sales Manager or Head of Sales.');
+      if (!groupHeadCandidateIds(group.members).has(userId)) {
+        throw new ValidationError('Choose an eligible active group member with the highest number of allowed permissions.');
       }
     }
     const previousUserId = group.members.find(member => member.isHead)?.userId ?? null;
@@ -139,6 +146,6 @@ export async function setGroupHead(groupId: string, userId: string | null, tenan
       tenantId, userId: actorId, action: 'group.head_changed', entityType: 'TenantGroup', entityId: groupId,
       changeset: { before: { userId: previousUserId }, after: { userId } },
     } });
-    return tx.tenantGroup.findFirstOrThrow({ where: { id: groupId, tenantId }, select: GROUP_SELECT });
+    return tx.tenantGroup.findFirstOrThrow({ where: { id: groupId, tenantId }, select: groupSelect(tenantId) });
   }, { isolationLevel: 'Serializable' });
 }
