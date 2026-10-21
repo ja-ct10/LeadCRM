@@ -5,7 +5,6 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings }  from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
@@ -26,10 +25,8 @@ import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
 import { DealLostDialog } from '@/shared/components/crm/deal-lost-dialog';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
-import { PipelineStagesDialog } from './pipeline-stages-dialog';
 import KanbanBoardSkeleton from '@/shared/components/kanban-skeleton';
 import { Button, CreateButton } from '@/shared/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
 
@@ -39,7 +36,6 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const { pipelines, deals, users, addDeals, moveDealStage, refreshPipelines } = useData();
   const { user, tenant } = useAuth();
   const tabAccess = useCrmTabs('deals', [{ id: 'all', label: 'All Deals' }, { id: 'my', label: 'My Deals' }]);
-  const canManageStages = useHasPermission('deals.manage_stages');
   const canCreate = useHasPermission('deals.create'), canEdit = useHasPermission('deals.edit'), canDelete = useHasPermission('deals.archive');
   const highlightId = searchParams.get('highlight');
   const [activeHighlightId, setActiveHighlightId] = useState(highlightId);
@@ -72,7 +68,6 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   }, [activeTab, selectedTab, searchParams, router]);
   const [showFilters, setShowFilters] = useState(false), [filterSearch, setFilterSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string[]>>({});
-  const [manageStages, setManageStages] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshPending = useRef(false);
   const [pipelineError, setPipelineError] = useState('');
@@ -183,20 +178,18 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <PageHeader title="Deals" subtitle="Track opportunities throughout your pipelines." actionsInlineWithTitle
       actions={pipeline && <div className="flex items-center gap-2">
-        {canManageStages && <TooltipProvider><Tooltip><TooltipTrigger asChild>
-          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label="Manage pipeline stages"
-            title="Manage pipeline stages" disabled={USE_MOCK_DATA} onClick={() => setManageStages(true)}>
-            <Settings size={16} aria-hidden="true" />
-          </Button>
-        </TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}
         {canCreate && <CreateButton label="New Deal" disabled={!initialStageId} onClick={() => setCreateStage(initialStageId)} />}
       </div>} />
     <ModuleTabs tabs={tabAccess.tabs} activeTab={activeTab} onTabChange={setSelectedTab} ariaLabel="Deals views" className="mb-3" />
     <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-      <label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-8 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label>
       <ModuleSearchInput value={search} onChange={setSearch} placeholder="Search deals..." label="Search deals" />
       <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">
-        <div className="flex shrink-0 items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} /></div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} />
+          <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">Pipeline<select aria-label="Pipeline" value={pipeline?.id ?? ''} className="h-8 min-w-0 max-w-[min(18rem,calc(100vw-5rem))] rounded-lg border border-border bg-card px-2 text-foreground" onChange={event => {
+            const params = new URLSearchParams(searchParams.toString()); params.set('pipelineId', event.target.value); params.delete('dealId'); params.delete('highlight');
+            setSearch(''); setFilters({}); setSelected(null); router.replace('/crm/deals?' + params.toString(), { scroll: false });
+          }}>{availablePipelines.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        </div>
         <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div>
       </div>
     </div>
@@ -208,7 +201,6 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
         {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError && !locatorMessage) ? <KanbanBoardSkeleton /> : pipeline ? <div className="relative flex min-h-[440px] min-w-0 flex-1 overflow-hidden" aria-busy={refreshing || query.isRefreshing}>{(refreshing || query.isRefreshing) && <DataLoadingSpinner label="Refreshing deals..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}<PipelineKanbanBoard pipeline={pipeline} deals={visible} highlightDealId={!locatorMessage && locatedDeal?.id === activeHighlightId ? activeHighlightId : undefined} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={openDeal} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
       </div>
     </div>
-    {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}
     <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) { setSelected(null); void query.refetch(); } }} />
     <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeals(values); setCreateStage(undefined); await query.refetch(); }} />
     {lost && <DealLostDialog onClose={() => setLost(undefined)} onSave={reason => move(lost.id, lost.stageId, reason)} />}

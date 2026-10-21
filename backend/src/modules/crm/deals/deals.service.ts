@@ -1,4 +1,5 @@
 import { assertDealAddressSource } from './deal-address';
+import { randomUUID } from 'node:crypto';
 import { refreshDealClassification } from '../customer-classification.service';
 import { changeDealAssociation, readDealAssociation, resolveManualDealAssociation } from './deal-association';
 import { salesContext } from '../leads/sales-context';
@@ -124,13 +125,14 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
     deal  as unknown as Record<string, unknown>,
   );
 
+  const updateEventId = randomUUID();
   await writeAuditLog({
     tenantId, userId,
-    action: 'deal.updated', entityType: 'Deal', entityId: id,
+    action: 'deal.updated', entityType: 'Deal', entityId: id, metadata: { eventId: updateEventId },
     before: changedBefore, after: changedAfter,
   });
   const changes = await withCustomChanges(recordChanges(before, deal));
-  if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: deal, changedFields: changes.changedFields, changes });
+  if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, eventId: updateEventId, record: deal, changedFields: changes.changedFields, changes });
 
   // Assignment events commit with the Deal through the notification outbox.
 

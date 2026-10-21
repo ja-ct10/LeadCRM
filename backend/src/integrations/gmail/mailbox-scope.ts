@@ -6,6 +6,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { normalizeEmail } from './engagement-rules';
 import type { MailboxPermissions } from './mailbox-ingestion.service';
 import type { GmailEmail } from './gmail.types';
+import { crmActor } from '../../modules/crm/access/crm-record-access.service';
 
 export const FIXED_MAILBOX_SENDERS = ['reymarkjpanes@12066156.brevosend.com', 'info@camxian.com'];
 export const MAILBOX_PARTICIPANT_POLICY_VERSION = 1;
@@ -45,7 +46,7 @@ export function mailboxParticipants(email: Pick<GmailEmail, 'from' | 'to' | 'cc'
 }
 
 function identityAllowed(identity: MailboxIdentity, userId: string, permissions: MailboxPermissions) {
-  return identity.available && identity.assignedUserId === userId && (identity.type === 'lead' ? permissions.leadsView : permissions.contactsView);
+  return identity.available && (permissions.clientAdmin === true || identity.assignedUserId === userId) && (identity.type === 'lead' ? permissions.leadsView : permissions.contactsView);
 }
 
 function deriveScope(scope: MailboxScope, permissions: MailboxPermissions): MailboxScope {
@@ -55,7 +56,8 @@ function deriveScope(scope: MailboxScope, permissions: MailboxPermissions): Mail
   const addresses = [...new Set(permitted.map(identity => identity.address))].sort();
   const leadIds = permitted.filter(identity => identity.type === 'lead').map(identity => identity.id).sort();
   const contactIds = permitted.filter(identity => identity.type === 'contact').map(identity => identity.id).sort();
-  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, scope.userId, scope.mailboxAddress, permissions, identities, addresses, deniedAddresses])).digest('hex');
+  const flags = Object.entries({ ...permissions, clientAdmin: permissions.clientAdmin === true }).sort(([a], [b]) => a.localeCompare(b));
+  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, scope.userId, scope.mailboxAddress, flags, identities, addresses, deniedAddresses])).digest('hex');
   return { ...scope, identities, addresses, deniedAddresses, leadIds, contactIds, hash, dealsView: permissions.dealsView };
 }
 
@@ -68,12 +70,16 @@ export function projectMailboxScope(scope: MailboxScope, permissions: MailboxPer
   return deriveScope({ ...scope, identities }, permissions);
 }
 
-/** Read all same-tenant identity matches, including unauthorized/archived records. Admin access never changes assignment. */
+/** Read all same-tenant matches. Archived or unavailable duplicate identities still veto access. */
 export async function resolveMailboxScope(account: EmailAccount, permissions: MailboxPermissions, db: Prisma.TransactionClient = prisma): Promise<MailboxScope> {
-  const [leads, contacts] = await Promise.all([
+  const readIdentities = () => Promise.all([
     db.lead.findMany({ where: { tenantId: account.tenantId }, select: { id: true, email: true, assignedUserId: true, isArchived: true, deletedAt: true, convertedAt: true, contactId: true } }),
     db.contact.findMany({ where: { tenantId: account.tenantId }, select: { id: true, email: true, assignedUserId: true, isArchived: true, deletedAt: true } }),
   ]);
+  // Assignment-scoped CRM reads must not hide a participant that vetoes mail access.
+  // Keep tenant filters and mutation guards; only this internal metadata lookup reads all identities.
+  const actor = crmActor.getStore();
+  const [leads, contacts] = actor ? await crmActor.run({ ...actor, readRecords: false }, readIdentities) : await readIdentities();
   const identities: MailboxIdentity[] = contacts.flatMap(row => {
     const address = mailboxAddress(row.email ?? '');
     return address ? [{ type: 'contact' as const, id: row.id, address, assignedUserId: row.assignedUserId, available: !row.isArchived && !row.deletedAt }] : [];

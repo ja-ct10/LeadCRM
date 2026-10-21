@@ -73,9 +73,9 @@ export interface DashboardStage {
   id: string; name: string; order: number; color: string | null; probability: number | null; isWon: boolean; isLost: boolean;
 }
 export interface DashboardReport {
-  generatedAt: string; queryMs: number; scope: 'organization'; currency: string;
+  generatedAt: string; queryMs: number; scope: 'organization' | 'authorized'; currency: string;
   period: { start: string; end: string; timezone: string; interval: RevenueInterval };
-  access: { deals: boolean; leads: boolean; tasks: boolean };
+  access: { deals: boolean; leads: boolean; tasks: boolean; leaderboard: boolean };
   pipeline: { id: string; name: string; stages: DashboardStage[] } | null;
   metrics: {
     totalRevenue: number | null; forecastedRevenue: number | null; activeDeals: number | null;

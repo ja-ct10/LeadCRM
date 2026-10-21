@@ -4,7 +4,7 @@ import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-recor
 
 
 import React from 'react';
-import { SALES_PIPELINE_STAGES } from '@leadcrm/shared';
+import { SALES_PIPELINE_STAGES, pipelineStageColor } from '@leadcrm/shared';
 import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
 import { dealStageValueVisibility } from '@/shared/utils/deal-stage-pipeline';
 import { formatDate } from '@/shared/components/data-grid/cell-renderers';
@@ -337,10 +337,10 @@ function DroppableStage({
     >
       <div className="p-4 flex justify-between items-start">
         <div className="flex items-center gap-2">
-          {stage.color && (
+          {(
             <div
               className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: stage.color }}
+              style={{ backgroundColor: pipelineStageColor(stage) }}
               aria-hidden="true"
             />
           )}

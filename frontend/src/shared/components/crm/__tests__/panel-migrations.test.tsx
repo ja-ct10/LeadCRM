@@ -79,7 +79,17 @@ it.each(personSurfaces.flatMap(entry => ['', 'broken', null, undefined].map(emai
   expect(toast.error).not.toHaveBeenCalled();
 });
 
-it.each(personSurfaces.flatMap(entry => ['Client Admin', 'Sales Agent'].flatMap(role =>
+it.each(personSurfaces.flatMap(entry => ['other-user', null, '', undefined].map(assignedUserId => ({ ...entry, assignedUserId }))))('allows tenant Client Admin to email $module from $surface without agent assignment $assignedUserId', async ({ module, surface, assignedUserId }) => {
+  mocks.role = 'Client Admin'; const original = mocks.get.getMockImplementation()!;
+  const email = `${module}@example.test`;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUserId } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open messages' }));
+  expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email, undefined, undefined, { recordModule: module, recordId: 'one' }));
+  expect(toast.error).not.toHaveBeenCalled(); expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it.each(personSurfaces.flatMap(entry => ['Sales Agent'].flatMap(role =>
   ['other-user', null, '', undefined].map(assignedUserId => ({ ...entry, role, assignedUserId })))))('blocks both $module $surface actions for $role with assignment $assignedUserId', async ({ module, surface, role, assignedUserId }) => {
   mocks.role = role;
   const original = mocks.get.getMockImplementation()!;
@@ -99,6 +109,7 @@ it.each(personSurfaces.flatMap(entry => ['Client Admin', 'Sales Agent'].flatMap(
 });
 
 it.each(personSurfaces.flatMap(entry => ['', 'broken', null, undefined].map(email => ({ ...entry, email }))))('prioritizes assignment feedback for $module $surface with unusable email $email', async ({ module, surface, email }) => {
+  mocks.role = 'Sales Agent';
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUserId: null } } : original(path));
   render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
@@ -192,7 +203,7 @@ it.each(dealEmailRoleCases)('opens the assigned Deal from the $surface $action f
   expect(mocks.put).not.toHaveBeenCalled();
 });
 
-it.each(dealEmailRoleCases.flatMap(testCase => ['other-user', null, undefined].flatMap(assignedUserId =>
+it.each(dealEmailRoleCases.filter(testCase => testCase.role !== 'Client Admin').flatMap(testCase => ['other-user', null, undefined].flatMap(assignedUserId =>
   ['customer@example.test', '', 'broken'].map(email => ({ ...testCase, assignedUserId, email }))))
 )('blocks the Deal $surface $action for $role with assignment $assignedUserId and email $email', async testCase => {
   mocks.role = testCase.role;

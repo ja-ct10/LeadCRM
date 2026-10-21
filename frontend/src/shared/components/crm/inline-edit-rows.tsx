@@ -64,7 +64,8 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
   };
   const cancelEdit = () => { if (blocked) return; setEditingKey(null); setEditValue(''); };
   const escapeEdit = (event: React.KeyboardEvent) => {
-    if (onEscape) { event.preventDefault(); event.stopPropagation(); onEscape(); }
+    event.preventDefault(); event.stopPropagation();
+    if (onEscape) onEscape();
     else cancelEdit();
   };
   const commitEdit = async (apiField: string) => {

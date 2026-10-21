@@ -12,12 +12,13 @@ describe('independent Deal engagement', () => {
   it('does not expire Inquiry without confirmed outreach', () => expect(classifyDealEngagement([], at(365))).toBe('Inquiry'));
   it('ignores staff follow-ups when timing Inquiry inactivity', () => {
     expect(classifyDealEngagement([event('outreach', 0), event('outreach', 29)], at(30))).toBe('Cold');
-    expect(classifyDealEngagement([event('outreach', 0)], at(30 - 1 / day))).toBe('Inquiry');
+    expect(classifyDealEngagement([event('outreach', 0)], at(30 - 1 / day))).toBe('Warm');
   });
-  it('renews Hot only when a reply arrives before Hot expires', () => {
+  it('restores Hot on verified replies after qualification, including after cooling', () => {
     expect(classifyDealEngagement([event('qualified', 0), event('reply', 7)], at(14))).toBe('Hot');
-    expect(classifyDealEngagement([event('qualified', 0), event('reply', 8)], at(8))).toBe('Warm');
-    expect(classifyDealEngagement([event('qualified', 0), event('reply', 31)], at(31))).toBe('Warm');
+    expect(classifyDealEngagement([event('qualified', 0), event('reply', 8)], at(8))).toBe('Hot');
+    expect(classifyDealEngagement([event('qualified', 0), event('reply', 31)], at(31))).toBe('Hot');
+    expect(classifyDealEngagement([event('reply', 31)], at(31))).toBe('Warm');
   });
   it('uses 30 total days, never an additional 30-day Warm period', () => {
     expect(classifyDealEngagement([event('qualified', 0), event('reply', 7)], at(37))).toBe('Cold');

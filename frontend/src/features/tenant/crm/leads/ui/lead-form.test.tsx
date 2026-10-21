@@ -1,9 +1,11 @@
+const access = vi.hoisted(() => ({ restricted: false }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AddLeadForm } from './lead-form';
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, policy: { clientAdmin: true } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, policy: { clientAdmin: !access.restricted, assignmentRestricted: access.restricted, userId: 'agent' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [], organizations: [] }) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined, isInitialLoad: false, refetch: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false }) }));
@@ -16,7 +18,7 @@ vi.mock('@/shared/components/crm/record-custom-fields', async () => {
   layout.fields.address = { label: 'Full Address', groupId: 'leads:section:3', order: 0, visibleInForm: true, visibleInDetails: true };
   return { useRecordCustomFields: () => ({ layout, fields: [], blocked: false, validate: () => true, payload: () => ({}), query: {} }), CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null };
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); access.restricted = false; });
 it('groups all company fields under Organization and submits one nested Account draft', async () => {
   const save = vi.fn(); render(<AddLeadForm onSave={save} onCancel={vi.fn()} />);
   const organization = screen.getByRole('heading', { name: 'Organization' }).closest('section')!;
@@ -38,4 +40,17 @@ it('groups all company fields under Organization and submits one nested Account 
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
   expect(save.mock.calls[0][0]).toMatchObject({ firstName: 'Lina', address: 'Personal street\nPasig', newAccount: { name: 'New lead company', industry: 'Technology', size: '11-50', website: 'https://new.test', address: 'Company street\nMakati' } });
   expect(save.mock.calls[0][0]).not.toHaveProperty('accountId');
+});
+
+it('shows the current Sales agent read-only during manual creation and submits their identity', async () => {
+  access.restricted = true; const save = vi.fn(); render(<AddLeadForm onSave={save} onCancel={vi.fn()} />);
+  const agent = screen.getByRole('textbox', { name: 'Assigned Agent' }) as HTMLInputElement;
+  expect(agent.value).toBe('My Agent'); expect(agent.readOnly).toBe(true);
+  expect(screen.queryByRole('combobox', { name: 'Assigned Agent' })).toBeNull();
+  fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Sales' } });
+  fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Lead' } });
+  fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'self@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0]).toMatchObject({ assignedUserId: 'agent', status: 'Inquiry' });
 });

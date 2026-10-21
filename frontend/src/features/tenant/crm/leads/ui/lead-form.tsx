@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { Lead } from '@/store/types';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
+import { useAuth } from '@/store/AuthContext';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 import { useDuplicateCheck } from '@/shared/hooks/use-duplicate-check';
@@ -79,6 +80,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const organization = useOrganizationForm(initialData);
   const { users } = useData();
   const isEdit = !!initialData;
+  const { user } = useAuth();
+  const selfAssigned = !isEdit && recordAccess.policy?.assignmentRestricted === true;
+  const currentAgentName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || '';
   const requestId = useRef<string | undefined>(undefined);
   const saving = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -209,7 +213,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       ...organization.payload(),
       status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
-      assignedUserId: data.assignedUserId || (isEdit ? '' : undefined),
+      assignedUserId: selfAssigned ? recordAccess.policy?.userId : data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
       address: data.address?.trim() ?? '',
     };
@@ -301,7 +305,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           <SectionHeader num={2} title="Status & Interest" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap fieldKey="status" htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
-              <div className="relative">
+              {!initialData ? <input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
                 <select
                   {...register('status')} disabled={!!initialData?.statusManagedByDeals}
                   id={`${fieldId}-status`}
@@ -314,7 +318,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                   ))}
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
+              </div>}
             </FieldWrap>
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
 <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
@@ -353,6 +357,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="assignedUserId" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message} label="Assigned Agent">
+              {selfAssigned ? <input id={`${fieldId}-assignedUserId`} value={currentAgentName} readOnly className={selectCls} /> : (
               <Controller
                 name="assignedUserId"
                 control={control}
@@ -372,6 +377,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                   />
                 )}
               />
+              )}
             </FieldWrap>
           </div>
           <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Lead Address">

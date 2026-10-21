@@ -120,7 +120,7 @@ async function recordPersonalOutreach(accountId: string, tenantId: string, provi
     if (message?.contactId) await recordStaffOutreach(tx, tenantId, { contactId: message.contactId }, message.sentAt);
     if (message?.dealId && message.dealAttribution) {
       const account = await tx.emailAccount.findFirstOrThrow({ where: { tenantId, id: accountId } });
-      await refreshDealClassification(tx, tenantId, message.dealId, account.userId);
+      await refreshDealClassification(tx, tenantId, message.dealId, account.userId, [], new Date(), true, message.dealId);
     }
   });
 }

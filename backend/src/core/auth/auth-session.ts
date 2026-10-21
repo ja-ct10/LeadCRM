@@ -14,6 +14,11 @@ export const AUTH_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
+export function loginCookieOptions(rememberMe = false) {
+  const { maxAge, ...sessionCookie } = AUTH_COOKIE_OPTIONS;
+  return rememberMe ? { ...sessionCookie, maxAge } : sessionCookie;
+}
+
 export interface SessionContext {
   userAgent?: string;
   ipAddress?: string;

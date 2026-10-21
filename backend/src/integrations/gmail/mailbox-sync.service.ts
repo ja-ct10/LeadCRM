@@ -33,7 +33,7 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
   if (!leadsView && !contactsView) throw new AppError('CRM View permission is required.', 403);
   const account = await db.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (checkOwnership && account && !isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) throw new AppError('Mailbox ownership does not match, or temporary test access expired. Reconnect your staff work email in Messages.', 403);
-  return { leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
+  return { clientAdmin: user.role === 'Client Admin', leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }
 
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string): Promise<GmailEmail[]> {
@@ -110,6 +110,7 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
     const key = { accountId: account.id, threadId };
     const previous = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: key } });
+    if (previous && previous.dealId !== dealId || await tx.mailboxMessage.count({ where: { tenantId, accountId: account.id, threadId, dealId: { not: dealId } } })) throw new AppError('This conversation already belongs to another Deal. Start a separate thread.', 409, 'MAILBOX_DEAL_THREAD_CONFLICT');
     if (selected.every(row => row.dealId === dealId && row.dealAttribution)) { await refreshDealClassification(tx, tenantId, dealId, userId); return; }
     await tx.mailboxMessage.updateMany({ where: threadWhere, data: { dealId, dealAttribution: { kind: 'manual', verifiedAt: new Date().toISOString(), actorId: userId }, needsDealAssociation: false } });
     await tx.activity.updateMany({ where: { tenantId, type: 'email', mailboxMessage: { is: threadWhere },

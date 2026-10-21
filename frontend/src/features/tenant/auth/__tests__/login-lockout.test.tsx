@@ -33,6 +33,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('login lockout presentation and lifecycle', () => {
+  it.each(['credentials', 'network', 'server'])('clears fields only for a confirmed credentials error: %s', async failure => {
+    const { form: element } = await form();
+    mocks.login.mockRejectedValue(Object.assign(new Error('Sign in failed'), { code: failure === 'credentials' ? 'AUTH_INVALID_CREDENTIALS' : undefined, status: failure === 'server' ? 502 : failure === 'credentials' ? 401 : 0 }));
+    await submit(element);
+    expect((screen.getByLabelText('Email address') as HTMLInputElement).value).toBe(failure === 'credentials' ? '' : email);
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(failure === 'credentials' ? '' : 'SensitivePassword1!');
+  });
+  it.each([false, true])('passes Remember Me %s to the actual auth operation', async rememberMe => {
+    const { form: element } = await form(); mocks.login.mockResolvedValue(true);
+    if (rememberMe) fireEvent.click(screen.getByRole('checkbox', { name: 'Remember me' }));
+    await submit(element); expect(mocks.login).toHaveBeenCalledWith(email, 'SensitivePassword1!', rememberMe);
+  });
   it('displays the inactivity notice after the expired session redirects to Login', async () => {
     sessionStorage.setItem('leadcrm:idle-expired', '1');
     await form();

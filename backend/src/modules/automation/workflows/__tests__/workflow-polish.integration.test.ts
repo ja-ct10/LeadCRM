@@ -84,6 +84,78 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     expect(copy.status).toBe('DRAFT'); expect(copy.isActive).toBe(false); expect(await runs(copy.id)).toHaveLength(0);
   });
 
+  it.each(['deal.updated', 'deal.stage_changed'])('cancels once after saving a late reason through %s', async trigger => {
+    const field = await scope(() => saveField(tenantId, actor.id, { module: 'deals', group: 'Additional Details', name: `Reason for Cancellation ${randomUUID()}`, type: 'Long Text', required: false, options: [] }));
+    const deal = await newDeal();
+    const sibling = await newDeal();
+    const workflow = await create({ trigger, conditions: { operator: 'AND', conditions: [
+      { field: 'deal.stageId', operator: 'equals', value: qualified.id },
+      { field: `deal.customFieldValues.${field.id}`, operator: 'is_not_empty', value: null },
+    ] }, actions: [{ type: 'move_deal_stage', config: { stageId: lost.id } }] });
+    await scope(() => moveDealStage(deal.id, tenantId, actor.id, { stageId: qualified.id }));
+    for (const value of ['', '   ']) await scope(() => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: value } }));
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(qualified.id);
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: 'Customer declined' } }));
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(lost.id);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: sibling.id } })).stageId).toBe(initial.id);
+    expect(await scope(() => readRecordValues(prisma, tenantId, 'deals', deal.id))).toMatchObject({ [field.id]: 'Customer declined' });
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: 'Customer declined' } }));
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deal.id, newStageId: lost.id } })).toBe(1);
+  });
+
+  it('keeps the existing lost outcome idempotent when its reason is saved after closure', async () => {
+    const field = await scope(() => saveField(tenantId, actor.id, { module: 'deals', group: 'Additional Details', name: `Cancellation ${randomUUID()}`, type: 'Long Text', required: false, options: [] }));
+    const deal = await newDeal();
+    const workflow = await create({ trigger: 'deal.stage_changed', conditions: { operator: 'AND', conditions: [{ field: `deal.customFieldValues.${field.id}`, operator: 'is_not_empty', value: null }] }, actions: [{ type: 'move_deal_stage', config: { stageId: lost.id } }] });
+    await scope(() => moveDealStage(deal.id, tenantId, actor.id, { stageId: lost.id, lostReason: 'Initial closing reason' }));
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: 'Saved after closure' } }));
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deal.id, newStageId: lost.id } })).toBe(1);
+  });
+  it('serializes multiple late saves against one original stage entry without repeating side effects', async () => {
+    const field = await scope(() => saveField(tenantId, actor.id, { module: 'deals', group: 'Additional Details', name: `Late reason ${randomUUID()}`, type: 'Long Text', required: false, options: [] }));
+    const deal = await newDeal();
+    const workflow = await create({ trigger: 'deal.stage_changed', conditions: { operator: 'AND', conditions: [
+      { field: `deal.customFieldValues.${field.id}`, operator: 'is_not_empty', value: null },
+    ] }, actions: [{ type: 'create_task', config: { title: `Continuation ${deal.id}`, assignedUserId: taskOwner.id } }] });
+    // Keep the original event queued while the reason changes twice.
+    await tenantContext.run({ tenantId }, () => moveDealStage(deal.id, tenantId, actor.id, { stageId: qualified.id }));
+    await Promise.all(['First reason', 'Revised reason'].map(value => tenantContext.run({ tenantId }, () => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: value } }))));
+    await flushWorkflowQueue(tenantId);
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(await prisma.task.count({ where: { tenantId, title: `Continuation ${deal.id}` } })).toBe(1);
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: 'Another reason' } }));
+    expect(await prisma.task.count({ where: { tenantId, title: `Continuation ${deal.id}` } })).toBe(1);
+  });
+
+  it.each(['pause', 'edit', 'reactivate', 'supersede', 'revoke'] as const)('revalidates a queued late-condition continuation after %s', async change => {
+    const field = await scope(() => saveField(tenantId, actor.id, { module: 'deals', group: 'Additional Details', name: `Continuation guard ${randomUUID()}`, type: 'Long Text', required: false, options: [] }));
+    const deal = await newDeal();
+    const title = `Guarded continuation ${deal.id}`;
+    const workflow = await create({ trigger: 'deal.stage_changed', conditions: { operator: 'AND', conditions: [
+      { field: 'deal.stageId', operator: 'equals', value: qualified.id },
+      { field: `deal.customFieldValues.${field.id}`, operator: 'is_not_empty', value: null },
+    ] }, actions: [{ type: 'create_task', config: { title, assignedUserId: taskOwner.id } }] });
+    await scope(() => moveDealStage(deal.id, tenantId, actor.id, { stageId: qualified.id }));
+    await tenantContext.run({ tenantId }, async () => {
+      await updateDeal(deal.id, tenantId, actor.id, { customFieldValues: { [field.id]: 'Late committed reason' } });
+      if (change === 'supersede') await moveDealStage(deal.id, tenantId, actor.id, { stageId: initial.id });
+      else if (change === 'revoke') await prisma.user.update({ where: { id: actor.id }, data: { role: 'Staff without grants' } });
+      else if (change === 'edit') await workflows.updateWorkflow(workflow.id, tenantId, actor.id, { actions: [{ type: 'create_task', config: { title: 'Edited definition', assignedUserId: taskOwner.id } }] });
+      else {
+        await workflows.toggleWorkflow(workflow.id, tenantId, actor.id, false);
+        if (change === 'reactivate') await workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true);
+      }
+    });
+    try {
+      await flushWorkflowQueue(tenantId);
+      // Reactivating an unchanged published definition may consume its still-current, untouched event.
+      expect(await prisma.task.count({ where: { tenantId, title } })).toBe(change === 'reactivate' ? 1 : 0);
+      expect(await prisma.workflowExecutionRun.count({ where: { tenantId, workflowId: workflow.id, status: 'completed' } })).toBe(change === 'reactivate' ? 1 : 0);
+    } finally { await prisma.user.update({ where: { id: actor.id }, data: { role: 'Client Admin' } }); }
+  });
+
   it('uses normalized Product IDs for Contact conditions and updates across rename', async () => {
     const entity = 'contact' as const, record = contact;
     const edit = (patch: any) => scope(() => updateContact(record.id, tenantId, patch, actor.id));
@@ -115,6 +187,9 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   });
 
   it('evaluates canonical previous/new status and rejects stale or no-op status events', async () => {
+    const previousLead = lead;
+    lead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Independent', lastName: 'Status', assignedUserId: actor.id } }));
+    try {
     await scope(() => updateLead(lead.id, tenantId, actor.id, { status: 'Cold' }));
     const workflow = await create({ trigger: 'lead.status_changed', conditions: { operator: 'AND', conditions: [
       { field: 'event.previousStatus', operator: 'equals', value: 'Cold' }, { field: 'event.newStatus', operator: 'equals', value: 'Warm' },
@@ -125,6 +200,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     expect((await runs(workflow.id))[0].status).toBe('completed');
     await scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.status_changed', entityType: 'lead', entityId: lead.id, context: { 'event.previousStatus': 'Warm', 'event.newStatus': 'Cold', 'lead.status': 'Cold' } }));
     expect(await runs(workflow.id)).toHaveLength(1);
+    } finally { lead = previousLead; }
   });
 
   it('records a failed run for a missing actor and ignores metadata-only/retired field updates', async () => {

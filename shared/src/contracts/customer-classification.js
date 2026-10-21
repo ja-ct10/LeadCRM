@@ -45,6 +45,7 @@ function classifyDealEngagement(events, now = new Date(), outcome) {
     if (outcome)
         return outcome === 'won' ? 'Closed Deal' : 'Cancelled';
     let status = 'Inquiry';
+    let qualified = false;
     let baseline;
     const age = (at) => {
         if (baseline === undefined)
@@ -59,15 +60,18 @@ function classifyDealEngagement(events, now = new Date(), outcome) {
         .sort((a, b) => +a.at - +b.at || rank[a.type] - rank[b.type])) {
         age(+event.at);
         if (event.type === 'qualified') {
+            qualified = true;
             status = 'Hot';
             baseline = +event.at;
         }
         else if (event.type === 'reply') {
-            status = status === 'Hot' ? 'Hot' : 'Warm';
+            status = qualified ? 'Hot' : 'Warm';
             baseline = +event.at;
         }
-        else if (baseline === undefined)
+        else if (baseline === undefined) {
+            status = 'Warm';
             baseline = +event.at;
+        }
     }
     age(+now);
     return status;

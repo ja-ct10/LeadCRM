@@ -55,7 +55,7 @@ it.each(['missing', 'passwordless', 'wrong-password'])('rejects %s without issui
   if (mode === 'passwordless') db.user.findMany.mockResolvedValue([{ ...user, passwordHash: null }]);
   if (mode === 'wrong-password') vi.mocked(comparePassword).mockResolvedValue(false);
   await expect(loginUser({ email: user.email, password: 'incorrect' }))
-    .rejects.toMatchObject({ statusCode: 401 });
+    .rejects.toMatchObject({ statusCode: 401, code: 'AUTH_INVALID_CREDENTIALS' });
   expect(createSession).not.toHaveBeenCalled();
 });
 it.each([
@@ -75,6 +75,17 @@ it('keeps the backend token in its HttpOnly cookie, outside the browser JSON res
     expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }));
   expect(res.json.mock.calls[0][0].data).not.toHaveProperty('token');
   expect(res.json.mock.calls[0][0].data.user).not.toHaveProperty('passwordHash');
+});
+it.each([false, true])('uses the real cookie persistence policy for Remember Me %s', async rememberMe => {
+  const req = { body: { email: user.email, password: 'secret', rememberMe }, headers: {}, ip: '127.0.0.1' };
+  const res = { setHeader: vi.fn(), cookie: vi.fn(), json: vi.fn() }, next = vi.fn();
+  await login(req as never, res as never, next);
+  expect(next).not.toHaveBeenCalled();
+  const options = res.cookie.mock.calls[0][2];
+  expect(options.httpOnly).toBe(true); expect(options.sameSite).toBe('lax');
+  if (rememberMe) expect(options.maxAge).toBe(7 * 86400000);
+  else { expect(options).not.toHaveProperty('maxAge'); expect(options).not.toHaveProperty('expires'); }
+  expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ expiresInMs: 7 * 86400000 }), expect.anything());
 });
 
 it.each(['employee@example.com', 'employee@camxian.com.attacker.test', 'employee@sub.camxian.com'])('rejects external Client Admin email %s server-side', async email => {

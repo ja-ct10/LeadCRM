@@ -34,6 +34,7 @@ export interface AuthResponse {
 export interface SessionMetadata { lastActiveAt: string; idleExpiresAt: string; expiresAt: string; serverNow: string; }
 
 export type LoginResponse = AuthResponse;
+export const INVALID_LOGIN_CODE = 'AUTH_INVALID_CREDENTIALS';
 
 export const LOGIN_LOCKOUT_CODE = 'AUTH_LOGIN_LOCKED';
 export const ACCOUNT_LOCKED_CODE = 'AUTH_ACCOUNT_LOCKED';

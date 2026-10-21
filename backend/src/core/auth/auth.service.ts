@@ -5,7 +5,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { createAuthSessionToken, type SessionContext } from './auth-session';
 import { authUserInclude, buildAuthUserResponse } from './auth-user';
 import { authTransaction } from './auth-transaction';
-import { INVALID_LOGIN_MESSAGE, LOGIN_FAILURE_LIMIT, LOGIN_LOCKOUT_MS, isWorkspaceAccessible } from '@leadcrm/shared';
+import { INVALID_LOGIN_MESSAGE, INVALID_LOGIN_CODE, LOGIN_FAILURE_LIMIT, LOGIN_LOCKOUT_MS, isWorkspaceAccessible } from '@leadcrm/shared';
 import { databaseNow, loginIdentityKey, lockLoginState, LoginLockedError, loginSecurityEvent, resetExpiredLoginState } from './login-attempt.service';
 import { LoginSchema } from './auth.dto';
 import { LOGIN_SECURITY_LOCK_CYCLE_LIMIT, accountLockedError } from './login-attempt.service';
@@ -13,7 +13,7 @@ export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
 export { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 
-export interface LoginDto { email: string; password: string; }
+export type LoginDto = import('@leadcrm/shared').LoginInput;
 export type LoginContext = SessionContext;
 
 export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
@@ -84,7 +84,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
       } });
       events.push({ event: 'credential_failure', count: state.failedAttempts + 1 });
       // Return, then throw after COMMIT: throwing here would roll back the count.
-      return { error: new AppError(INVALID_LOGIN_MESSAGE, 401), events };
+      return { error: new AppError(INVALID_LOGIN_MESSAGE, 401, INVALID_LOGIN_CODE), events };
     }
 
     // READ COMMITTED with explicit user/workspace locks retains the existing
@@ -92,7 +92,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${verified.id} AND "tenantId" = ${verified.tenantId} FOR UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${verified.tenantId} FOR SHARE`;
     const current = await tx.user.findFirst({ where: { id: verified.id, tenantId: verified.tenantId }, include: authUserInclude });
-    if (!current || current.passwordHash !== verified.passwordHash) return { error: new AppError(INVALID_LOGIN_MESSAGE, 401), events };
+    if (!current || current.passwordHash !== verified.passwordHash) return { error: new AppError(INVALID_LOGIN_MESSAGE, 401, INVALID_LOGIN_CODE), events };
     if (current.securityLockedAt) return { error: accountLockedError(), events };
     try {
       await requireEmployeeAccount(current, tx);

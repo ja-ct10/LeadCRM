@@ -78,7 +78,7 @@ function RelatedRecords({ records, module, empty, showSubtitle = true }: { recor
 }
 
 /** The drawer and route render this same record reader, actions and content. */
-export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false, focusNote = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
+export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false, focusNote = false, initialTab = 'activity' }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean; initialTab?: 'activity' | 'details' }) {
   const router = useRouter();
   const fieldLayout = useFieldLayout(module);
   const detailLayout = canonicalPersonFieldLayout(fieldLayout.layout);
@@ -96,9 +96,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const canReadAccounts = useHasPermission('accounts.view');
   const canEditContacts = useHasPermission('contacts.edit');
   const canEditLeads = useHasPermission('leads.edit');
-  const [tab, setTab] = useState(focusClosing ? 'details' : 'activity');
+  const [tab, setTab] = useState<string>(focusClosing ? 'details' : initialTab);
   const [closingAttention, setClosingAttention] = useState(focusClosing);
-  const [detailsVisited, setDetailsVisited] = useState(false);
+  const [detailsVisited, setDetailsVisited] = useState(initialTab === 'details' || focusClosing);
+  useEffect(() => { if (initialTab === 'details') { setTab('details'); setDetailsVisited(true); } }, [initialTab]);
   const [converting, setConverting] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -283,7 +284,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const phone = text(person?.phone);
   const personInboxAction = module === 'leads' || module === 'contacts';
   const emailChipAction = personInboxAction || module === 'deals';
-  const ownsRecordMailbox = !!user?.id && record.assignedUserId === user.id;
+  const ownsRecordMailbox = !!user?.id && (user.role === 'Client Admin' || record.assignedUserId === user.id);
   // The API projects canonical Product relations into these ID/name arrays.
   const dealProductIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const dealProductNames = record.productInterests as string[] | undefined;
@@ -298,7 +299,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     if (composeHref) router.push(composeHref);
   };
   const openDealEmail = () => {
-    if (!user?.id || record.assignedUserId !== user.id) {
+    if (!ownsRecordMailbox) {
       toast.error('You cannot email this deal because it is not assigned to you.');
       return;
     }
@@ -408,11 +409,11 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
   const manageMenu = (canEdit || canArchive) && (
     <DropdownMenu>
-      <TooltipProvider><Tooltip><TooltipTrigger asChild><DropdownMenuTrigger asChild>
+      <TooltipProvider><Tooltip><DropdownMenuTrigger asChild><TooltipTrigger asChild>
         <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Record actions" title="Record actions">
           <MoreHorizontal size={16} />
         </Button>
-      </DropdownMenuTrigger></TooltipTrigger><TooltipContent>Record actions</TooltipContent></Tooltip></TooltipProvider>
+      </TooltipTrigger></DropdownMenuTrigger><TooltipContent>Record actions</TooltipContent></Tooltip></TooltipProvider>
       <DropdownMenuContent align="end">
         {canEdit && <DropdownMenuItem onSelect={edit}><Pencil size={14} />Edit {label.toLowerCase()}</DropdownMenuItem>}
         {module === 'deals' && canCreateDeal && !USE_MOCK_DATA && <DropdownMenuItem onSelect={() => { void duplicateDeal(id).then(next => router.push('/crm/deals/' + next.id)).catch(() => {}); }}>Duplicate deal</DropdownMenuItem>}
@@ -542,9 +543,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     </Tabs>
 
     <Dialog open={Boolean(lostStage)} onOpenChange={open => { if (!open && !saving) setLostStage(undefined); }}>
-      <DialogContent showClose={false} aria-label="Close Deal as lost" className="max-w-sm">
+      <DialogContent showClose={false} aria-label="Cancel Deal" className="max-w-sm">
         <form className="space-y-3" onSubmit={e => { e.preventDefault(); if (lostStage && !saving) void changeStage(lostStage, lostReason); }}>
-          <label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label>
+          <label className="block text-sm">Reason for Cancellation<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label>
           <div className="flex flex-wrap gap-2"><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setLostStage(undefined)}>Cancel</Button></div>
         </form>
       </DialogContent>
@@ -557,9 +558,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   </div>;
 }
 
-export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing, focusNote }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
+export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing, focusNote, initialTab }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean; initialTab?: 'activity' | 'details' }) {
   const { user } = useAuth();
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className={panelSurfaceClass}>
-    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} focusNote={focusNote} />}
+    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} focusNote={focusNote} initialTab={initialTab} />}
   </SheetContent></Sheet>;
 }

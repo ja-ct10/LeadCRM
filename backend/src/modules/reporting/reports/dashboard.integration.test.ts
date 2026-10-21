@@ -5,11 +5,11 @@ import { PrismaClient } from '@prisma/client';
 import type { Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
-import { installTenantScoping } from '../../../core/tenant/tenant-prisma';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, dashboardCsv } from '@leadcrm/shared';
 
 vi.mock('../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DASHBOARD_TEST_DATABASE_URL! } } }) }));
+const disposable = !!process.env.DATABASE_URL && /^postgres(?:ql)?:\/\/[^/]+@127\.0\.0\.1:\d+\/leadcrm_forms_test_2(?:\?|$)/.test(process.env.DATABASE_URL);
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, base: string;
 let dashboard: typeof import('./dashboard.service').getDashboard;
 let move: typeof import('../../crm/deals/deals.repository').moveDealStage;
@@ -133,10 +133,14 @@ async function http(path: string, token = adminToken, method = 'GET', body?: unk
 }
 beforeAll(async () => {
   process.env.JWT_SECRET = 'disposable-dashboard-test-secret';
-  pg = await PGlite.create(); await replayCrmMigrations(pg);
-  socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
-  process.env.DASHBOARD_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
-  db = (await import('../../../config/database.config')).default; installTenantScoping(db);
+  if (disposable) process.env.DASHBOARD_TEST_DATABASE_URL = process.env.DATABASE_URL;
+  else {
+    pg = await PGlite.create(); await replayCrmMigrations(pg);
+    socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
+    process.env.DASHBOARD_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
+  }
+  db = (await import('../../../config/database.config')).default;
+  const { installTenantScoping } = await import('../../../core/tenant/tenant-prisma'); installTenantScoping(db);
   dashboard = (await import('./dashboard.service')).getDashboard;
   move = (await import('../../crm/deals/deals.repository')).moveDealStage;
   await db.tenant.createMany({ data: [{ id: 'a', name: 'A', slug: 'a', onboardingStep: 3, onboardingCompletedAt: now }, { id: 'b', name: 'B', slug: 'b', onboardingStep: 3, onboardingCompletedAt: now }] });
@@ -148,7 +152,7 @@ beforeAll(async () => {
     { id: 'denied', tenantId: 'a', role: 'Viewer', email: 'denied@camxian.com' },
   ].map(user => ({ ...user, firstName: user.id, lastName: 'Test', mustChangePassword: false, onboardingCompletedAt: now })) });
   await db.roleDefinition.create({ data: { id: 'sales-role', tenantId: 'a', name: 'Sales' } });
-  await db.rolePermission.createMany({ data: ['dashboard','deals','leads','tasks'].map(module => ({ tenantId: 'a', roleId: 'sales-role', module, canView: true, canEdit: true, canCreate: true })) });
+  await db.rolePermission.createMany({ data: ['dashboard','deals','leads','tasks'].map(module => ({ tenantId: 'a', roleId: 'sales-role', module, canView: true, canViewAll: ['deals', 'leads'].includes(module), canEdit: true, canCreate: true })) });
   await db.userRole.createMany({ data: ['agent','other-agent'].map(userId => ({ tenantId: 'a', userId, roleId: 'sales-role' })) });
   await db.pipeline.createMany({ data: [{ id: 'sales', tenantId: 'a', name: 'Sales Pipeline' }, { id: 'foreign-sales', tenantId: 'b', name: 'Sales Pipeline' }] });
   await db.stage.createMany({ data: [
@@ -274,6 +278,48 @@ describe('Qualified-only forecast', () => {
 });
 
 describe('authoritative dashboard', () => {
+  it('returns five zero cards for a new empty workspace before any pipeline has been configured', async () => {
+    const tenantId = 'unconfigured-empty';
+    await db.tenant.create({ data: { id: tenantId, name: 'New empty workspace', slug: tenantId } });
+    await db.user.create({ data: { id: 'empty-admin', tenantId, role: 'Client Admin', firstName: 'Empty', lastName: 'Admin', email: 'empty@camxian.com' } });
+    const result = await tenantContext.run({ tenantId }, () => dashboard({ ...admin, userId: 'empty-admin', tenantId }, query, now));
+    expect(result.metrics).toMatchObject({ totalRevenue: 0, forecastedRevenue: 0, activeDeals: 0, totalLeads: 0, winRate: 0 });
+    expect(result.pipeline).toBeNull(); expect(result.trend).toEqual([]); expect(result.distribution).toEqual([]); expect(result.leaderboard).toEqual([]);
+    expect(await db.pipeline.count({ where: { tenantId } })).toBe(0);
+  });
+  it('restricts leaderboard data to the approved Groups or Client Admin, including HTTP and revocation', async () => {
+    const group = await db.tenantGroup.create({ data: { tenantId: 'a', name: 'Top Management' } });
+    try {
+      const denied = await scoped(() => dashboard(agent, query, now));
+      expect(denied.access.leaderboard).toBe(false); expect(denied.leaderboard).toEqual([]);
+      expect((await report()).access.leaderboard).toBe(true);
+      await db.tenantGroupMember.create({ data: { tenantId: 'a', userId: agent.userId, groupId: group.id } });
+      expect((await scoped(() => dashboard(agent, query, now))).access.leaderboard).toBe(true);
+      await db.tenantGroup.update({ where: { id: group.id }, data: { name: 'Head of Sales' } });
+      const response = await http('/reporting/dashboard', agentToken);
+      expect(response.status).toBe(200); expect((await response.json()).data.access.leaderboard).toBe(true);
+      await db.tenantGroupMember.deleteMany({ where: { groupId: group.id } });
+      const revoked = await (await http('/reporting/dashboard', agentToken)).json();
+      expect(revoked.data.access.leaderboard).toBe(false); expect(revoked.data.leaderboard).toEqual([]);
+    } finally { await db.tenantGroupMember.deleteMany({ where: { groupId: group.id } }); await db.tenantGroup.delete({ where: { id: group.id } }); }
+  });
+  it('uses the same assigned dataset for Sales cards, charts, actions and CSV', async () => {
+    await db.rolePermission.updateMany({ where: { tenantId: 'a', roleId: 'sales-role', module: { in: ['leads', 'deals'] } }, data: { canViewAll: false, canViewMy: true } });
+    try {
+      await deal('scoped-own', 'qualified', 1250, { assignedUserId: 'agent' });
+      await deal('scoped-other', 'qualified', 987654, { assignedUserId: 'other-agent' });
+      await db.lead.createMany({ data: ['agent','other-agent'].map((assignedUserId, index) => ({ id: `scope-person-${index}`, tenantId: 'a', firstName: 'Scope', lastName: String(index), status: 'Hot', assignedUserId })) });
+      const staff = await scoped(() => dashboard(agent, query, now));
+      expect(staff.metrics).toMatchObject({ activeDeals: 1, forecastedRevenue: 1250, totalLeads: 1 });
+      expect(staff.distribution.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+      expect(staff.actions.some(row => row.id === 'scope-person-1')).toBe(false);
+      expect(dashboardCsv(staff)).not.toContain('987654');
+    } finally {
+      await db.deal.deleteMany({ where: { id: { in: ['scoped-own','scoped-other'] } } });
+      await db.lead.deleteMany({ where: { id: { in: ['scope-person-0','scope-person-1'] } } });
+      await db.rolePermission.updateMany({ where: { tenantId: 'a', roleId: 'sales-role', module: { in: ['leads', 'deals'] } }, data: { canViewAll: true, canViewMy: false } });
+    }
+  });
   it('uses Manila boundaries, calendar validation and bounded custom ranges', () => {
     expect(dashboardPeriod({ range: 'today' }, new Date('2020-01-01T16:30:00Z')).from.toISOString()).toBe('2020-01-01T16:00:00.000Z');
     expect(dashboardPeriod({ range: 'lastMonth' }, new Date('2020-03-01T00:00:00Z'))).toMatchObject({ start: '2020-02-01', end: '2020-02-29' });
@@ -378,9 +424,9 @@ describe('authoritative dashboard', () => {
     await close('second-agent-win', 'won');
     await db.lead.create({ data: { id: 'second-agent-lead', tenantId: 'a', firstName: 'Private', lastName: 'Other action', status: 'Hot', assignedUserId: 'other-agent' } });
     const [organization, staff] = await Promise.all([report(), scoped(() => dashboard(agent, query, now))]);
-    expect(staff.scope).toBe('organization'); expect(staff.metrics).toEqual(organization.metrics);
+    expect(staff.scope).toBe('authorized'); expect(staff.metrics).toEqual(organization.metrics);
     expect(staff.distribution).toEqual(organization.distribution); expect(staff.trend).toEqual(organization.trend);
-    expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual(organization.leaderboard);
+    expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual([]); expect(staff.access.leaderboard).toBe(false);
     expect(staff.leadSourcePerformance).toEqual(organization.leadSourcePerformance);
     expect(organization.metrics).toMatchObject({ totalRevenue: before.metrics.totalRevenue! + 21000, activeDeals: before.metrics.activeDeals! + 1,
       totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
@@ -388,7 +434,7 @@ describe('authoritative dashboard', () => {
     expect(organization.leaderboard.map(row => row.revenue).sort((a, b) => a! - b!)).toEqual([21000, 45000]);
     expect(organization.leaderboard.map(row => row.id).sort()).toEqual(['agent', 'other-agent']);
     expect(organization.actions.some(row => row.id === 'second-agent-lead')).toBe(true);
-    expect(staff.actions.some(row => row.id === 'second-agent-lead')).toBe(false);
+    expect(staff.actions.some(row => row.id === 'second-agent-lead')).toBe(true);
     await db.deal.updateMany({ where: { id: { in: ['second-agent-open','second-agent-win'] } }, data: { isArchived: true } });
     await db.lead.update({ where: { id: 'second-agent-lead' }, data: { isArchived: true } });
   });
@@ -630,8 +676,9 @@ describe('authoritative dashboard', () => {
       const organization = await report();
       const staff = await scoped(() => dashboard(agent, query, now));
       expect(organization.actions.filter(row => ids.includes(row.id))).toHaveLength(34);
-      expect(staff.actions.filter(row => ids.includes(row.id))).toHaveLength(17);
-      expect(staff.actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(ownIds.sort());
+      const authorizedIds = ids.filter(id => !id.startsWith('scroll-task-') || id.startsWith('scroll-task-agent-'));
+      expect(staff.actions.filter(row => ids.includes(row.id))).toHaveLength(26);
+      expect(staff.actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(authorizedIds.sort());
       expect(organization.pendingActions).toBe(organization.actions.length);
       expect(staff.pendingActions).toBe(staff.actions.length);
       expect(organization.actions.some(row => row.id === 'scroll-foreign')).toBe(false);
@@ -642,7 +689,7 @@ describe('authoritative dashboard', () => {
       await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'tasks' }, data: { canView: false } });
       const restricted = await scoped(() => dashboard(agent, query, now));
       expect(restricted.actions.some(row => row.kind === 'task')).toBe(false);
-      expect(restricted.actions.filter(row => ids.includes(row.id))).toHaveLength(9);
+      expect(restricted.actions.filter(row => ids.includes(row.id))).toHaveLength(18);
     } finally {
       await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'tasks' }, data: { canView: true } });
       await db.stage.update({ where: { id: 'lead' }, data: { rottenAfterDays: null } });
@@ -699,7 +746,7 @@ describe('authoritative dashboard', () => {
       expect(cards.filter(row => row.staleness.isStale).map(row => row.id).sort()).toEqual(expected);
       expect(cards.find(row => row.id === 'stale-custom-exact')!.staleness.thresholdDays).toBe(7);
       expect(actions.find(row => row.id === 'stale-exact')).toMatchObject({ title: 'stale-exact', priority: 'MEDIUM', href: '/crm/deals/stale-exact' });
-      expect((await scoped(() => dashboard(agent, query, now))).actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(expected.filter(id => id !== 'stale-other-agent'));
+      expect((await scoped(() => dashboard(agent, query, now))).actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(expected);
       await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: false } });
       expect((await scoped(() => dashboard(agent, query, now))).actions.some(row => row.kind === 'deal')).toBe(false);
       expect(await db.deal.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' } })).toEqual(before);
@@ -720,7 +767,7 @@ describe('authoritative dashboard', () => {
   });
   it('enforces staff scope, module restrictions, HTTP auth, exports and cross-tenant requests', async () => {
     const organization = await scoped(() => dashboard(agent, query, now));
-    expect(organization.scope).toBe('organization'); expect(organization.metrics).toEqual((await report()).metrics);
+    expect(organization.scope).toBe('authorized'); expect(organization.metrics).toEqual((await report()).metrics);
     expect((await http('/reporting/dashboard', '')).status).toBe(401);
     expect((await http('/reporting/dashboard?tenantId=b')).status).toBe(400);
     const foreign = await (await http('/reporting/dashboard', foreignToken)).json();

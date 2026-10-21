@@ -220,13 +220,17 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     const result = await call('/marketing/campaigns/quotations/send', 'POST', { draft: value, fingerprint: prepared.fingerprint, requestId: randomUUID() });
     expect(result.status).toBe(409); expect(vi.mocked(writeGmailJson).mock.calls.length).toBe(before);
   });
-  it('preserves exact recipient assignment for Client Admin', async () => {
+  it('allows Client Admin to send from their own mailbox to an unassigned same-tenant recipient', async () => {
     const value = draft(), prepared = await preview(value);
     await scope(() => prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: null } }));
-    const updated = await preview(value);
-    expect((await call('/marketing/campaigns/quotations/send', 'POST', { draft: value, fingerprint: updated.fingerprint, requestId: randomUUID() })).status).toBe(403);
-    await scope(() => prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: userId } }));
-    expect(prepared.fingerprint).not.toBe(updated.fingerprint);
+    try {
+      const updated = await preview(value), requestId = randomUUID();
+      expect((await call('/marketing/campaigns/quotations/send', 'POST', { draft: value, fingerprint: updated.fingerprint, requestId })).status).toBe(200);
+      expect((await prisma.lead.findUniqueOrThrow({ where: { id: leadId } })).assignedUserId).toBeNull();
+      const receipt = await prisma.mailboxSendReceipt.findFirstOrThrow({ where: { tenantId, requestId }, include: { account: true } });
+      expect(receipt.status).toBe('sent'); expect(receipt.account.userId).toBe(userId);
+      expect(prepared.fingerprint).not.toBe(updated.fingerprint);
+    } finally { await scope(() => prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: userId } })); }
   });
   it('attaches the preview PDF and replays one confirmed send after source data changes', async () => {
     const value = draft(), prepared = await preview(value), requestId = randomUUID();
@@ -243,7 +247,7 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
   });
   it('keeps old HTML MIME unchanged and rejects unsafe attachment filenames', () => {
     expect(Buffer.from(createRawMessage('to@example.test', 'Subject', '<p>Body</p>', 'from@example.test'), 'base64url').toString()).toContain('Content-Type: text/html; charset=utf-8\r\n\r\n<p>Body</p>');
-    expect(() => createRawMessage('to@example.test', 'Subject', 'Body', 'from@example.test', undefined, undefined, [], [{ filename: 'bad\r\nheader.pdf', mimeType: 'application/pdf', data: Buffer.from('%PDF-') }])).toThrow('Invalid generated PDF attachment');
+    expect(() => createRawMessage('to@example.test', 'Subject', 'Body', 'from@example.test', undefined, undefined, [], [{ filename: 'bad\r\nheader.pdf', mimeType: 'application/pdf', data: Buffer.from('%PDF-') }])).toThrow('Invalid attachment');
   });
   it('recovers a previously attempted legacy quotation without a Deal using its frozen attachment', async () => {
     const value = draft(), prepared = await preview(value), requestId = randomUUID();

@@ -409,7 +409,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }], {
       trigger: 'lead.status_changed', conditions: { operator: 'AND', conditions: [{ field: 'lead.status', operator: 'equals', value: 'Warm' }] },
     });
-    const created = await call('/crm/leads', 'POST', { firstName: 'Status', lastName: 'Example', email: 'status@example.test', status: 'Cold' });
+    const created = await call('/crm/leads', 'POST', { firstName: 'Status', lastName: 'Example', email: 'status@example.test', status: 'Inquiry' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     expect((await call(`/crm/leads/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
@@ -423,7 +423,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const changedWorkflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }], {
       trigger: 'contact.status_changed', conditions: { operator: 'AND', conditions: [{ field: 'contact.status', operator: 'equals', value: 'Warm' }] },
     });
-    const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Cold', productInterests: [] });
+    const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Inquiry', productInterests: [] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     expect((await call(`/crm/contacts/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);

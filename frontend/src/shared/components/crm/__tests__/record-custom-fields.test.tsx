@@ -318,3 +318,14 @@ it('keeps native required/email validation and Save/Cancel behavior after sharin
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.test' } }); fireEvent.keyDown(screen.getByLabelText('Email'), { key: 'Enter' });
   await waitFor(() => expect(save).toHaveBeenCalledWith('email', 'new@example.test'));
 });
+
+it('cancels an inline field with Escape without closing its parent record panel', () => {
+  const save = vi.fn(), closePanel = vi.fn();
+  render(<div onKeyDown={closePanel}><InlineEditRows rows={[{ label: 'Address', value: 'Saved address', apiField: 'address' }]} canEdit onSave={save} /></div>);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Address' }));
+  fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Discard this address' } });
+  fireEvent.keyDown(screen.getByLabelText('Address'), { key: 'Escape' });
+  expect(screen.queryByLabelText('Address')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Edit Address' }).textContent).toContain('Saved address');
+  expect(closePanel).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+});

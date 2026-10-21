@@ -17,6 +17,13 @@ for concurrency, shared IP limits, browser restoration and deployment requiremen
 
 ## Supported flows
 
+Login accepts optional `rememberMe` (default `false`). Checked issues a seven-day
+persistent HttpOnly cookie; unchecked omits both Max-Age and Expires for a browser
+session cookie. Both retain the seven-day JWT/database-session cap and the existing
+thirty-minute inactivity expiry. `AUTH_INVALID_CREDENTIALS` identifies a rejected
+email/password pair; the login form clears those inputs only for that error.
+Recoverable network and server errors preserve the inputs.
+
 - All new users: sign in with email/password → change temporary password when required → informational LeadCRM onboarding → dashboard with existing role permissions.
 - Returning users who have completed setup: sign in → dashboard, or change their password first when it has expired.
 - Existing users with `mustChangePassword=false` at migration time keep their established access; their passwords and roles are unchanged.

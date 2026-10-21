@@ -26,7 +26,7 @@ beforeEach(() => {
   mocks.report = {
     generatedAt: '2020-01-15T04:00:00Z', queryMs: 1, currency: 'PHP', scope: 'organization',
     period: { start: '2020-01-01', end: '2020-01-15', interval: 'month', timezone: 'Asia/Manila' },
-    access: { deals: true, leads: true, tasks: true }, pipeline: { id: 'sales', name: 'Sales Pipeline', stages },
+    access: { deals: true, leads: true, tasks: true, leaderboard: true }, pipeline: { id: 'sales', name: 'Sales Pipeline', stages },
     metrics: { totalRevenue: 45000, forecastedRevenue: 37000, activeDeals: 3, totalLeads: 1, won: 1, lost: 0,
       currentWon: 2, totalDeals: 25, winRate: 8, averageDealDays: 4, openPipelineValue: 225000,
       forecastMissing: 0, monetaryMissing: 0, currencyExcluded: 0, closingDateMissing: 0, unattributedWon: 1, unattributedRevenue: 1000 },
@@ -195,6 +195,12 @@ it('renders backend leaderboard rank, initials, revenue and attributed deal coun
   expect(board.getByLabelText('₱44,000.00').textContent).toBe('₱44K');
   expect(board.getByText('2 deals')).toBeTruthy();
   expect(board.getByText('1 won deals · ₱1,000.00 without verified eligible sales credit')).toBeTruthy();
+});
+it('omits the leaderboard when the backend denies its Group-level access', () => {
+  mocks.report!.access.leaderboard = false;
+  render(<Dashboard />);
+  expect(screen.queryByRole('region', { name: 'Sales Leaderboard' })).toBeNull();
+  expect(screen.queryByText('Historical Agent')).toBeNull();
 });
 
 it('renders truthful empty states, zero current counts and unavailable rates', () => {

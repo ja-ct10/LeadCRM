@@ -20,7 +20,7 @@ const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
 const permissions = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
 describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and scheduled delivery', () => {
-  let tenantId: string, userId: string, otherId: string, token: string, account: EmailAccount, server: Server, base: string;
+  let tenantId: string, userId: string, otherId: string, salesRoleId: string, token: string, account: EmailAccount, server: Server, base: string;
   let leadEmail: string, contactEmail: string, leadId: string;
   const realFetch = globalThis.fetch;
   const scope = <T>(fn: () => T) => tenantContext.run({ tenantId }, fn);
@@ -40,12 +40,16 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   };
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Scoped mail tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
-    otherId = (await prisma.user.create({ data: { tenantId, email: `other-${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'Agent', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } })).id;
+    salesRoleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', crmAssignmentRestricted: true } })).id;
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'accounts', 'tasks'].map(module => ({ tenantId, roleId: salesRoleId, module, canView: true, canViewMy: true, canEdit: true, canCreate: true, canDelete: true })) });
+    otherId = (await prisma.user.create({ data: { tenantId, email: `other-${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'Agent', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } })).id;
+    await prisma.userRole.create({ data: { tenantId, roleId: salesRoleId, userId: otherId } });
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/integrations/gmail`;
   });
   beforeEach(async () => {
-    const user = await prisma.user.create({ data: { tenantId, email: `scope-${randomUUID()}@camxian.com`, firstName: 'Inbox', lastName: 'Agent', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    const user = await prisma.user.create({ data: { tenantId, email: `scope-${randomUUID()}@camxian.com`, firstName: 'Inbox', lastName: 'Agent', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: salesRoleId, userId: user.id } });
     userId = user.id; token = (await issueAuthSession(user)).token;
     account = await prisma.emailAccount.create({ data: { tenantId, userId, email: user.email, accessToken: encryptToken(randomUUID()), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
     leadEmail = `lead-${randomUUID()}@example.test`; contactEmail = `contact-${randomUUID()}@example.test`;
@@ -306,10 +310,16 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const relationships = await request(`/crm/leads/${leadId}/relationships`);
     expect(relationships.status).toBe(200); expect(relationships.cache).toBe('no-store');
     const actualCount = prisma.activity.count.bind(prisma.activity);
+    const actualList = prisma.activity.findMany.bind(prisma.activity);
+    let countWhere: unknown, listWhere: unknown;
     let release!: () => void, counted!: () => void;
     const waiting = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { counted = resolve; });
-    const list = vi.spyOn(prisma.activity, 'findMany');
+    const list = vi.spyOn(prisma.activity, 'findMany').mockImplementation(args => {
+      listWhere = structuredClone(args?.where);
+      return actualList(args);
+    });
     const count = vi.spyOn(prisma.activity, 'count').mockImplementationOnce(args => {
+      countWhere = structuredClone(args?.where);
       const delayed = (async () => {
         const total = await actualCount(args);
         expect(total).toBe(2); counted(); await waiting;
@@ -320,7 +330,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const pending = request();
     try {
       await Promise.race([ready, pending.then(() => { throw new Error('Activity read completed before the delayed count boundary'); })]);
-      expect(count.mock.calls[0][0]?.where).toEqual(list.mock.calls[0][0]?.where);
+      expect(countWhere).toEqual(listWhere);
       await prisma.lead.update({ where: { id: leadId, tenantId }, data: { assignedUserId: otherId } });
       release();
       const response = await pending;
@@ -328,7 +338,8 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
       for (const key of ['data', 'total', 'nextCursor', 'meta']) expect(response.body).not.toHaveProperty(key);
     } finally { release(); await pending; count.mockRestore(); list.mockRestore(); }
     const current = await request();
-    expect(current.status).toBe(200); expect(current.cache).toBe('no-store'); expect(current.body).toMatchObject({ data: [], total: 0, nextCursor: null });
+    expect(current.status).toBe(404); expect(current.cache).toBe('no-store');
+    for (const key of ['data', 'total', 'nextCursor', 'meta']) expect(current.body).not.toHaveProperty(key);
   });
   it.each(['direct Activity', 'Lead relationships'] as const)('drops revoked email from %s when real CRM assignment changes during the body query', async surface => {
     const privateBody = 'Confidential customer body at the delayed read boundary';
@@ -449,7 +460,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     for (const [path, method, body] of [['/threads/oldbank', 'GET', undefined], ['/archive', 'POST', { messageIds: ['oldbank'] }], ['/trash', 'POST', { messageIds: ['oldbank'] }]] as const) expect((await call(path, method, body)).status).toBe(404);
     expect(provider).not.toHaveBeenCalled();
   });
-  it('revokes reassigned correspondence, even for Client Admin and direct thread IDs', async () => {
+  it('revokes reassigned Sales correspondence and direct thread IDs', async () => {
     await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'reassigned')], permissions));
     expect((await call('/threads/reassigned')).status).toBe(200);
     await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } });
@@ -586,7 +597,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it('preserves separate Deal groups inside one Gmail thread and leaves ambiguity unassigned', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const deals = [];
-    for (const title of ['CCTV topic', 'Telephone topic']) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title, value: 100,
+    for (const title of ['CCTV topic', 'Telephone topic']) deals.push(await prisma.deal.create({ data: { tenantId, assignedUserId: userId, pipelineId: pipeline.id, stageId: initial.id, title, value: 100,
       leadDeals: { create: { leadId, position: 0 } }, productInterests: [], tags: [] } }));
     await persistHistorical({ ...mail(leadEmail, 'deal-topic-a'), threadId: 'shared-deal-thread' }, { leadId, dealId: deals[0].id });
     await persistHistorical({ ...mail(leadEmail, 'deal-topic-b'), threadId: 'shared-deal-thread' }, { leadId, dealId: deals[1].id });
@@ -799,7 +810,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it('isolates Deal Files by saved message/thread associations and rejects unrelated or obsolete relationships', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const deals = [];
-    for (const title of ['CCTV Installation', 'Network Infrastructure']) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title, value: 100,
+    for (const title of ['CCTV Installation', 'Network Infrastructure']) deals.push(await prisma.deal.create({ data: { tenantId, assignedUserId: userId, pipelineId: pipeline.id, stageId: initial.id, title, value: 100,
       leadDeals: { create: { leadId, position: 0 } }, productInterests: [], tags: [] } }));
     await prisma.recordFile.create({ data: { tenantId, dealId: deals[0].id, uploadedById: userId, name: 'existing-deal-upload.pdf', type: 'application/pdf', size: 10, objectKey: 'untouched-deal-object' } });
     const attachments = [{ id: 'quotation', filename: 'QT-2026-1275D500.pdf', mimeType: 'application/pdf', size: 5 }];
@@ -881,12 +892,13 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: other.id, provider: 'gmail' } }, create: { tenantId, userId: other.id, email: other.email, accessToken: encryptToken('other-token'), tokenExpiresAt: new Date(Date.now() + 3600000) }, update: { isActive: true } });
     const otherToken = (await issueAuthSession(other)).token, provider = vi.fn(); vi.stubGlobal('fetch', provider);
     const list = await recordFiles('leads', leadId, 'email-attachments', otherToken);
-    expect(list.status).toBe(200); expect(list.body.data.attachments).toEqual([]);
+    expect(list.status).toBe(404); expect(list.body.data).toBeUndefined();
     const context = new URLSearchParams({ recordModule: 'leads', recordId: leadId });
     expect((await call('/messages/private-record-file/attachments/private?' + context, 'GET', undefined, 'Bearer ' + otherToken)).status).toBe(404);
     const foreign = await prisma.tenant.create({ data: { name: 'Foreign files', slug: randomUUID() } });
     const foreignLead = await prisma.lead.create({ data: { tenantId: foreign.id, firstName: 'Foreign', lastName: 'Customer', productInterest: [] } });
     expect((await recordFiles('leads', foreignLead.id)).status).toBe(404);
+    await prisma.userRole.deleteMany({ where: { tenantId, userId } });
     await prisma.user.update({ where: { id: userId }, data: { role: 'Staff' } });
     expect((await recordFiles('leads', leadId)).status).toBe(403);
     expect(provider).not.toHaveBeenCalled();
@@ -1378,13 +1390,13 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
 
   it('keeps customer and agent replies in one stable Deal row across ingestion replay', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Historical automatic Deal',
+    const deal = await prisma.deal.create({ data: { tenantId, assignedUserId: userId, pipelineId: pipeline.id, stageId: initial.id, title: 'Historical automatic Deal',
       leadDeals: { create: { leadId, position: 0 } } } });
     const sent = { ...mail(account.email, 'dedup-original', ['SENT']), threadId: 'dedup-thread', to: [leadEmail], date: new Date(Date.now() - 9000).toISOString(), rfcMessageId: '<dedup-original@example.test>' };
     await scope(() => ingestMailboxMessages(account, [sent], permissions, { dealId: deal.id }));
     const first = (await call('/emails')).body.emails[0];
     expect(first.dealId).toBe(deal.id); expect(first.messageCount).toBe(1);
-    const secondDeal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Another Deal',
+    const secondDeal = await prisma.deal.create({ data: { tenantId, assignedUserId: userId, pipelineId: pipeline.id, stageId: initial.id, title: 'Another Deal',
       leadDeals: { create: { leadId, position: 1 } } } });
     const received = { ...mail(leadEmail, 'dedup-customer'), threadId: sent.threadId, date: new Date(Date.now() - 6000).toISOString(),
       attachments: [{ id: 'original-file', filename: 'Reply.pdf', mimeType: 'application/pdf', size: 5 }] };
@@ -1465,7 +1477,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it('isolates Files, Activity and scoped writes when one thread contains two saved Deals', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const deals = [];
-    for (const title of ['CCTV', 'Network']) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title,
+    for (const title of ['CCTV', 'Network']) deals.push(await prisma.deal.create({ data: { tenantId, assignedUserId: userId, pipelineId: pipeline.id, stageId: initial.id, title,
       leadDeals: { create: { leadId, position: 0 } } } }));
     const messages = ['a', 'b'].map(id => ({ ...mail(leadEmail, 'isolation-' + id), threadId: 'isolation-thread',
       attachments: [{ id: 'pdf-' + id, filename: id + '.pdf', mimeType: 'application/pdf', size: 5 }] }));
@@ -1483,14 +1495,16 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const rows = (await call('/emails')).body.emails;
     const unknown = rows.find((row: GmailEmail) => !row.dealId);
     expect(unknown).toBeTruthy();
-    expect((await call('/threads/isolation-thread/deal', 'PATCH', { dealId: deals[0].id, conversationId: unknown.conversationId })).status).toBe(200);
+    expect((await call('/threads/isolation-thread/deal', 'PATCH', { dealId: deals[0].id, conversationId: unknown.conversationId })).status).toBe(409);
     expect((await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: messages[1].id } })).dealId).toBe(deals[1].id);
     const provider = vi.fn(async () => Response.json({})); vi.stubGlobal('fetch', provider);
     const groupA = (await call('/emails')).body.emails.find((row: GmailEmail) => row.dealId === deals[0].id);
-    expect((await call('/trash', 'POST', { conversationIds: [groupA.conversationId] })).body.count).toBe(2);
+    expect((await call('/trash', 'POST', { conversationIds: [groupA.conversationId] })).body.count).toBe(1);
     expect((await recordFiles('deals', deals[0].id)).body.data.attachments).toEqual([]);
     expect((await recordFiles('deals', deals[1].id)).body.data.attachments.map((file: any) => file.messageId)).toEqual([messages[1].id]);
-    expect((await recordFiles('deals', deals[0].id, 'relationships')).body.data.activities.filter((activity: any) => activity.type === 'email')).toHaveLength(2);
+    const preservedActivities = (await recordFiles('deals', deals[0].id, 'relationships')).body.data.activities.filter((activity: any) => activity.type === 'email');
+    expect(preservedActivities).toHaveLength(1);
+    expect(preservedActivities[0].metadata.email.providerMessageId).toBe(messages[0].id);
     expect(provider.mock.calls.every(([path]) => !String(path).includes('isolation-b'))).toBe(true);
   });
 
@@ -1722,8 +1736,9 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(provider).not.toHaveBeenCalled();
   });
   async function setReadOnly(leadEdit = false, contactEdit = false) {
+    await prisma.userRole.deleteMany({ where: { tenantId, userId } });
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Inbox access ' + randomUUID(), crmAssignmentRestricted: true } });
-    await prisma.rolePermission.createMany({ data: [{ tenantId, roleId: role.id, module: 'leads', canView: true, canEdit: leadEdit }, { tenantId, roleId: role.id, module: 'contacts', canView: true, canEdit: contactEdit }] });
+    await prisma.rolePermission.createMany({ data: [{ tenantId, roleId: role.id, module: 'leads', canView: true, canViewMy: true, canEdit: leadEdit }, { tenantId, roleId: role.id, module: 'contacts', canView: true, canViewMy: true, canEdit: contactEdit }] });
     await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId } });
     await prisma.user.update({ where: { id: userId }, data: { role: role.name } });
   }
@@ -1782,6 +1797,22 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect([401, 403, 409]).toContain((await call('/threads/disabled/read-state', 'PATCH', { isRead: true })).status);
     expect(provider).not.toHaveBeenCalled();
   });
+  it('lets Client Admin send from their own mailbox to a same-tenant customer assigned to another agent', async () => {
+    await prisma.user.update({ where: { id: userId }, data: { role: 'Client Admin' } });
+    await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } });
+    const outgoing = { ...mail(account.email, 'admin-unassigned-send', ['SENT']), to: [leadEmail] };
+    let writes = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_path: string | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') { writes++; return Response.json({ id: outgoing.id, threadId: outgoing.threadId }); }
+      return Response.json(apiMail(outgoing));
+    }));
+    const payload = { to: leadEmail, subject: 'Admin inquiry', body: '<p>Details</p>', requestId: randomUUID(), recordContext: { recordModule: 'leads', recordId: leadId } };
+    const sent = await call('/send', 'POST', payload);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200); expect(writes).toBe(1);
+    expect(await prisma.mailboxSendReceipt.findFirstOrThrow({ where: { tenantId, accountId: account.id, requestId: payload.requestId } })).toMatchObject({ status: 'sent', providerMessageId: outgoing.id });
+    expect((await call('/send', 'POST', payload)).status).toBe(200); expect(writes).toBe(1);
+  });
+
   it('claims interactive sends once across concurrent retries and returns the saved receipt', async () => {
     const outgoing = { ...mail(account.email, 'once-sent', ['SENT']), to: [leadEmail] };
     let sends = 0;

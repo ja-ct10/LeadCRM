@@ -78,8 +78,10 @@ time; future-time validation applies when reserving a new schedule.
 
 Mailbox reads remain `no-store`. Every provider-visible participant can veto
 access, including To/Cc/Reply-To/Bcc and independent duplicate CRM identities;
-the verified connected mailbox self-address is excluded. Client Admin has no
-assignment bypass. Hidden Bcc that Gmail does not expose cannot be verified.
+the verified connected mailbox self-address is excluded. Client Admin may contact
+available same-tenant customers regardless of assignment using their own connected
+mailbox. Sales retains the assignment restriction. Unavailable identities and
+outside recipients still veto access. Hidden Bcc that Gmail does not expose cannot be verified.
 Historical email activities are exposed only through the same current mailbox
 policy. Activity and relationship reads containing that history also use
 `no-store`. An Activity list whose mailbox authorization revision changes while

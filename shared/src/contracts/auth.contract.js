@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = exports.LOGIN_LOCKOUT_MESSAGE = exports.INVALID_LOGIN_MESSAGE = exports.LOGIN_LOCKOUT_MS = exports.LOGIN_FAILURE_LIMIT = exports.SESSION_IDLE_MESSAGE = exports.SESSION_IDLE_MS = exports.ACCOUNT_LOCKED_MESSAGE = exports.ACCOUNT_LOCKED_CODE = exports.LOGIN_LOCKOUT_CODE = void 0;
+exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = exports.LOGIN_LOCKOUT_MESSAGE = exports.INVALID_LOGIN_MESSAGE = exports.LOGIN_LOCKOUT_MS = exports.LOGIN_FAILURE_LIMIT = exports.SESSION_IDLE_MESSAGE = exports.SESSION_IDLE_MS = exports.ACCOUNT_LOCKED_MESSAGE = exports.ACCOUNT_LOCKED_CODE = exports.LOGIN_LOCKOUT_CODE = exports.INVALID_LOGIN_CODE = void 0;
+exports.INVALID_LOGIN_CODE = 'AUTH_INVALID_CREDENTIALS';
 exports.LOGIN_LOCKOUT_CODE = 'AUTH_LOGIN_LOCKED';
 exports.ACCOUNT_LOCKED_CODE = 'AUTH_ACCOUNT_LOCKED';
 exports.ACCOUNT_LOCKED_MESSAGE = 'Your account has been locked due to repeated failed login attempts. Please contact your administrator.';

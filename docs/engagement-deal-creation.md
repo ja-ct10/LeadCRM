@@ -24,10 +24,19 @@ can immediately prove Hot. Recovery catches up to the actual elapsed age. Missin
 provider messages are marked unverifiable and reported by account/message ID;
 they pause the affected customer's aging without blocking other replay batches.
 
-Mailbox engagement never moves Deals, cancels them, or writes stage history. The
-retired Deal Stage Automation card, endpoints, service and shared configuration
-are removed. Manual stage moves, explicit CRM cancellation and authorized Closed
-Won completion retain the existing Deal business rules.
+Deal engagement uses each Deal's attributed mailbox history and stage history.
+Verified communication advances Lead to Contacted through the existing stage
+service and sets Warm; ordinary email cannot qualify a Deal. Qualification still
+requires the existing quotation or billable evidence. Once qualified, engagement
+is Hot, becomes Warm at eight days and Cold at thirty days. A verified reply after
+qualification restores Hot even after cooling. Staff follow-ups do not renew the
+clock. Aging never moves stages backward and excludes terminal outcomes.
+
+Separate Deals use separate conversations. Existing historical mixed threads stay
+readable under current permissions, but cannot be linked or replied to as another
+Deal. Communication-derived related-Deal automation retains the originating Deal.
+The retired Deal Stage Automation configuration remains removed; these rules use
+the existing evaluator, scheduler, mailbox receipts and stage service.
 
 ## Related-Deal Workflow actions
 

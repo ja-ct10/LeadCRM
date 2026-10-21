@@ -68,7 +68,7 @@ export function useDashboard(query: DashboardQuery) {
       const response = await apiClient.get<{ success: boolean; data: DashboardReport }>(`/reporting/dashboard?${queryString}`, { signal: request.signal });
       if (generation.current !== current || activeKey.current !== key) return false;
       setState(previous => {
-        const sameAccess = previous.report?.access && response.data.access && (['deals', 'leads', 'tasks'] as const).every(module => previous.report!.access[module] === response.data.access[module]);
+        const sameAccess = previous.report?.scope === response.data.scope && previous.report?.access && response.data.access && (['deals', 'leads', 'tasks', 'leaderboard'] as const).every(module => previous.report!.access[module] === response.data.access[module]);
         return { key: baseKey, sourceKey: key,
           report: sourceOnly && previous.key === baseKey && sameAccess ? { ...previous.report!, leadSourcePerformance: response.data.leadSourcePerformance } : response.data,
           error: sourceOnly && sameAccess ? previous.error : null, sourceError: null };

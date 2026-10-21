@@ -83,6 +83,8 @@ export function getWorkflowConditionFields(entity: WorkflowEntity, trigger?: str
   if (entity !== 'account') definitions.push({ field: `${entity}.assignedUserId`, label: layout?.fields.assignedUserId?.label ?? 'Assigned Agent', type: 'user', nullable: true });
   if (entity === 'deal') definitions.push(
     { field: 'deal.value', label: 'Deal Value', type: 'number' },
+    { ...text('deal.lostReason', 'Cancellation Reason'), nullable: true },
+    choice('deal.engagementStatus', 'Engagement Status', CRM_STATUSES),
     { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' },
     { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' },
     { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' },

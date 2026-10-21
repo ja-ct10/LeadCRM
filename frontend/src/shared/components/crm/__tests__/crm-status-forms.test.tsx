@@ -1,3 +1,4 @@
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
@@ -28,15 +29,14 @@ beforeEach(() => {
   transport.put.mockResolvedValue({ success: true, data: { id: 'contact' } });
 });
 
-it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected product IDs', async status => {
+it.each(CRM_STATUSES)('keeps manual Lead Inquiry when status %s is injected and preserves selected Product IDs', async status => {
   const submitted = vi.fn();
   render(<LeadFormSheet isOpen onClose={() => {}} onSave={data => submitted(toBackendCreateContact(data))} />);
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Test' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'lead@example.test' } });
-  const select = screen.getByLabelText('Status') as HTMLSelectElement;
-  expect(select.value).toBe('Inquiry');
-  expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
+  const select = screen.getByLabelText('Status') as HTMLInputElement;
+  expect(select.value).toBe('Inquiry'); expect(select.readOnly).toBe(true);
   fireEvent.change(select, { target: { value: status } });
   fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
@@ -44,8 +44,8 @@ it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected
   fireEvent.keyDown(screen.getByRole('group', { name: 'Product interests' }), { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
   await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
-  expect(submitted.mock.calls[0][0]).toMatchObject({ status, productInterest: ids });
-  expect(CrmStatusSchema.parse(submitted.mock.calls[0][0].status)).toBe(status);
+  expect(submitted.mock.calls[0][0]).toMatchObject({ status: 'Inquiry', productInterest: ids });
+  expect(CrmStatusSchema.parse(submitted.mock.calls[0][0].status)).toBe('Inquiry');
   expect(toBackendUpdateContact({ status, productInterest: ids })).toEqual({ status, productInterest: ids });
 });
 
@@ -54,12 +54,11 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'contact@example.test' } });
-  const select = screen.getByLabelText('Status') as HTMLSelectElement;
-  expect(select.value).toBe('Inquiry');
-  expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
+  const select = screen.getByLabelText('Status') as HTMLInputElement;
+  expect(select.value).toBe('Inquiry'); expect(select.readOnly).toBe(true);
   fireEvent.change(select, { target: { value: status } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
-  await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/crm/contacts', expect.objectContaining({ status })));
+  await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/crm/contacts', expect.objectContaining({ status: 'Inquiry' })));
   created.unmount();
   render(<ContactFormSheet isOpen initialData={{ id: 'contact', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Contact', email: 'contact@example.test', status: status.toUpperCase() }} onClose={() => {}} onSave={data => { void contactsV2Api.update('contact', data); }} />);
   expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(status);

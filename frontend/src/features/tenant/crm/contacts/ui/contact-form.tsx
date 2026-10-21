@@ -16,6 +16,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useData } from '@/store/DataContext';
+import { useAuth } from '@/store/AuthContext';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
@@ -73,6 +74,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const { products: productRecords, categories, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
+  const { user } = useAuth();
+  const selfAssigned = !isEdit && recordAccess.policy?.assignmentRestricted === true;
+  const currentAgentName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || '';
   const [isSaving, setIsSaving] = useState(false);
 
   // New Contacts use the requested section order without rewriting saved layouts.
@@ -168,7 +172,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       ...(isEdit ? { notes: data.notes || '' } : {}),
       status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
       leadSource: data.source || (isEdit ? '' : undefined),
-      assignedUserId: data.assignedUserId || undefined,
+      assignedUserId: selfAssigned ? recordAccess.policy?.userId : data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
       address: data.address || (isEdit ? '' : undefined),
     };
@@ -260,7 +264,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Status */}
             <FieldWrap fieldKey="status" label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
-              <div className="relative">
+              {!initialData ? <input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
                 <select
                   {...register('status')} disabled={!!initialData?.statusManagedByDeals}
                   id={`${fieldId}-status`}
@@ -275,7 +279,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                   ))}
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
+              </div>}
             </FieldWrap>
 
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
@@ -340,7 +344,8 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         <div className="space-y-4">
           <SectionHeader num={5} title="Assigned Agent" />
           <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
-            <Controller
+            {selfAssigned ? <input id={`${fieldId}-assignedUserId`} value={currentAgentName} readOnly className={inputCls} /> : (
+              <Controller
               name="assignedUserId"
               control={control}
               render={({ field }) => (
@@ -359,6 +364,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 />
               )}
             />
+            )}
           </FieldWrap>
           <CustomFieldGroup form={customFields} group="Assigned Agent" />
         </div>

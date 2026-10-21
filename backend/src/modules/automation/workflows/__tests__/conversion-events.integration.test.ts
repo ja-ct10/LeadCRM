@@ -64,12 +64,14 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
       value: 55, currency: 'USD', productInterestId: productId, assignedUserId: ownerId, leadDeals: { create: { leadId: lead.id, position: 0 } } } });
     await scope(() => saveValues(tenantId, actorId, deal.id, { values: evidence }));
     const converted = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
-    expect(converted).toMatchObject({ status: 'Closed Deal', convertedById: actorId });
+    // The still-open sibling governs overall status while the successful sale converts the Lead.
+    expect(converted).toMatchObject({ status: 'Inquiry', convertedById: actorId });
     expect(converted.convertedAt).toBeInstanceOf(Date);
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
     expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
     expect(await events(converted.contactId!, 'contact.created')).toHaveLength(1);
-    expect(await events(deal.id, 'deal.updated')).toHaveLength(1);
+    // Engagement classification and the confirmed stage/relationship update are distinct events.
+    expect(await events(deal.id, 'deal.updated')).toHaveLength(2);
     expect(await events(deal.id, 'deal.closed_won')).toHaveLength(1);
     expect(await events(sibling.id, 'deal.updated')).toHaveLength(1);
     expect(await events(historical.id, 'deal.updated')).toHaveLength(0);
@@ -82,7 +84,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     expect(await prisma.deal.findUniqueOrThrow({ where: { id: sibling.id } })).toMatchObject({ value: 55, currency: 'USD', productInterestId: productId, stageId: qualifiedId, assignedUserId: ownerId });
     const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, entityId: lead.id, trigger: { triggerType: 'lead.updated' } } });
     expect(run.status).toBe('queued');
-    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['status', 'contactId', 'accountId', 'convertedAt']));
+    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['contactId', 'accountId', 'convertedAt', 'convertedById']));
     const count = await prisma.workflowTriggerRecord.count({ where: { tenantId } });
     await scope(() => convertContact(lead.id, tenantId, actorId, { createContact: true, createDeal: false }));
     await scope(() => salesTransaction(tx => convertClosedLead(tx, tenantId, lead.id, actorId)));
@@ -124,14 +126,14 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
   });
 
-  it('the governed Lead edit callback emits one complete update while the converter emits Contact creation', async () => {
+  it('a historical Closed Lead edit emits one complete update while the converter emits Contact creation', async () => {
     for (const trigger of ['lead.updated', 'lead.status_changed', 'contact.created']) await activate(trigger);
-    const { lead } = await inquiry(true);
+    const { lead } = await inquiry(true, { status: 'Closed Deal' });
     await scope(() => updateContact(lead.id, tenantId, actorId, { status: 'Closed Deal', firstName: 'Edited during conversion' }));
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
-    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
+    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(0);
     const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, entityId: lead.id, trigger: { triggerType: 'lead.updated' } } });
-    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['firstName', 'status', 'contactId', 'convertedAt']));
+    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['firstName', 'contactId', 'convertedAt']));
     expect(await events((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId!, 'contact.created')).toHaveLength(1);
   });
 
@@ -146,7 +148,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     await submitPublicForm(form.publicId, input);
     const converted = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
-    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
+    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(0);
     expect(await events(converted.contactId!, 'contact.created')).toHaveLength(1);
     expect(await events(deal.id, 'deal.created')).toHaveLength(0);
     const count = await prisma.workflowTriggerRecord.count({ where: { tenantId } });
@@ -169,7 +171,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
   it('a combined Closed/Product/assignment edit converts without manufacturing another opportunity', async () => {
     await activate('deal.created');
     await activate('lead.updated');
-    const { lead, deal } = await inquiry(true);
+    const { lead, deal } = await inquiry(true, { status: 'Closed Deal' });
     const added = await prisma.productInterest.create({ data: { tenantId, name: `Additional Product ${randomUUID()}`, dealValue: 950 } });
     const replacement = await prisma.user.create({ data: { tenantId, role: 'Sales', email: `${randomUUID()}@example.test`, firstName: 'New', lastName: 'Owner' } });
     const role = await prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales' } });

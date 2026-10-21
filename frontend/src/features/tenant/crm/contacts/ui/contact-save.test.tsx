@@ -1,11 +1,12 @@
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'agent', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: false } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'agent', tenantId: 'tenant', assignmentRestricted: fixtures.restricted, clientAdmin: false } }) }));
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { defaultFieldLayout, type FieldLayout } from '@leadcrm/shared';
 import { ContactFormInner } from './contact-form';
-const fixtures = vi.hoisted(() => ({ layout: undefined as FieldLayout | undefined }));
+const fixtures = vi.hoisted(() => ({ layout: undefined as FieldLayout | undefined, restricted: false }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { id: 'account-1', name: 'Acme', industry: 'Technology', size: '11-50', website: 'https://acme.test' }, isInitialLoad: false, refetch: vi.fn() }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [
   { id: 'active', firstName: 'Active', lastName: 'Agent', role: 'Sales', status: 'ACTIVE', assignableAgent: true, assignableModules: ['contacts', 'deals'] },
@@ -22,7 +23,7 @@ vi.mock('@/shared/components/crm/record-custom-fields', () => ({
   CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null,
 }));
 afterEach(cleanup);
-beforeEach(() => { fixtures.layout = undefined; });
+beforeEach(() => { fixtures.layout = undefined; fixtures.restricted = false; });
 it('retains a failed draft and permits retry without submitting twice while saving', async () => {
   let reject!: (error: Error) => void;
   const save = vi.fn().mockImplementationOnce(() => new Promise((_resolve, rejectRequest) => { reject = rejectRequest; })).mockResolvedValue(undefined);
@@ -101,7 +102,20 @@ it.each([false, true])('creates with the required section order and saves Accoun
   fireEvent.change(selector, { target: { value: 'active' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
-  expect(save.mock.calls[0][0]).toMatchObject({ firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', accountId: 'account-1', productInterest: ['CCTV'], status: 'Hot', assignedUserId: 'active' });
+  expect(save.mock.calls[0][0]).toMatchObject({ firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', accountId: 'account-1', productInterest: ['CCTV'], status: 'Inquiry', assignedUserId: 'active' });
   expect(save.mock.calls[0][0]).not.toHaveProperty('notes');
   expect(save.mock.calls[0][0]).not.toHaveProperty('jobTitle');
+});
+
+it('shows the current Sales agent read-only during manual Contact creation and submits their identity', async () => {
+  fixtures.restricted = true; const save = vi.fn(); render(<ContactFormInner onSave={save} onCancel={vi.fn()} />);
+  const agent = screen.getByRole('textbox', { name: 'Assigned Agent' }) as HTMLInputElement;
+  expect(agent.value).toBe('My Agent'); expect(agent.readOnly).toBe(true);
+  expect(screen.queryByRole('combobox', { name: 'Assigned Agent' })).toBeNull();
+  fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Sales' } });
+  fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Contact' } });
+  fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'self@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0]).toMatchObject({ assignedUserId: 'agent', status: 'Inquiry' });
 });

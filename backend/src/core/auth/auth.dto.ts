@@ -6,6 +6,7 @@ import { z } from 'zod';
 export const LoginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Valid email required'),
   password: z.string().min(1, 'Password is required').max(72),
+  rememberMe: z.boolean().default(false),
 });
 // The identity gate precedes password validation so any sixth submission for a
 // valid identity triggers cooldown, including a malformed/empty password body.

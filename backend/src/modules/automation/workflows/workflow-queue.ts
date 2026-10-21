@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AsyncResource } from 'node:async_hooks';
 import { accountWorkflowRetirementReferences } from './workflow-fields';
-import { ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
+import { ACCOUNT_RETIREMENT_REASON, WorkflowConditionSchema } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -10,13 +10,16 @@ import type { WorkflowFireParams } from './workflow.engine';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { entityContext } from './workflows.repository';
+import { compatibleWorkflow } from './workflow-fields';
+import { workflowStageEvent } from './workflow-stage-entry';
+import { evaluateCondition } from './workflow-conditions';
 import { interruptWorkflowRun } from './workflow-interruption';
 import { markWorkflowQueued, registerWorkflowWake } from '../../crm/leads/sales-context';
 
-const metadata = ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields'];
+const metadata = ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields', 'event.originDealId', 'event.continuationSourceId', 'event.continuationUpdateId'];
 
 /** Snapshot the recipients in the source transaction. A replay never discovers new workflows. */
-export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, params: WorkflowFireParams) {
+export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, params: WorkflowFireParams, onlyWorkflowId?: string) {
   if (tenantContext.getStore()?.tenantId !== params.tenantId) throw new ValidationError('A matching CRM tenant context is required for automation.');
   const trigger = findTrigger(params.triggerType);
   if (!trigger || trigger.entity !== params.entityType) throw new ValidationError('Unsupported workflow trigger.');
@@ -25,7 +28,7 @@ export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, param
   const ancestry = [...(workflowChain.getStore() ?? [])];
   if (ancestry.length >= 10) return;
   const context = Object.fromEntries(Object.entries(params.context).filter(([key]) => metadata.includes(key)));
-  const workflows = await tx.workflow.findMany({ where: { tenantId: params.tenantId, trigger: params.triggerType, isActive: true, status: 'ACTIVE', isArchived: false }, orderBy: { id: 'asc' } });
+  const workflows = await tx.workflow.findMany({ where: { tenantId: params.tenantId, ...(onlyWorkflowId ? { id: onlyWorkflowId } : {}), trigger: params.triggerType, isActive: true, status: 'ACTIVE', isArchived: false }, orderBy: { id: 'asc' } });
   if (!workflows.length) return;
   const savedContext = await entityContext(trigger.entity, params.entityId, params.tenantId, tx);
   if (!savedContext) throw new ValidationError('The triggering CRM record is unavailable.');
@@ -48,6 +51,29 @@ export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, param
       dispatchContext: { version: 1, actorId: params.actorId ?? null, activatedById: workflow.activatedById, ancestry, context, eventContext } as Prisma.InputJsonValue,
     } });
     markWorkflowQueued(tx);
+  }
+}
+
+/** A later field save can satisfy a still-current stage entry, never a historical one. */
+export async function enqueueStageConditionContinuations(tx: Prisma.TransactionClient, params: WorkflowFireParams) {
+  if (params.triggerType !== 'deal.updated' || !Array.isArray(params.context['event.changedFields'])) return;
+  const deal = await tx.deal.findFirst({ where: { tenantId: params.tenantId, id: params.entityId, isArchived: false, deletedAt: null }, select: { currentStageHistoryId: true } });
+  if (!deal?.currentStageHistoryId) return;
+  const sources = await tx.workflowTriggerRecord.findMany({ where: { tenantId: params.tenantId, entityId: params.entityId, triggerType: 'deal.stage_changed', eventId: `deal.stage_changed:${deal.currentStageHistoryId}` }, include: { workflow: true, runs: { include: { steps: true } } } });
+  if (!sources.length) return;
+  const recorded = await workflowStageEvent(params.tenantId, params.entityId, 'deal.stage_changed', deal.currentStageHistoryId, tx);
+  for (const source of sources) {
+    const { workflow } = source, execution = source.runs[0];
+    if (!execution || !workflow.isActive || workflow.status !== 'ACTIVE' || workflow.isArchived || workflow.version !== execution.workflowVersion || !['queued', 'running', 'skipped'].includes(execution.status)) continue;
+    if (execution.steps.some(step => step.status !== 'skipped')) continue;
+    if (source.payload && typeof source.payload === 'object' && !Array.isArray(source.payload) && source.payload.stageActionRunId) continue;
+    const draft = await compatibleWorkflow({ trigger: workflow.trigger, conditions: workflow.conditions, actions: workflow.actions }, params.tenantId);
+    const conditions = WorkflowConditionSchema.safeParse(draft.conditions);
+    if (!conditions.success || !conditions.data.conditions.some(rule => rule.field.startsWith('deal.') && (params.context['event.changedFields'] as unknown[]).includes(rule.field.slice(5)))) continue;
+    const dispatch = execution.dispatchContext as { eventContext?: Record<string, unknown> } | null;
+    if (!dispatch?.eventContext || evaluateCondition(conditions.data, dispatch.eventContext)) continue;
+    await enqueueWorkflowTrigger(tx, { ...params, triggerType: 'deal.stage_changed', eventId: `${recorded.eventId}:updated:${params.eventId}`,
+      context: { ...recorded.context, 'event.continuationSourceId': source.id, 'event.continuationUpdateId': params.eventId } }, workflow.id);
   }
 }
 

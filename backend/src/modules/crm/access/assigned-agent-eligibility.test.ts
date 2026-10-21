@@ -8,6 +8,13 @@ const agent = (patch: object = {}) => ({ id: 'staff', tenantId, role: 'Staff', s
   userRoles: [role([grant('contacts', { canView: true, canEdit: true }), grant('tasks', { canView: true })])], ...patch } as AssignedAgent);
 
 describe('authoritative assignment eligibility', () => {
+  it('includes an eligible Sales Admin through ordinary effective grants', async () => {
+    const staff = agent({ role: 'Sales Admin' });
+    const db = { user: { findMany: vi.fn(async () => [staff, agent({ status: 'INACTIVE' }), agent({ tenantId: 'other' })]) } };
+    expect(await eligibleAssignedAgents(db as never, tenantId, crmAssignmentRequirements('contacts'))).toEqual([staff]);
+    expect(hasAssignedAgentAccess(staff, tenantId, TASK_ASSIGNEE_REQUIREMENTS)).toBe(true);
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('deals'))).toBe(false);
+  });
   it('combines grants across roles for the requested module without requiring unrelated Lead access', () => {
     const staff = agent({ userRoles: [role([grant('contacts', { canView: true })]), role([grant('contacts', { canEdit: true })])] });
     expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'))).toBe(true);

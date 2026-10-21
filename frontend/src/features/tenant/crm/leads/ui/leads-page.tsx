@@ -112,6 +112,7 @@ export default function LeadsPage(): React.ReactElement {
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
+  const [panelTab, setPanelTab] = useState<'activity' | 'details'>('activity');
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [mergingLead, setMergingLead] = useState<Lead | null>(null);
   const [mergeSecondaryId, setMergeSecondaryId] = useState<string | null>(null);
@@ -482,7 +483,7 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerInitials={getOwnerInitials}
             canEdit={canEdit}
             canArchive={canDelete}
-            onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
+            onEdit={(lead) => { setPanelTab('details'); setSelectedLead(lead); }}
             onArchive={(lead) => confirmArchive([lead.id], formatLeadName(lead))}
             onConvert={(lead) => setConvertingLead(lead)}
             onMerge={canEdit && canDelete ? (lead) => setMergingLead(lead) : undefined}
@@ -514,12 +515,9 @@ export default function LeadsPage(): React.ReactElement {
       {/* ── Slide-Over Record Panel ─────────────────────────────────── */}
       <LeadPanel
         open={!!selectedLead}
-        onOpenChange={(open) => !open && setSelectedLead(null)}
+        onOpenChange={(open) => { if (!open) { setSelectedLead(null); setPanelTab('activity'); } }}
         lead={selectedLead}
-        onEdit={(lead) => {
-          setEditingLead(lead);
-          setIsFormOpen(true);
-        }}
+        initialTab={panelTab}
       />
 
       {/* ── Form Sheet ──────────────────────────────────────────── */}

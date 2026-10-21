@@ -134,7 +134,7 @@ it('preserves independent chart filters in requests and exports without creating
 });
 
 const sourceSnapshot = (won: number, revenue = 45000) => ({
-  access: { deals: true, leads: true, tasks: true }, metrics: { totalRevenue: revenue },
+  access: { deals: true, leads: true, tasks: true, leaderboard: true }, metrics: { totalRevenue: revenue },
   distribution: [{ id: 'lead', count: 17 }],
   leadSourcePerformance: { period: { start: '2020-01-01', end: '2020-01-15', timezone: 'Asia/Manila' }, sources: [{ name: 'Referral', won }] },
 });

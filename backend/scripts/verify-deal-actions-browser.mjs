@@ -1,16 +1,13 @@
 import { acceptancePort, createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
-// in-memory database. No existing tenant, provider, or deployment is contacted.
+// native database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.DEAL_ACTIONS_BROWSER_RUN_NAME || '';
@@ -20,13 +17,11 @@ mkdirSync(output, { recursive: true });
 const apiLog = createWriteStream(resolve(output, 'api.log'));
 const originalError = console.error.bind(console);
 console.error = (...args) => { apiLog.write(args.map(value => typeof value === 'string' ? value : JSON.stringify(value)).join(' ') + '\n'); originalError(...args); };
-const db = await PGlite.create();
-await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
-await socket.start();
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
 const port = Number(process.env.DEAL_ACTIONS_BROWSER_PORT || await acceptancePort());
 const base = `http://localhost:${port}`;
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_record_plan_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
+Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 // Fixtures never dispatch providers; remove inherited credentials as well.
 for (const key of Object.keys(process.env)) if (/^(BREVO|TEXTBEE|SMTP|GMAIL|GOOGLE_CLIENT|GOOGLE_REFRESH)/.test(key)) delete process.env[key];
@@ -123,16 +118,14 @@ async function runAcceptance() {
   assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);record('Transfer endpoint enforces deals.edit before any mutation');
   await page.goto(base+'/crm/deals');
   await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
-  assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).count(),0);
-  const pipelineField=page.getByRole('textbox',{name:'Pipeline',exact:true});
-  assert.equal(await pipelineField.inputValue(),pipeline.name);
-  assert.equal(await pipelineField.evaluate(el=>el.readOnly),true);
+  const pipelineField=page.getByRole('combobox',{name:'Pipeline',exact:true});
+  assert.equal(await pipelineField.inputValue(),pipeline.id);
   assert.equal(await page.getByRole('button',{name:'New Deal',exact:true}).getAttribute('aria-haspopup'),null);
-  await page.getByRole('button',{name:'Manage pipeline stages',exact:true}).click();
-  await page.getByRole('dialog').waitFor();
+  assert.equal(await page.getByRole('button',{name:'Manage pipeline stages',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).hover();
+  await page.getByRole('tooltip',{name:'More deal actions'}).waitFor();
   await page.keyboard.press('Escape');
-  await page.getByRole('dialog').waitFor({state:'hidden'});
-  record('Deals header exposes a direct New Deal button, read-only persisted Pipeline, and permitted stage management');
+  record('Deals header exposes direct creation and pipeline selection after Export; action tooltip works; stage management removed');
   await page.getByRole('button',{name:'New Deal',exact:true}).click();
   const newDeal=page.getByRole('dialog');
   await newDeal.getByRole('heading',{name:'New Deal',exact:true}).waitFor();
@@ -162,13 +155,12 @@ async function runAcceptance() {
   assert.equal(await qualifiedCard.getByTitle('Expected Close Date').textContent(),'—');
   await prisma.deal.update({where:{id:fixtures['Won Evidence'].id},data:{expectedCloseDate:new Date('2026-10-20T00:00:00Z')}});
   await qualifiedCard.getByText('Oct 20, 2026',{exact:true}).waitFor();
-  for await(const {theme,width} of responsiveMatrix(page)) {
+  for await(const {theme,width} of responsiveMatrix(page,{themes:['Classic','Light','Dark','System']})) {
     for (const label of ['Active Open Deals','Total Open Value','Closed Won Revenue']) assert.equal(await page.getByText(label,{exact:true}).count(),0);
-    const control=page.getByRole('textbox',{name:'Pipeline',exact:true});
-    assert.equal(await control.inputValue(),pipeline.name);assert.equal(await control.evaluate(el=>el.readOnly&&!el.disabled),true);
-    await control.click();await page.keyboard.type('Another pipeline');
-    assert.equal(await control.inputValue(),pipeline.name);
-    assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).count(),0);
+    const control=page.getByRole('combobox',{name:'Pipeline',exact:true});
+    assert.equal(await control.inputValue(),pipeline.id);
+    assert.equal(await control.isEnabled(),true);
+    assert.ok((await control.locator('option').allTextContents()).includes(pipeline.name));
     const button=page.getByRole('button',{name:'New Deal',exact:true});
     assert.equal(await button.getAttribute('aria-haspopup'),null);assert.equal(await button.locator('.lucide-chevron-down,.lucide-chevron-up').count(),0);
     assert.equal(await page.getByText('Import File',{exact:true}).count(),0);
@@ -222,7 +214,7 @@ async function runAcceptance() {
     await page.goto(base+'/crm/deals?'+parameter+'='+id);
     await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
     await page.reload();await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
-    assert.equal(await page.getByRole('textbox',{name:'Pipeline',exact:true}).inputValue(),pipeline.name);
+    assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).inputValue(),pipeline.id);
     record(`${parameter} relationship navigation and refresh retain the authorized Deal board`);
   }
   await page.goto(base+'/crm/deals?highlight='+direct.id);
@@ -245,7 +237,7 @@ async function runAcceptance() {
   await page.goto(base+'/crm/deals');await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
   await menu('Action Deal');
   const labels = await page.getByRole('menuitem').allTextContents();
-  assert.deepEqual(labels.map(text=>['Edit deal','Add a task','Add a note','Send an email','Mark as won','Mark as lost','Change stage','Archive'].find(name=>text.startsWith(name))),['Edit deal','Add a task','Add a note','Send an email','Mark as won','Mark as lost','Change stage','Archive']);
+  assert.deepEqual(labels.map(text=>['Edit deal','Add a task','Add a note','Send an email','Mark as Closed Deal','Mark as Cancelled','Change stage','Archive'].find(name=>text.startsWith(name))),['Edit deal','Add a task','Add a note','Send an email','Mark as Closed Deal','Mark as Cancelled','Change stage','Archive']);
   assert.equal(await page.getByRole('dialog').count(),0,'Menu must not open the record drawer');
   await page.keyboard.press('Escape');
   const menuTrigger=page.getByRole('button',{name:'Actions for Action Deal',exact:true});
@@ -259,8 +251,11 @@ async function runAcceptance() {
   await menuTrigger.focus();await menuTrigger.press('ArrowDown');
   await until(async()=>await page.getByRole('menuitem',{name:/^Edit deal/}).evaluate(el=>el===document.activeElement),'Edit action should be keyboard focused');
   await page.keyboard.press('Enter');
-  assert.equal(await page.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Action Deal');
+  assert.equal(await page.getByRole('dialog').getByRole('tab',{name:/Details/}).getAttribute('aria-selected'),'true');
+  await page.getByRole('dialog').getByRole('button',{name:'Edit Title',exact:true}).click();
+  assert.equal(await page.getByRole('dialog').getByLabel('Title',{exact:true}).inputValue(),'Action Deal');
   await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('button',{name:'Close record',exact:true}).click();
   record('Shared live card menu order, permissions, keyboard selection/focus return and isolated interaction');
   // The database records the creation stage before any UI interaction.
   const initialStageHistory=await prisma.dealStageHistory.count({where:{dealId:fixtures['Action Deal'].id}});
@@ -287,7 +282,8 @@ async function runAcceptance() {
   await observer.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
   await Promise.all([page,observer].map(tab=>tab.waitForFunction(()=>window.__recordPlanStreams['/api/proxy/crm/record-events'])));
   await action('Action Deal','Edit deal',observer);
-  await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
+  await observer.getByRole('button',{name:'Edit Title',exact:true}).click();
+  await observer.getByRole('dialog',{name:'Deal details'}).getByLabel('Title',{exact:true}).fill('Keep this unfinished edit');
   await action('Action Deal','Change stage');
   const stageChange=page.getByRole('dialog',{name:'Change Deal stage'});
   assert.equal(await stageChange.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
@@ -298,7 +294,7 @@ async function runAcceptance() {
   await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
+  await observer.getByRole('button',{name:'Close record',exact:true}).click();
   await action('Lost Action','Add a task',observer);
   const pendingTask=observer.getByRole('dialog');
   await pendingTask.getByLabel(/^Title/).fill('Keep this unfinished task');
@@ -313,25 +309,31 @@ async function runAcceptance() {
   await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
   await pendingTask.waitFor({state:'hidden'});
   record('Second-session stage synchronization preserves an unsaved Task draft without creating a record');
-  await action('Action Deal','Edit deal',observer);await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
+  await action('Action Deal','Edit deal',observer);await observer.getByRole('button',{name:'Edit Title',exact:true}).click();await observer.getByRole('dialog',{name:'Deal details'}).getByLabel('Title',{exact:true}).fill('Keep this unfinished edit');
   record('Single Sales Pipeline stage selection commits once and second-session sync preserves the open edit draft');
   await action('Action Deal','Edit deal');
-  const editor=page.getByRole('dialog');
-  await editor.getByLabel('Title',{exact:false}).fill('Action Deal Updated');
-  await editor.getByLabel('Priority',{exact:true}).selectOption('HIGH');
-  await editor.getByLabel('Address',{exact:true}).fill('123 Test Street');
+  const editor=page.getByRole('dialog',{name:'Deal details'});
+  assert.equal(await editor.getByRole('tab',{name:/Details/}).getAttribute('aria-selected'),'true');
+  for (const [field,value] of [['Title','Action Deal Updated'],['Deal Address (override)','123 Test Street']]) {
+    await editor.getByRole('button',{name:'Edit '+field,exact:true}).click();
+    await editor.getByLabel(field,{exact:true}).fill(value);
+    await editor.getByRole('button',{name:'Save',exact:true}).click();
+    await editor.getByRole('button',{name:'Edit '+field,exact:true}).waitFor();
+  }
+  await editor.getByRole('button',{name:'Edit Assigned Agent',exact:true}).click();
   await editor.getByRole('combobox',{name:'Search users...',exact:true}).click();
   const options=page.getByRole('listbox',{name:'users options'});
   await until(async()=>await options.getByRole('option').count()===61,'Complete eligible directory missing');
   const bounds=await options.boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.y+bounds.height<=900,'Portal must fit viewport');
   await page.getByRole('combobox',{name:'Search users',exact:true}).fill('agent60@');
   await options.getByRole('option',{name:/Agent 60/}).click();
-  await editor.getByRole('button',{name:'Update Deal',exact:true}).click();
-  await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor();
+  await editor.getByRole('button',{name:'Save',exact:true}).click();
+  await editor.getByRole('button',{name:'Edit Assigned Agent',exact:true}).waitFor();
   await until(async()=>{const d=await stored('Action Deal');return d.title==='Action Deal Updated'&&d.assignedUserId===agents[60].id&&d.address==='123 Test Street';},'Edit did not persist');
+  await editor.getByRole('button',{name:'Close record',exact:true}).click();
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
+  await observer.getByRole('button',{name:'Close record',exact:true}).click();
   await observer.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});
   closingContexts.add(observer.context()); await observer.context().close();
   record('Edit correct Deal, complete 61-agent directory, portal selection and second-session sync preserves draft');
@@ -350,10 +352,10 @@ async function runAcceptance() {
   const taskEditor=page.getByRole('dialog');await taskEditor.getByLabel(/^Title/).fill('Deal action browser task');
   await taskEditor.getByRole('button', { name: /^Assigned Agent/ }).click();
   const taskOwners = page.getByRole('dialog', { name: 'Select owner', exact: true });
-  await taskOwners.getByLabel('Search owner', { exact: true }).fill('Agent 00');
-  await until(async () => await taskOwners.getByRole('checkbox').count() === 1 && await taskOwners.getByLabel('Agent 00', { exact: true }).count() === 1,
+  await taskOwners.getByLabel('Search owner', { exact: true }).fill('Agent 60');
+  await until(async () => await taskOwners.getByRole('checkbox').count() === 1 && await taskOwners.getByLabel('Agent 60', { exact: true }).count() === 1,
     'Task assignment search must find the exact eligible agent beyond a bounded default page');
-  await taskOwners.getByLabel('Agent 00', { exact: true }).check();
+  await taskOwners.getByLabel('Agent 60', { exact: true }).check();
   await page.getByLabel('Search owner', { exact: true }).press('Escape');
   await taskEditor.getByRole('button',{name:'Create task',exact:true}).click();
   await until(async()=>!!await prisma.task.findFirst({where:{title:'Deal action browser task',tenantId:tenant.id}}),'Context task did not persist');
@@ -390,8 +392,11 @@ async function runAcceptance() {
   await page.getByRole('button',{name:'New Deal',exact:true}).click();
   await page.getByRole('heading',{name:'New Deal',exact:true}).waitFor();await page.getByRole('dialog').getByText('Renewals',{exact:true}).waitFor();
   const createEditor=page.getByRole('dialog');
-  assert.equal(await createEditor.getByText('Contacts',{exact:true}).count(),1);
-  assert.equal(await createEditor.getByText('Leads',{exact:true}).count(),1);
+  assert.equal(await createEditor.getByLabel('Associate Deal To',{exact:false}).count(),1);
+  await createEditor.getByLabel('Associate Deal To',{exact:false}).selectOption('contact');
+  await createEditor.getByRole('combobox',{name:'Search contacts...',exact:true}).click();
+  await page.getByRole('combobox',{name:'Search contacts',exact:true}).fill('Acceptance');
+  await page.getByRole('listbox',{name:'contacts options',exact:true}).getByRole('option',{name:/Acceptance Contact/}).click();
   assert.equal(await createEditor.getByText(/Associate one or more.*optional/i).count(),0);
   await createEditor.getByLabel('Title',{exact:false}).fill('New Renewal Deal');
   await createEditor.getByRole('button',{name:'Product Interest',exact:true}).click();
@@ -413,14 +418,14 @@ async function runAcceptance() {
   await page.goto(base+'/crm/deals?pipelineId='+pipeline.id);
   const beforeLoss=(await stored('Lost Action')).stageId;
   const beforeLossHistory=await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}});
-  await action('Lost Action','Mark as lost');
-  const lostDialog=page.getByRole('dialog',{name:'Close Deal as lost'});assert.equal(await lostDialog.getByRole('button',{name:'Save',exact:true}).isEnabled(),false);
+  await action('Lost Action','Mark as Cancelled');
+  const lostDialog=page.getByRole('dialog',{name:'Cancel Deal'});assert.equal(await lostDialog.getByRole('button',{name:'Save',exact:true}).isEnabled(),false);
   await lostDialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await stored('Lost Action')).stageId,beforeLoss);
   assert.equal(await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}}),beforeLossHistory);
-  await action('Lost Action','Mark as lost');await lostDialog.getByLabel('Lost reason').fill('Customer postponed project');await lostDialog.getByRole('button',{name:'Save',exact:true}).click();
+  await action('Lost Action','Mark as Cancelled');await lostDialog.getByLabel('Reason for Cancellation').fill('Customer postponed project');await lostDialog.getByRole('button',{name:'Save',exact:true}).click();
   await until(async()=>(await stored('Lost Action')).stageId===lost.id,'Lost did not persist');assert.equal((await stored('Lost Action')).lostReason,'Customer postponed project');record('Lost requires nonblank reason, cancellation is inert, outcome persists');
 
-  await action('Won Evidence','Mark as won');
+  await action('Won Evidence','Mark as Closed Deal');
   await page.getByRole('button',{name:'Edit Confirmation Type',exact:true}).click();
   await page.getByLabel('Confirmation Type',{exact:false}).selectOption('Approved Quotation');
   await page.getByRole('button',{name:'Save',exact:true}).click();
@@ -441,8 +446,10 @@ async function runAcceptance() {
   await page.getByRole('tab',{name:/^Details/}).click();
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor();
   await action('Action Deal Updated','Edit deal');
-  assert.equal(await page.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Action Deal Updated');
+  await page.getByRole('button',{name:'Edit Title',exact:true}).click();
+  assert.equal(await page.getByRole('dialog').getByLabel('Title',{exact:true}).inputValue(),'Action Deal Updated');
   await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('button',{name:'Close record',exact:true}).click();
   await page.getByRole('link',{name:/^Action Deal Updated/}).click();
   await page.waitForURL(new RegExp('/crm/deals/'+moved.id));
   await page.getByRole('button',{name:'Record actions',exact:true}).click();
@@ -478,6 +485,7 @@ async function runAcceptance() {
   const cd=await mobile.context().newCDPSession(mobile);
   const touch=(type,x,y)=>cd.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:1,radiusX:2,radiusY:2}]});
   const x=mh.x+mh.width/2,y=mh.y+mh.height/2;
+  const initialBoardScroll=await board(mobile).evaluate(el=>el.scrollLeft);
   await touch('touchStart',x,y);await mobile.waitForTimeout(240);await touch('touchMove',x+20,y);
   const br=await board(mobile).boundingBox();
   // Stop edge scrolling before measuring; protocol delays can carry the target
@@ -493,7 +501,8 @@ async function runAcceptance() {
     await touch('touchMove',edge,y);await mobile.waitForTimeout(100);
   }
   assert.ok(targetVisible,'Touch auto-scroll must bring Qualified into the visible board');
-  assert.ok(await board(mobile).evaluate(el=>el.scrollLeft)>400,'Touch drag must auto-scroll horizontally');
+  const finalBoardScroll=await board(mobile).evaluate(el=>el.scrollLeft);
+  assert.ok(finalBoardScroll>initialBoardScroll+1,`Touch drag must auto-scroll horizontally (${initialBoardScroll} -> ${finalBoardScroll})`);
   const mq=await column(mobile,'Qualified').boundingBox();
   const visibleLeft=Math.max(br.x+br.width*.2,mq.x),visibleRight=Math.min(br.x+br.width*.8,mq.x+mq.width);
   assert.ok(visibleRight>visibleLeft,'Qualified must intersect the interior of the visible board');
@@ -521,7 +530,12 @@ async function runAcceptance() {
   await menu('Mobile Drag',mobile);
   const menuBounds=await mobile.getByRole('menu').boundingBox();assert.ok(menuBounds.x>=0&&menuBounds.x+menuBounds.width<=320&&menuBounds.y>=0&&menuBounds.y+menuBounds.height<=844,'Mobile action menu must fit screen');
   await mobile.getByRole('menuitem',{name:/^Edit deal/}).click();
-  const mobileEditor=mobile.getByRole('dialog');await mobileEditor.getByLabel('Address',{exact:true}).fill('Mobile edited address');
+  const mobileEditor=mobile.getByRole('dialog',{name:'Deal details'});
+  await mobileEditor.getByRole('button',{name:'Edit Deal Address (override)',exact:true}).click();
+  await mobileEditor.getByLabel('Deal Address (override)',{exact:true}).fill('Mobile edited address');
+  await mobileEditor.getByRole('button',{name:'Save',exact:true}).click();
+  await mobileEditor.getByRole('button',{name:'Edit Deal Address (override)',exact:true}).waitFor();
+  await mobileEditor.getByRole('button',{name:'Edit Assigned Agent',exact:true}).click();
   await mobileEditor.getByRole('combobox',{name:'Search users...',exact:true}).click();
   await mobile.setViewportSize({width:320,height:500});
   const mobileOptions=mobile.getByRole('listbox',{name:'users options'});
@@ -530,7 +544,9 @@ async function runAcceptance() {
   await until(async()=>await mobileOptions.getByRole('option').count()===1&&await mobileOptions.getByRole('option',{name:/Agent 59/}).count()===1,'Assignment search must settle before keyboard selection');
   await mobile.getByRole('combobox',{name:'Search users',exact:true}).press('ArrowDown');await mobile.keyboard.press('Enter');
   await mobile.setViewportSize({width:320,height:844});
-  await mobileEditor.getByRole('button',{name:'Update Deal',exact:true}).click();
+  await mobileEditor.getByRole('button',{name:'Save',exact:true}).click();
+  await mobileEditor.getByRole('button',{name:'Edit Assigned Agent',exact:true}).waitFor();
+  await mobileEditor.getByRole('button',{name:'Close record',exact:true}).click();
   await mobileEditor.waitFor({state:'hidden'});
   const mobileSaved=await stored('Mobile Drag');assert.equal(mobileSaved.address,'Mobile edited address');assert.equal(mobileSaved.assignedUserId,agents[59].id);
   await mobile.screenshot({path:resolve(output,'mobile-actions-320.png')});record('320px action menu, responsive assignment portal, keyboard selection and edit persist');
@@ -565,7 +581,10 @@ async function runAcceptance() {
   const linkReplay=await associate('local-thread',moved.id);assert.equal(linkReplay.status,200,await linkReplay.text());
   assert.equal(await prisma.mailboxThreadAssociation.count({where:{tenantId:tenant.id,threadId:'local-thread',dealId:moved.id}}),1);
   assert.equal(await prisma.activity.count({where:{tenantId:tenant.id,dealId:moved.id,title:'Email conversation associated with this Deal'}}),1);
-  const closedLink=await associate('local-thread',fixtures['Won Evidence'].id);assert.equal(closedLink.status,400,await closedLink.text());
+  const conflictingLink=await associate('local-thread',fixtures['Won Evidence'].id);assert.equal(conflictingLink.status,409,await conflictingLink.text());
+  await prisma.mailboxMessage.create({data:{...messageData,providerMessageId:'local-closed-message',threadId:'local-closed-thread'}});
+  const closedLink=await associate('local-closed-thread',fixtures['Won Evidence'].id);assert.equal(closedLink.status,400,await closedLink.text());
+  assert.equal(await prisma.mailboxThreadAssociation.count({where:{tenantId:tenant.id,threadId:'local-closed-thread'}}),0);
   const secondContact=await prisma.contact.create({data:{tenantId:tenant.id,firstName:'Second',lastName:'Recipient',email:'second@example.test',assignedUserId:admin.id,productInterests:[]}});
   await prisma.mailboxMessage.createMany({data:[{...messageData,providerMessageId:'ambiguous-one',threadId:'ambiguous-thread'},{...messageData,providerMessageId:'ambiguous-two',threadId:'ambiguous-thread',contactId:secondContact.id,recipients:[secondContact.email],recipientAddresses:[secondContact.email],authorizationParticipants:[admin.email,secondContact.email]}]});
   const ambiguous=await associate('ambiguous-thread',moved.id);assert.equal(ambiguous.status,409,await ambiguous.text());
@@ -588,5 +607,5 @@ try {
   const shutdown = setTimeout(() => process.exit(process.exitCode ?? 0), 20000); shutdown.unref();
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await db.close();
+  await prisma.$disconnect();
 }

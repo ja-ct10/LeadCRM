@@ -15,8 +15,7 @@ vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data:
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/shared/hooks/use-confirm-dialog', () => ({ useConfirmDialog: () => ({ dialogProps: {}, confirm: vi.fn() }) }));
 vi.mock('../confirm-action-dialog', () => ({ ConfirmActionDialog: () => null }));
-vi.mock('../crm-record-view', () => ({ CrmRecordPanel: () => null }));
-vi.mock('@/features/tenant/crm/deals/ui/deal-form', () => ({ DealFormSheet: ({ initialData, onClose }: any) => <div role="dialog"><input aria-label="Deal title" defaultValue={initialData.title} /><button onClick={onClose}>Cancel</button></div> }));
+vi.mock('../crm-record-view', () => ({ CrmRecordPanel: ({ module, id, initialTab, onOpenChange }: any) => <div role="dialog" data-record-module={module} data-record-id={id} data-initial-tab={initialTab}><input aria-label="Deal title" defaultValue={mocks.deal.title} /><button onClick={() => onOpenChange(false)}>Cancel</button></div> }));
 vi.mock('@/features/tenant/operations/tasks/ui/task-editor', () => ({ TaskEditor: ({ links, onClose }: any) => <div role="dialog" data-deal-id={links.dealIds[0]}><input aria-label="Task title" /><button onClick={onClose}>Close</button></div> }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -171,6 +170,12 @@ it.each([['Edit deal', 'Deal title'], ['Add a task', 'Task title']])('preserves 
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Opportunity' }));
   fireEvent.click(await screen.findByRole('menuitem', { name: action }));
   fireEvent.change(await screen.findByLabelText(label), { target: { value: 'Unsaved follow-up' } });
+  if (action === 'Edit deal') {
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.getAttribute('data-record-module')).toBe('deals');
+    expect(dialog.getAttribute('data-record-id')).toBe('deal');
+    expect(dialog.getAttribute('data-initial-tab')).toBe('details');
+  }
   mocks.deal = { ...mocks.deal, title: 'Updated by another session', stageId: 'qualified' };
   view.rerender(<DealActionsProvider><div key="qualified">Moved card</div></DealActionsProvider>);
   expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe('Unsaved follow-up');
