@@ -106,6 +106,7 @@ interface DataContextType {
   users: User[];
   tasks: Task[];
   tasksRevision: number;
+  taskScopeRevision: number;
   queryTasks: (query?: TaskListQuery) => Promise<TaskPage>;
   queryTaskSummary: (query?: TaskListQuery) => Promise<TaskSummary>;
   refreshTasks: () => void;
@@ -276,19 +277,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const roleIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
   const roleIdentityRef = useRef(roleIdentity);
   roleIdentityRef.current = roleIdentity;
+  const roleRequestRef = useRef(0);
   const canReadRoles = userCan('roles', 'canView');
   const refreshRoles = useCallback(async () => {
     const identity = roleIdentityRef.current;
+    const request = ++roleRequestRef.current;
+    const isCurrent = () => identity === roleIdentityRef.current && request === roleRequestRef.current;
     if (!workspaceReady || !tenant?.id || !canReadRoles) { setRoles([]); setPermissions([]); setRolesLoading(false); return; }
     setRolesLoading(true); setRolesError('');
     try {
       const [rows, registry] = await Promise.all([rolesService.getAll(), rolesApi.getPermissionModules()]);
-      if (identity !== roleIdentityRef.current) return;
+      if (!isCurrent()) return;
       setRoles(rows.map(toSettingsRole)); setPermissions(toSettingsPermissions(registry.data));
     } catch (error) {
-      if (identity === roleIdentityRef.current) setRolesError(error instanceof Error ? error.message : 'Unable to load roles.');
+      if (isCurrent()) setRolesError(error instanceof Error ? error.message : 'Unable to load roles.');
     } finally {
-      if (identity === roleIdentityRef.current) setRolesLoading(false);
+      if (isCurrent()) setRolesLoading(false);
     }
   }, [workspaceReady, tenant?.id, user?.id, canReadRoles]);
   useLayoutEffect(() => {
@@ -296,6 +300,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Discard obsolete browser-only security data; the API is authoritative in every mode.
     localStorage.removeItem('leadcrm_roles'); localStorage.removeItem('leadcrm_permissions');
     void refreshRoles();
+  }, [refreshRoles]);
+  useEffect(() => {
+    const refresh = () => { void refreshRoles(); };
+    window.addEventListener('leadcrm:users-changed', refresh);
+    return () => window.removeEventListener('leadcrm:users-changed', refresh);
   }, [refreshRoles]);
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
@@ -316,7 +325,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deal: deals.find(record => record.id === task.dealId) ?? task.deal,
     account: organizations.find(record => record.id === task.accountId) ?? task.account,
   })) : tasks, [tasks, users, contacts, deals, organizations]);
-  const taskQueries = useTaskQueries(`${dataIdentity}:${user?.role}:${userCan('tasks', 'canView')}`, taskRows, USE_MOCK_DATA, user ? { ...user, taskTeamUserIds: taskTeamUserIds(user, users) } : undefined);
+  const taskQueries = useTaskQueries(`${dataIdentity}:${user?.role}:${userCan('tasks', 'canView')}:${userCan('tasks', 'canViewAll')}`, taskRows, USE_MOCK_DATA, user ? { ...user,
+    canReadTasks: userCan('tasks', 'canView'), taskGroupAccess: userCan('tasks', 'canViewAll'), taskTeamUserIds: taskTeamUserIds(user, users) } : undefined);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
@@ -705,7 +715,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       clearTimeout(queued);
       queued = setTimeout(() => {
         ['leads','contacts','accounts','deals','activities','tasks','settings','field-layout',
-          'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id));
+          'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id, true, module === 'tasks'));
         void dealsRefresh.current();
       }, 100);
     };

@@ -27,6 +27,7 @@ import { DealLostDialog } from '@/shared/components/crm/deal-lost-dialog';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
 import KanbanBoardSkeleton from '@/shared/components/kanban-skeleton';
 import { Button, CreateButton } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
 
@@ -185,10 +186,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       <ModuleSearchInput value={search} onChange={setSearch} placeholder="Search deals..." label="Search deals" />
       <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">
         <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} />
-          <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">Pipeline<select aria-label="Pipeline" value={pipeline?.id ?? ''} className="h-8 min-w-0 max-w-[min(18rem,calc(100vw-5rem))] rounded-lg border border-border bg-card px-2 text-foreground" onChange={event => {
-            const params = new URLSearchParams(searchParams.toString()); params.set('pipelineId', event.target.value); params.delete('dealId'); params.delete('highlight');
-            setSearch(''); setFilters({}); setSelected(null); router.replace('/crm/deals?' + params.toString(), { scroll: false });
-          }}>{availablePipelines.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">Pipeline<Input type="text" readOnly aria-label="Pipeline" value={pipeline?.name ?? ''} size={pipeline?.name.length || 1} className="h-8 w-auto min-w-0 max-w-[min(18rem,calc(100vw-5rem))] rounded-lg border-border bg-card px-2 py-0 text-xs text-foreground dark:border-border dark:bg-card" /></label>
         </div>
         <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div>
       </div>

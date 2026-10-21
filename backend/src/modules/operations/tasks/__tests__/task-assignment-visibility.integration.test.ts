@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
-import { EMPTY_PERMISSION_FLAGS, isTaskOverdue, taskDisplayStatus, taskDateRange } from '@leadcrm/shared';
+import { EMPTY_PERMISSION_FLAGS, PERMISSION_ACTIONS, PERMISSION_MODULES, isTaskOverdue, taskDisplayStatus, taskDateRange } from '@leadcrm/shared';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../../core/auth/auth-session';
@@ -33,7 +33,7 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
       if (grant && role !== 'Client Admin' && !roles.has(role)) {
         const definition = await prisma.roleDefinition.create({ data: { tenantId, name: role, permissions: { create:
           ['tasks', 'leads', 'contacts', 'accounts', 'deals', 'archived_data'].map(module => ({ ...EMPTY_PERMISSION_FLAGS, module,
-            canView: true, canViewAll: true, canCreate: true, canEdit: true, canAssign: true, canComplete: true, canArchive: true, canRestore: true })) } } });
+            canView: true, canViewAll: module !== 'tasks' || ['Sales Admin', 'Group Coordinator', 'Solo Coordinator'].includes(role), canCreate: true, canEdit: true, canAssign: true, canComplete: true, canArchive: true, canRestore: true })) } } });
         roles.set(role, definition.id);
       }
       const person = await prisma.user.create({ data: { tenantId, role, email: `${name}-${stamp}@camxian.com`, firstName: name, lastName: 'Visibility',
@@ -41,9 +41,9 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
         ...(grant && roles.has(role) ? { userRoles: { create: { roleId: roles.get(role)! } } } : {}) } });
       return { id: person.id, token: (await issueAuthSession(person)).token };
     }
-    a = await user('agent-a', 'Sales Agent'); b = await user('agent-b', 'Sales Agent');
-    representative = await user('representative', 'Sales Representative'); manager = await user('manager', 'Sales Manager');
-    head = await user('head', 'Head of Sales'); solo = await user('solo', 'Sales Manager'); outsider = await user('outside', 'Sales Agent');
+    a = await user('agent-a', 'Sales Associate'); b = await user('agent-b', 'Sales Associate');
+    representative = await user('representative', 'Sales Representative'); manager = await user('manager', 'Sales Admin');
+    head = await user('head', 'Group Coordinator'); solo = await user('solo', 'Solo Coordinator'); outsider = await user('outside', 'Sales Agent');
     top = await user('top', 'Top Management'); admin = await user('admin', 'Client Admin');
     viewer = await user('viewer', 'Task Viewer'); denied = await user('denied', 'Sales Agent', false);
     await scope(async () => {
@@ -147,13 +147,17 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
     }
   });
 
-  it('preserves manager, management, administrator and unrelated authorized role access', async () => {
-    for (const actor of [manager, top, admin, viewer]) {
+  it('requires explicit Group scope for every ordinary role and preserves administrator reads', async () => {
+    for (const actor of [manager, admin]) {
       const result = await list(actor);
       expect(result.status, JSON.stringify(result.body)).toBe(200);
       expect(result.body.meta.total).toBe(rows.filter(row => !row.isArchived).length);
       expect((await call(actor, `/operations/tasks/${ownRows(b)[0].id}`)).status).toBe(200);
       expect((await call(actor, `/operations/tasks/${foreignId}`)).status).toBe(404);
+    }
+    for (const actor of [top, viewer]) {
+      expect((await list(actor)).body.meta.total).toBe(0);
+      expect((await call(actor, `/operations/tasks/${ownRows(b)[0].id}`)).status).toBe(404);
     }
     for (const path of ['/operations/tasks', '/operations/tasks/summary', `/operations/tasks/${ownRows(a)[0].id}`]) expect((await call(denied, path)).status).toBe(403);
     const policy = await call(a, '/crm/record-access');
@@ -188,7 +192,7 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
     expect((await list(head)).body.data.map((row: Row) => row.id).sort()).toEqual(rows.filter(row => !row.isArchived && [b.id, representative.id].includes(row.assignedUserId)).map(row => row.id).sort());
     expect((await call(head, `/operations/tasks/${ownRows(a)[0].id}`)).status).toBe(404);
     const options = await call(manager, '/operations/tasks/options?kind=user');
-    expect(options.body.data.map((row: { id: string }) => row.id).sort()).toEqual([manager.id, a.id, b.id, representative.id].sort());
+    expect(options.body.data.map((row: { id: string }) => row.id).sort()).toEqual([manager.id, head.id, a.id, b.id, representative.id].sort());
     expect((await call(manager, `/operations/tasks/${ownRows(a)[0].id}`, 'PUT', { assignedUserId: outsider.id })).status).toBe(403);
     for (const sortBy of ['archivedAt', 'name']) {
       const archived = await call(head, `/administration/archived-data?type=Task&sortBy=${sortBy}`);
@@ -230,7 +234,7 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
 
   it('rechecks current action grants for team Tasks while retaining independent completion permission', async () => {
     const task = await scope(() => prisma.task.create({ data: { tenantId, title: 'Revoked editing', assignedUserId: a.id, createdById: admin.id, dueDate: new Date() } }));
-    const role = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Manager' } }));
+    const role = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Admin' } }));
     await scope(() => prisma.rolePermission.updateMany({ where: { tenantId, roleId: role.id, module: 'tasks' }, data: { canEdit: false } }));
     try {
       expect((await call(manager, `/operations/tasks/${task.id}`, 'PUT', { title: 'Denied' })).status).toBe(403);
@@ -241,11 +245,57 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
     }
   });
 
+  it('keeps scope across role renames, aggregates active roles and ignores Group Head designation', async () => {
+    const personal = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Associate' } }));
+    const group = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Admin' } }));
+    const permissions = (await scope(() => prisma.rolePermission.findMany({ where: { tenantId, roleId: group.id } })))
+      .map(row => ({ module: row.module, ...Object.fromEntries(PERMISSION_ACTIONS.map(action =>
+        [action, PERMISSION_MODULES.find(module => module.key === row.module)!.actions.includes(action) && row[action]])) }));
+    const setGroupAccess = (enabled: boolean) => call(admin, `/administration/roles/${group.id}`, 'PUT', {
+      permissions: permissions.map(row => row.module === 'tasks' ? { ...row, canViewAll: enabled } : row),
+    });
+    const task = await scope(() => prisma.task.create({ data: { tenantId, title: 'Dynamic scope target', assignedUserId: manager.id, createdById: a.id, dueDate: new Date() } }));
+    const target = `/operations/tasks/${task.id}`;
+    expect((await call(a, target)).status).toBe(404);
+    await scope(() => prisma.tenantGroupMember.updateMany({ where: { tenantId, userId: a.id }, data: { isHead: true } }));
+    expect((await call(a, target)).status).toBe(404);
+    for (const [role, name] of [[personal, 'Renamed personal role'], [group, 'Renamed group role']] as const) {
+      const renamed = await call(admin, `/administration/roles/${role.id}`, 'PUT', { name });
+      expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    }
+    try {
+      expect((await call(a, target)).status).toBe(404);
+      expect((await call(manager, `/operations/tasks/${ownRows(b)[0].id}`)).status).toBe(200);
+      await scope(() => prisma.userRole.create({ data: { tenantId, userId: a.id, roleId: group.id } }));
+      expect((await call(a, target)).status).toBe(200);
+      expect((await call(a, target, 'PUT', { title: 'Group grant from secondary role' })).status).toBe(200);
+      const revoked = await setGroupAccess(false);
+      expect(revoked.status, JSON.stringify(revoked.body)).toBe(200);
+      expect((await call(a, target)).status).toBe(404);
+      expect((await call(manager, `/operations/tasks/${ownRows(b)[0].id}`)).status).toBe(404);
+    } finally {
+      await scope(() => prisma.userRole.deleteMany({ where: { tenantId, userId: a.id, roleId: group.id } }));
+      await setGroupAccess(true);
+      await call(admin, `/administration/roles/${personal.id}`, 'PUT', { name: 'Sales Associate' });
+      await call(admin, `/administration/roles/${group.id}`, 'PUT', { name: 'Sales Admin' });
+    }
+  });
+
+  it('does not widen scope for blank CRM relationships or the creator', async () => {
+    const tasks = await scope(() => Promise.all([a, b].map(actor => prisma.task.create({ data: {
+      tenantId, title: 'Empty CRM association task', assignedUserId: actor.id, createdById: a.id, dueDate: new Date(),
+    } }))));
+    const result = await call(a, '/operations/tasks?search=Empty%20CRM%20association');
+    expect(result.body.meta.total).toBe(1);
+    expect(result.body.data[0].id).toBe(tasks[0].id);
+    expect((await call(a, `/operations/tasks/${tasks[1].id}`)).status).toBe(404);
+  });
+
   it('keeps related Deal read scope on assigned Task mutation responses', async () => {
     const stamp = Date.now();
-    const role = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Agent' } }));
+    const role = await scope(() => prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales Associate' } }));
     const agent = await scope(async () => {
-      const user = await prisma.user.create({ data: { tenantId, role: 'Sales Agent', firstName: 'Scoped', lastName: 'Agent', email: `scoped-task-${stamp}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
+      const user = await prisma.user.create({ data: { tenantId, role: 'Sales Associate', firstName: 'Scoped', lastName: 'Agent', email: `scoped-task-${stamp}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
       return { id: user.id, token: (await issueAuthSession(user)).token };
     });
     const task = await scope(() => prisma.task.create({ data: { tenantId, title: 'Task with private Deal', assignedUserId: agent.id, createdById: admin.id, dueDate: new Date(), dealLinks: { create: { dealId } } } }));

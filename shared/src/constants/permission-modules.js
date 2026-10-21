@@ -146,6 +146,7 @@ exports.PERMISSION_MODULES = [
         "label": "Tasks",
         "actions": [
             "canView",
+            "canViewAll",
             "canCreate",
             "canEdit",
             "canComplete",
@@ -282,6 +283,8 @@ exports.PERMISSION_GROUPS = [
     { id: 'settings', label: 'Organization Settings', modules: ["settings"], description: '' },
 ];
 function permissionLabel(module, action) {
+    if (module.key === 'tasks' && action === 'canViewAll')
+        return 'Group Tasks';
     if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {
         return exports.PERMISSION_ACTION_LABELS[action] + ' ' + (action === 'canViewActive' && module.key === 'leads' ? 'Lead' : module.label);
     }

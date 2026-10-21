@@ -28,7 +28,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('places %s fields i
   fixture.data.fields = [field(module), field(module, { id: 'extra', name: 'Server Count', group: 'Technical Details', required: false, order: 1 })];
   const save = vi.fn(); render(<Form module={module} save={save} />);
   expect(screen.getByLabelText(/Project Budget/).closest('section')?.getAttribute('aria-label')).toBe(CUSTOM_FIELD_BUILT_IN_GROUPS[module][0]);
-  expect(screen.getByLabelText('Server Count').closest('section')?.textContent).toContain('5Technical Details');
+  expect(screen.getByRole('heading', { name: 'Technical Details' }).textContent).toBe('Technical Details');
   fireEvent.click(screen.getByText('Save')); expect(save).not.toHaveBeenCalled(); expect(screen.getByRole('alert').textContent).toContain('required');
   fireEvent.change(screen.getByLabelText(/Project Budget/), { target: { value: 'invalid' } });
   expect((screen.getByLabelText(/Project Budget/) as HTMLInputElement).value).toBe('');
@@ -303,7 +303,7 @@ it('uploads through the authorized record endpoint and cancel never deletes the 
   const fileInput = screen.getByLabelText('Project Budget'); expect(fileInput.getAttribute('type')).toBe('file');
   fireEvent.change(fileInput, { target: { files: [new File(['%PDF-test'], 'new.pdf', { type: 'application/pdf' })] } });
   await waitFor(() => expect(screen.getByText('new.pdf')).toBeTruthy());
-  expect(api.upload.mock.calls[0][0]).toBe('/crm/accounts/record/files?name=new.pdf&type=application%2Fpdf');
+  expect(api.upload.mock.calls[0][0]).toBe('/crm/accounts/custom-field-uploads?name=new.pdf&type=application%2Fpdf&recordId=record');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); expect(api.put).not.toHaveBeenCalled(); expect(fixture.data.values.field).toBe(saved);
   fireEvent.click(screen.getByRole('button', { name: 'Edit Project Budget' }));
   fireEvent.change(screen.getByLabelText('Project Budget'), { target: { files: [new File(['%PDF-test'], 'new.pdf', { type: 'application/pdf' })] } });

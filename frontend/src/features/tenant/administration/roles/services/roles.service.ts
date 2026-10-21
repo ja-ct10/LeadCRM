@@ -32,10 +32,12 @@ export const rolesService = {
 
   assign: async (userId: string, roleId: string): Promise<void> => {
     await rolesApi.assign(userId, roleId);
+    window.dispatchEvent(new Event('leadcrm:users-changed'));
   },
 
   unassign: async (userId: string, roleId: string): Promise<void> => {
     await rolesApi.unassign(userId, roleId);
+    window.dispatchEvent(new Event('leadcrm:users-changed'));
   },
 };
 

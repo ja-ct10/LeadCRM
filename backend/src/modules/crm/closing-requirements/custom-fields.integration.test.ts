@@ -24,6 +24,13 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     expect(result.status, JSON.stringify(result.body)).toBe(200); return result.body.data;
   }
   const person = () => ({ firstName: 'Custom', lastName: 'Tester', email: `${randomUUID()}@example.test` });
+  async function dealLead() {
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Custom-field Deal agent',
+      permissions: { create: { module: 'deals', canView: true, canViewAll: true, canEdit: true } } } });
+    const agent = await prisma.user.create({ data: { tenantId, role: role.name, ...person(),
+      userRoles: { create: { roleId: role.id } } } });
+    return prisma.lead.create({ data: { tenantId, ...person(), assignedUserId: agent.id } });
+  }
   beforeAll(async () => {
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
@@ -117,7 +124,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const pipeline = await tenantContext.run({ tenantId }, () => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const stages = await prisma.stage.findMany({ where: { tenantId, pipelineId: pipeline.pipeline.id } });
     const leadStage = stages.find(s => s.name === 'Lead')!, qualified = stages.find(s => s.name === 'Qualified')!, won = stages.find(s => s.isWon)!;
-    const input = { title: 'Installation', pipelineId: pipeline.pipeline.id, stageId: leadStage.id, productInterestIds: [product.id] };
+    const lead = await dealLead();
+    const input = { title: 'Installation', leadIds: [lead.id], pipelineId: pipeline.pipeline.id, stageId: leadStage.id, productInterestIds: [product.id] };
     expect((await call('/crm/deals/batch', 'POST', { ...input, idempotencyKey: randomUUID() })).status).toBe(400);
     const created = await call('/crm/deals/batch', 'POST', { ...input, idempotencyKey: randomUUID(), customFieldValues: { [normal.id]: 'SITE-1' } });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -201,7 +209,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       const upload = await fetch(`${base}/crm/deals/custom-field-uploads?name=site.pdf&type=application/pdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: '%PDF-batch fixture' });
       expect(upload.status).toBe(201);
       const fileId = (await upload.json()).data.id;
-      const input = { title: 'Installation', pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: products.map(p => p.id), idempotencyKey: randomUUID(), customFieldValues: { [document.id]: fileId } };
+      const lead = await dealLead();
+      const input = { title: 'Installation', leadIds: [lead.id], pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: products.map(p => p.id), idempotencyKey: randomUUID(), customFieldValues: { [document.id]: fileId } };
       const created = await call('/crm/deals/batch', 'POST', input);
       expect(created.status, JSON.stringify(created.body)).toBe(201);
       const ids = created.body.data.deals.map((deal: { id: string }) => deal.id);
@@ -354,7 +363,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       const product = await prisma.productInterest.create({ data: { tenantId, name: 'Inline product', dealValue: 100 } });
       const pipeline = await tenantContext.run({ tenantId }, () => salesTransaction(tx => salesPipeline(tx, tenantId)));
       const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.pipeline.id, name: 'Lead' } });
-      const created = await call('/crm/deals/batch', 'POST', { title: 'Inline Deal', pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: [product.id], idempotencyKey: randomUUID(), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
+      const lead = await dealLead();
+      const created = await call('/crm/deals/batch', 'POST', { title: 'Inline Deal', leadIds: [lead.id], pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: [product.id], idempotencyKey: randomUUID(), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
       expect(created.status, JSON.stringify(created.body)).toBe(201); id = created.body.data.deals[0].id;
     } else {
       const created = await call(`/crm/${module}`, 'POST', { ...(module === 'accounts' ? { name: 'Inline Account' } : person()), ...(module === 'contacts' ? { requestId: randomUUID() } : {}), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
@@ -363,7 +373,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const userFor = async (name: string, canEdit: boolean, configEditor: boolean) => {
       const role = await prisma.roleDefinition.create({ data: { tenantId, name } });
       const user = await prisma.user.create({ data: { tenantId, firstName: name, lastName: 'Tester', email: `${randomUUID()}@camxian.com`, role: name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
-      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit } });
+      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canViewAll: true, canEdit } });
       if (configEditor) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'custom_fields', canView: true, canEdit: true } });
       await prisma.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } });
       return (await issueAuthSession(user)).token;

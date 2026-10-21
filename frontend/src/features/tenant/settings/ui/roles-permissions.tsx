@@ -153,12 +153,11 @@ function RolePermissionTable({ allPerms, activePermIds, onToggle, onGroupToggle,
 interface RoleEditorProps {
   role: RoleDefinition | null; // null = new role
   allPerms: Permission[];
-  allUsers: ReturnType<typeof useData>['users'];
   onSave: (name: string, description: string, permIds: string[]) => Promise<void>;
   onCancel: () => void;
 }
 
-function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorProps): React.ReactElement {
+function RoleEditor({ role, allPerms, onSave, onCancel }: RoleEditorProps): React.ReactElement {
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
   const [activePermIds, setActivePermIds] = useState<string[]>(role?.permissions ?? []);
@@ -170,7 +169,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
   const isAdmin = !!role?.isSystemRole && role.name === 'Client Admin';
   const isSystemRole = role?.isSystemRole ?? false;
   const effectivePermIds = isAdmin ? allPerms.map(permission => permission.id) : activePermIds;
-  const userCount = allUsers.filter((u) => !u.isArchived && u.role === role?.name).length;
+  const userCount = role?.userCount;
 
   const handleToggle = useCallback((id: string, v: boolean) => {
     setActivePermIds(prev => togglePermissionSelection(prev, [id], v));
@@ -312,7 +311,7 @@ interface RolesPermissionsProps {
 
 export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps): React.ReactElement {
   const { tenant, userCan } = useAuth();
-  const { roles, permissions, rolesLoading, rolesError, refreshRoles, users, addRole, updateRole, deleteRole } = useData();
+  const { roles, permissions, rolesLoading, rolesError, refreshRoles, addRole, updateRole, deleteRole } = useData();
 
   // view state
   const [view, setView] = useState<'list' | 'edit' | 'new'>('list');
@@ -406,7 +405,6 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <RoleEditor
           role={freshRole}
           allPerms={permissions}
-          allUsers={users}
           onSave={handleSave}
           onCancel={goList}
         />
@@ -420,7 +418,6 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <RoleEditor
           role={null}
           allPerms={permissions}
-          allUsers={users}
           onSave={handleSave}
           onCancel={goList}
         />

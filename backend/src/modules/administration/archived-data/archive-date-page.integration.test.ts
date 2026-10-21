@@ -25,11 +25,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_polis
     const staff = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Staff', lastName: 'Archive', role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
     await scope(() => prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: staff.id } })); staffToken = (await issueAuthSession(staff)).token;
     for (let index = 0; index < 30; index++) {
-      const task = await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: adminId, title: `Archived ${index}`, dueDate: new Date('2026-01-01'), isArchived: true } }));
+      const task = await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: staff.id, title: `Archived ${index}`, dueDate: new Date('2026-01-01'), isArchived: true } }));
       taskIds.push(task.id);
       await prisma.auditLog.create({ data: { tenantId, userId: adminId, action: 'task.archived', entityType: 'Task', entityId: task.id, createdAt: new Date(Date.UTC(2026, 0, index + 1)) } });
     }
-    unknownDateTask = (await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: adminId, title: 'Archived without audit', dueDate: new Date('2026-01-01'), isArchived: true } }))).id;
+    unknownDateTask = (await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: staff.id, title: 'Archived without audit', dueDate: new Date('2026-01-01'), isArchived: true } }))).id;
     roleId = (await scope(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Retired role', isArchived: true } }))).id;
     await prisma.auditLog.create({ data: { tenantId, userId: adminId, action: 'role.archived', entityType: 'RoleDefinition', entityId: roleId, createdAt: new Date('2026-02-01') } });
     leadId = (await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Literal', lastName: '100%_match', isArchived: true, deletedAt: new Date('2026-02-02') } }))).id;

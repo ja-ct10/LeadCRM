@@ -1,18 +1,16 @@
 import type { TaskLinkKind, TaskOption, TaskRecord } from '@leadcrm/shared';
-import { isTaskAssignmentRestrictedRole, isTaskManagerRole } from '@leadcrm/shared';
 
 type TeamMember = { id: string; tenantId: string; role: string; groupIds?: string[]; groups?: { id: string }[] };
 export function taskTeamUserIds(user: TeamMember, users: readonly TeamMember[]): string[] {
   const groups = user.groupIds ?? user.groups?.map(group => group.id) ?? [];
-  return [user.id, ...users.filter(member => member.tenantId === user.tenantId && isTaskAssignmentRestrictedRole(member.role) &&
+  return [user.id, ...users.filter(member => member.tenantId === user.tenantId &&
     (member.groupIds ?? member.groups?.map(group => group.id) ?? []).some(id => groups.includes(id))).map(member => member.id)];
 }
 
 /** Managers receive only authorized team rows from the server; grants remain separate. */
-export function canManageTask(task: Pick<TaskRecord, 'createdById' | 'assignedUserId'> | undefined, user?: { id: string; role: string } | null): boolean {
+export function canManageTask(task: Pick<TaskRecord, 'createdById' | 'assignedUserId'> | undefined, user?: { id: string; role: string } | null, groupAccess = false): boolean {
   if (!task || !user) return false;
-  return isTaskAssignmentRestrictedRole(user.role ?? '') ? task.assignedUserId === user.id
-    : isTaskManagerRole(user.role ?? '') || isTaskOwner(task, user.id);
+  return user.role === 'Client Admin' ? isTaskOwner(task, user.id) : groupAccess || task.assignedUserId === user.id;
 }
 
 /** Creator ownership is separate from assignment, including for administrators. */

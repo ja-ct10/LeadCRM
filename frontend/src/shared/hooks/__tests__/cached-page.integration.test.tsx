@@ -33,6 +33,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearPageCache(); });
 
 describe('real cached request lifecycle', () => {
+  it('evicts a selected Task immediately on Group scope invalidation and ignores the previous request', async () => {
+    const stale = deferred<{ id: string }>(), current = deferred<{ id: string }>();
+    const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'previously-authorized' }).mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
+    const { result } = renderHook(() => useCachedPage({ module: 'tasks', params: { recordId: 'task' }, revalidateOnInvalidation: true, fetchFn }));
+    await waitFor(() => expect(result.current.data).toEqual({ id: 'previously-authorized' }));
+    act(() => { void result.current.refetch(); });
+    act(() => invalidatePageCache('tasks', 'tenant-a', true, true));
+    expect(result.current.data).toBeUndefined();
+    await act(async () => stale.resolve({ id: 'revoked' }));
+    expect(result.current.data).toBeUndefined();
+    await act(async () => current.reject(Object.assign(new Error('Task not found'), { status: 404 })));
+    await waitFor(() => expect(result.current.errorStatus).toBe(404));
+    expect(result.current.data).toBeUndefined();
+  });
   it('refreshes mounted Lead lists and selected detail after one invalidation without an explicit page refetch', async () => {
     let firstName = 'Before';
     const record = () => ({ id: 'lead', tenantId: 'tenant-a', firstName, lastName: 'Person', status: 'Warm',

@@ -1,6 +1,6 @@
 "use client";
 import { useId, useRef, useState, type ReactNode } from 'react';
-import { taskAssociationIds, isTaskAssignmentRestrictedRole, isTaskManagerRole, type TaskLinkInput, type TaskOption, type TaskRecord } from '@leadcrm/shared';
+import { taskAssociationIds, type TaskLinkInput, type TaskOption, type TaskRecord } from '@leadcrm/shared';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -26,9 +26,10 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
   const { user } = useAuth();
   const { addTask } = useData();
   const canCreate = useHasPermission('tasks.create'), assignGrant = useHasPermission('tasks.assign'), canCreateDeals = useHasPermission('deals.create');
-  const selfOnly = isTaskAssignmentRestrictedRole(user?.role ?? '');
+  const groupAccess = useHasPermission('tasks.view_all');
+  const selfOnly = user?.role !== 'Client Admin' && !groupAccess;
   const canAssign = assignGrant && !selfOnly;
-  const initialAssignee = selfOnly || isTaskManagerRole(user?.role ?? '') ? user?.id ?? '' : '';
+  const initialAssignee = selfOnly ? user?.id ?? '' : '';
   const editable = !readOnly && canCreate;
   const requestId = useRef<string>(crypto.randomUUID());
   const [title, setTitle] = useState(''), [description, setDescription] = useState('');

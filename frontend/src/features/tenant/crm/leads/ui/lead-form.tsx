@@ -431,12 +431,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
 // ── Small reusable helpers ─────────────────────────────────────────────────────
 
-function SectionHeader({ num, title }: { num: number; title: string }): React.ReactElement {
+function SectionHeader({ title }: { num: number; title: string }): React.ReactElement {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-[11px] font-bold shrink-0">
-        {num}
-      </div>
+    <div className="flex min-h-6 items-center gap-3">
       <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">{title}</h3>
       <div className="flex-1 h-px bg-gray-200 dark:bg-white/[0.06]" />
     </div>

@@ -456,7 +456,7 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
     }, select: { id: true, assignedUserId: true } });
     if (deals.length !== checked.length) throw new NotFoundError('Related Deal');
     if (!system && (policy.taskManager ? deals.some(deal => !deal.assignedUserId || !taskAssigneeInScope(policy, deal.assignedUserId))
-      : policy.assignmentRestricted && deals.some(deal => deal.assignedUserId !== userId)))
+      : policy.taskAssignmentRestricted && deals.some(deal => deal.assignedUserId !== userId)))
       throw new AppError('You can only associate tasks with Deals assigned to you.', 403, 'CRM_ASSIGNMENT_REQUIRED');
   }
 }

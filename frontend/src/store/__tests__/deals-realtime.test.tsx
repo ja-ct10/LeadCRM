@@ -8,10 +8,12 @@ import { apiClient } from '@/lib/api/client';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { PipelineKanbanBoard } from '@/features/tenant/crm/pipeline/ui/pipeline-kanban-board';
 import type { Deal, Pipeline } from '../types';
+import { useTasks } from '@/features/tenant/operations/tasks/use-tasks';
 
 const state = vi.hoisted(() => ({ id: 'actor', tenant: 'tenant', denied: false }));
 vi.mock('../AuthContext', () => ({ useAuth: () => ({
   user: { id: state.id, role: 'Staff', status: 'ACTIVE' }, tenant: { id: state.tenant },
+  permissions: { tasks: { canView: true } }, isPermissionsLoaded: true,
   userCan: (module: string) => !(state.denied && module === 'deals'), isLoading: false,
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
@@ -55,6 +57,14 @@ function View({ board = false }: { board?: boolean }) {
       <PipelineKanbanBoard pipeline={pipeline} deals={query.data ?? []} users={[]} canEdit={false} canDelete={false}
         onDealClick={vi.fn()} onDealDragEnd={vi.fn()} onAddDeal={vi.fn()} onLoadMore={vi.fn()} loadingStages={new Set()} hasMoreByStage={{}} /></>}</>;
 }
+function TaskView() {
+  const tasks = useTasks();
+  const detail = useCachedPage<{ id: string }>({ module: 'tasks', params: { recordId: 'task' }, disabled: false,
+    revalidateOnInvalidation: true, fetchFn: async signal => (await apiClient.get<{ data: { id: string } }>('/operations/tasks/task', { signal })).data });
+  return <><output data-testid="task-rows">{tasks.tasks.map(task => task.id).join(',')}</output>
+    <output data-testid="task-total">{tasks.summary?.total}</output>
+    <output data-testid="task-detail">{detail.data?.id}</output></>;
+}
 beforeEach(() => {
   state.id = 'actor'; state.tenant = 'tenant'; state.denied = false; rows = [row()]; intercept = undefined;
   clearPageCache(); localStorage.clear(); Events.sources = []; fetcher.mockClear();
@@ -62,6 +72,26 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
+
+it('evicts Task rows, summaries and details on CRM revisions even when the replacement reads fail', async () => {
+  let revoked = false;
+  intercept = url => {
+    if (!url.pathname.includes('/operations/tasks')) return undefined;
+    if (revoked) return Promise.resolve(response([], 503));
+    if (url.pathname.endsWith('/summary')) return Promise.resolve(response({ total: 1 }));
+    if (url.pathname.endsWith('/task')) return Promise.resolve(response({ id: 'task' }));
+    return Promise.resolve(response([{ id: 'task' }]));
+  };
+  render(<DataProvider><TaskView /></DataProvider>);
+  await waitFor(() => expect(screen.getByTestId('task-rows').textContent).toBe('task'));
+  expect(screen.getByTestId('task-total').textContent).toBe('1');
+  await waitFor(() => expect(screen.getByTestId('task-detail').textContent).toBe('task'));
+  revoked = true;
+  act(() => source().emit('crm-change'));
+  await waitFor(() => expect(screen.getByTestId('task-rows').textContent).toBe(''));
+  expect(screen.getByTestId('task-total').textContent).toBe('');
+  expect(screen.getByTestId('task-detail').textContent).toBe('');
+});
 
 it('updates Qualified stage, High priority badge and counts through crm-change without a manual refresh', async () => {
   rows = [{ ...row(), priority: 'MEDIUM' }];

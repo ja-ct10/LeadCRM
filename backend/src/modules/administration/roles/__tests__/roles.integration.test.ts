@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { PERMISSION_MODULES } from '@leadcrm/shared';
 import prisma from '../../../../config/database.config';
@@ -18,6 +19,20 @@ describe.skipIf(!disposable)('custom roles: authenticated HTTP and database pers
     const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, body: await response.json(), token: response.headers.get('set-cookie')?.match(/leadcrm_token=([^;]+)/)?.[1] };
   }
+  async function expectAssignedCount(roleId: string, count: number) {
+    const list = await call('/administration/roles');
+    const detail = await call(`/administration/roles/${roleId}`);
+    expect(list.status).toBe(200); expect(detail.status).toBe(200);
+    expect(list.body.data.find((role: { id: string }) => role.id === roleId)?.userCount).toBe(count);
+    expect(detail.body.data.userCount).toBe(count);
+    return detail.body.data;
+  }
+  async function assignedUser(primary: string, roleIds: string[], status: 'ACTIVE' | 'INACTIVE' | 'PENDING' = 'ACTIVE', scope = tenantId) {
+    return prisma.user.create({ data: {
+      tenantId: scope, role: primary, status, email: `count-${randomUUID()}@camxian.com`, firstName: 'Count', lastName: 'Fixture',
+      mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: roleIds.map(roleId => ({ roleId })) },
+    } });
+  }
   beforeAll(async () => {
     const tenant = await prisma.tenant.create({ data: { name: 'Role test', slug: `roles-${Date.now()}`, onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
@@ -32,6 +47,62 @@ describe.skipIf(!disposable)('custom roles: authenticated HTTP and database pers
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
   it('returns the canonical module registry', async () => {
     expect((await call('/administration/permissions')).body.data).toEqual(PERMISSION_MODULES);
+  });
+  it('counts distinct persisted assignments across roles and statuses, then follows removal, reassignment and rename', async () => {
+    const primary = (await call('/administration/roles', 'POST', { name: 'Count primary', permissions: [permissions[0]] })).body.data;
+    const secondary = (await call('/administration/roles', 'POST', { name: 'Count secondary', permissions: [permissions[2]] })).body.data;
+    const staff = await assignedUser(primary.name, [primary.id, secondary.id]);
+    await assignedUser(primary.name, [primary.id], 'INACTIVE');
+    await assignedUser(primary.name, [primary.id], 'PENDING');
+    await assignedUser(primary.name, []); // A matching label is not an assignment.
+    const otherRole = (await call('/administration/roles', 'POST', { name: primary.name, permissions: [] }, otherToken)).body.data;
+    await assignedUser(otherRole.name, [otherRole.id], 'ACTIVE', otherTenantId);
+    const initialPermissions = await repo.findUserEffectivePermissions(staff.id, tenantId);
+    expect(initialPermissions).toMatchObject({ contacts: { canView: true }, deals: { canView: true } });
+    await expectAssignedCount(primary.id, 3); await expectAssignedCount(secondary.id, 1);
+    expect((await call(`/administration/roles/${primary.id}`, 'GET', undefined, otherToken)).status).toBe(404);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect((await call('/administration/roles/assign', 'POST', { userId: staff.id, roleId: primary.id })).status).toBe(200);
+    }
+    expect(await prisma.userRole.count({ where: { userId: staff.id, roleId: primary.id, tenantId } })).toBe(1);
+    await expectAssignedCount(primary.id, 3); await expectAssignedCount(secondary.id, 1);
+    expect(await repo.findUserEffectivePermissions(staff.id, tenantId)).toEqual(initialPermissions);
+
+    expect((await call('/administration/roles/unassign', 'DELETE', { userId: staff.id, roleId: secondary.id })).status).toBe(200);
+    await expectAssignedCount(primary.id, 3); await expectAssignedCount(secondary.id, 0);
+    expect((await call(`/administration/users/${staff.id}`, 'PUT', { role: secondary.name })).status).toBe(200);
+    await expectAssignedCount(primary.id, 2); await expectAssignedCount(secondary.id, 1);
+    const assignments = await prisma.userRole.findMany({ where: { userId: staff.id, tenantId } });
+    const permissionsBeforeRename = await repo.findUserEffectivePermissions(staff.id, tenantId);
+    expect((await call(`/administration/roles/${secondary.id}`, 'PUT', { name: 'Count renamed secondary' })).status).toBe(200);
+    const renamed = await expectAssignedCount(secondary.id, 1);
+    expect(renamed.name).toBe('Count renamed secondary');
+    expect(await prisma.userRole.findMany({ where: { userId: staff.id, tenantId } })).toEqual(assignments);
+    expect(await repo.findUserEffectivePermissions(staff.id, tenantId)).toEqual(permissionsBeforeRename);
+    await expectAssignedCount(secondary.id, 1);
+  });
+
+  it('returns persisted system-role counts without changing Client Admin permissions or edit protection', async () => {
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
+    const admin = await assignedUser(role.name, [role.id]);
+    await assignedUser(role.name, [role.id]);
+    const grants = await repo.findUserEffectivePermissions(admin.id, tenantId);
+    expect(grants.roles).toMatchObject({ canView: true, canEdit: true, canAssign: true });
+    await expectAssignedCount(role.id, 2);
+    expect((await call(`/administration/roles/${role.id}`, 'PUT', { name: 'Changed admin' })).status).toBe(403);
+    await expectAssignedCount(role.id, 2);
+    expect(await repo.findUserEffectivePermissions(admin.id, tenantId)).toEqual(grants);
+  });
+
+  it('counts all assignments beyond the limited role-detail user preview', async () => {
+    const role = (await call('/administration/roles', 'POST', { name: 'Count beyond preview', permissions: [] })).body.data;
+    const ids = Array.from({ length: 51 }, () => randomUUID());
+    await prisma.user.createMany({ data: ids.map(id => ({ id, tenantId, role: role.name, email: `count-${id}@camxian.com`, firstName: 'Preview', lastName: 'Fixture' })) });
+    await prisma.userRole.createMany({ data: ids.map(userId => ({ tenantId, userId, roleId: role.id })) });
+    const detail = await expectAssignedCount(role.id, 51);
+    expect(detail.assignedUsers).toHaveLength(50);
+    expect(new Set(detail.assignedUsers.map((user: { id: string }) => user.id)).size).toBe(50);
   });
   it('creates RoleDefinition and RolePermission rows, returns them, reloads, and survives logout/login and a new session', async () => {
     const created = await call('/administration/roles', 'POST', { name: ' Sales Assistant ', description: 'Persisted', permissions });

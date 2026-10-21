@@ -155,6 +155,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const filesQuery = useCachedPage<RecordFileMetadata[]>({ module, params: { recordId: id, files: true }, revalidateOnInvalidation: true,
     disabled: tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
     fetchFn: async signal => (await apiClient.get<{ data: RecordFileMetadata[] }>(`/crm/${module}/${encodeURIComponent(id)}/files`, { signal })).data });
+  const fileIdentity = JSON.stringify([module, id, tenant?.id, user?.id, getPageCacheGeneration()]);
+  const filesState = useRef({ identity: fileIdentity, query: filesQuery });
+  filesState.current = { identity: fileIdentity, query: filesQuery };
+  useEffect(() => () => { filesState.current.identity = ''; }, []);
   const [emailRevision, setEmailRevision] = useState(0);
   const emailIdentity = JSON.stringify([module, id, tenant?.id, user?.id, user?.role, getPageCacheGeneration(), emailRevision]);
   const [emailPagination, setEmailPagination] = useState({ identity: emailIdentity, count: 1 });
@@ -528,14 +532,20 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div></TabsContent>
           <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordFilesTab files={combinedFiles} loading={filesQuery.isInitialLoad || emailFiles.isInitialLoad && !emailPage}
+              restrictFormats={module !== 'accounts'}
               error={filesQuery.error || emailFiles.error || emailPage?.error}
               onRetry={() => { void filesQuery.refetch(); resetEmailAccess(); }} emailContext={emailContext}
               attachmentAccessKey={emailIdentity + ':' + emailUnavailable + ':' + canReadEmailFiles} onEmailUnavailable={resetEmailAccess}
               hasMore={!!emailPage?.nextCursor} loadingMore={emailFiles.isInitialLoad || emailFiles.isRefreshing}
               onLoadMore={() => setEmailPagination({ identity: emailIdentity, count: emailPageCount + 1 })}
               onUpload={canEdit && !USE_MOCK_DATA ? async file => {
+                const generation = getPageCacheGeneration();
                 const query = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
-                await apiClient.upload(`/crm/${module}/${encodeURIComponent(id)}/files?${query}`, new Blob([file], { type: 'application/octet-stream' }));
+                const saved = await apiClient.upload<{ data: RecordFileMetadata }>(`/crm/${module}/${encodeURIComponent(id)}/files?${query}`, new Blob([file], { type: 'application/octet-stream' }));
+                if (filesState.current.identity === fileIdentity && getPageCacheGeneration() === generation) {
+                  const current = filesState.current.query;
+                  current.setData([saved.data, ...(current.data ?? []).filter(existing => existing.id !== saved.data.id)]);
+                }
               } : undefined} />
           </TabsContent>
         </div>

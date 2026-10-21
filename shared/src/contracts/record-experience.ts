@@ -22,6 +22,20 @@ export function normalizeCrmStatus(status?: string): CrmStatus {
   return CRM_STATUSES.find(value => value.toLowerCase() === status?.toLowerCase()) ?? 'Warm';
 }
 export const RECORD_FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** Manual CRM Files tabs only; custom-field and import policies remain independent. */
+export const CRM_FILE_EXTENSIONS = ['csv', 'png', 'jpg', 'jpeg', 'pdf', 'txt', 'docx'] as const;
+export const CRM_FILE_ACCEPT = CRM_FILE_EXTENSIONS.map(extension => `.${extension}`).join(',');
+export const CRM_FILE_SIZE_ERROR = 'File size must not exceed 10 MB.';
+export const CRM_FILE_FORMAT_ERROR = 'Unsupported file format. Please upload CSV, PNG, JPG, JPEG, PDF, TXT, or DOCX files.';
+export function crmFileExtension(name: string): typeof CRM_FILE_EXTENSIONS[number] | undefined {
+  const extension = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
+  return CRM_FILE_EXTENSIONS.find(allowed => allowed === extension);
+}
+export function crmFileValidationError(file: { name: string; size: number }): string | undefined {
+  if (file.size > RECORD_FILE_MAX_BYTES) return CRM_FILE_SIZE_ERROR;
+  if (!crmFileExtension(file.name)) return CRM_FILE_FORMAT_ERROR;
+  if (!file.size) return 'Choose a nonempty file.';
+}
 export interface RecordFileMetadata {
   id: string;
   name: string;

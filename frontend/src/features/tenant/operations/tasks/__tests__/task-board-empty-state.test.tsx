@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(mocks.searchParams) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockData; } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', role: 'Client Admin' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: mocks.users, updateTask: vi.fn(), bulkTasks: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => permission === 'tasks.create' ? mocks.canCreate : true }));
 vi.mock('@/shared/hooks/use-table-preferences', () => ({ useTablePreferences: () => ({ sort: { field: 'createdAt', direction: 'desc' }, setSort: vi.fn() }) }));

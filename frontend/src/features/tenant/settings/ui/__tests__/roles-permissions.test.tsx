@@ -4,14 +4,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PERMISSION_GROUPS, PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS, permissionLabel } from '@leadcrm/shared';
 import { DataProvider } from '@/store/DataContext';
 import { RolesPermissions } from '../roles-permissions';
-const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), denied: [] as string[] }));
+import { rolesService } from '@/features/tenant/administration/roles/services/roles.service';
+import { usersService } from '@/features/tenant/administration/users/services/users.service';
+const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), denied: [] as string[], tenantId: 'tenant-a' }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
-  tenant: { id: 'tenant-a' }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: (module: string, action: string) => !mocks.denied.includes(`${module}.${action}`),
+  tenant: { id: mocks.tenantId }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: (module: string, action: string) => !mocks.denied.includes(`${module}.${action}`),
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
 const savedRoles: object[] = [];
 let directoryUsers: object[] = [];
+let directoryPending: Promise<void> | undefined;
+let directoryDenied = false;
 let failure = '';
 let pending: Promise<void> | undefined;
 let holdCrm = false;
@@ -25,7 +29,11 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     return { ok: true, json: async () => ({ success: true }) };
   }
   if (holdCrm && path.endsWith('/crm/accounts')) return new Promise<never>(() => {});
-  if (path.endsWith('/administration/users')) return { ok: true, json: async () => ({ data: directoryUsers }) };
+  if (path.endsWith('/administration/users')) {
+    if (directoryPending) await directoryPending;
+    if (directoryDenied) return { ok: false, status: 403, json: async () => ({ error: 'Users access denied' }) };
+    return { ok: true, json: async () => ({ data: directoryUsers }) };
+  }
   if (path.endsWith('/administration/permissions')) return { ok: true, json: async () => ({ data: permissionModules }) };
   if (path.includes('/administration/roles/') && options?.method === 'PUT') {
     if (pending) await pending;
@@ -46,12 +54,13 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
       savedRoles.push(data);
       return { ok: true, json: async () => ({ success: true, data }) };
     }
+    const data = [...savedRoles];
     if (rolesPending) await rolesPending;
-    return { ok: true, json: async () => ({ data: savedRoles }) };
+    return { ok: true, json: async () => ({ data }) };
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; directoryUsers = []; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; permissionModules = PERMISSION_MODULES; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); mocks.denied = []; mocks.tenantId = 'tenant-a'; savedRoles.length = 0; directoryUsers = []; directoryPending = undefined; directoryDenied = false; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; permissionModules = PERMISSION_MODULES; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
@@ -559,4 +568,119 @@ it('shows card-shaped skeletons while loading, then roles or the empty state', a
   expect(screen.queryByText('Loading roles and permissions…')).toBeNull();
   await act(async () => finish()); await screen.findByText('No roles yet.');
   expect(screen.queryByRole('status', { name: 'Loading roles and permissions' })).toBeNull();
+});
+
+it.each([0, 1, 7])('uses the same persisted count of %s on the card and editor with an empty directory', async count => {
+  savedRoles.push(customRole(count));
+  mount();
+  await screen.findByText(count === 0 ? 'No users' : `${count} ${count === 1 ? 'user' : 'users'}`);
+  await enterEdit();
+  expect(screen.getByText(`${count} user${count === 1 ? '' : 's'} assigned`)).toBeTruthy();
+});
+
+it.each(['pending', 'denied', 'different primary role'] as const)('shows assigned users independently of a directory that is %s', async state => {
+  savedRoles.push(customRole(7));
+  let finish!: () => void;
+  if (state === 'pending') directoryPending = new Promise(resolve => { finish = resolve; });
+  if (state === 'denied') directoryDenied = true;
+  directoryUsers = [{ id: 'secondary-role-user', role: 'Other primary role', status: 'ACTIVE' }];
+  mount();
+  await enterEdit();
+  expect(screen.getByText('7 users assigned')).toBeTruthy();
+  expect(screen.queryByText('0 users assigned')).toBeNull();
+  if (state === 'pending') await act(async () => finish());
+  expect(screen.getByText('7 users assigned')).toBeTruthy();
+});
+
+it('preserves a system role count and its protected actions', async () => {
+  savedRoles.push({ ...customRole(2), id: 'admin-role', name: 'Client Admin', isSystemRole: true });
+  mount();
+  await screen.findByText('2 users');
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Client Admin' }));
+  expect(screen.getByRole('menuitem', { name: 'Edit Permissions' }).getAttribute('aria-disabled')).toBe('true');
+  expect(screen.queryByText('Edit Role')).toBeNull();
+});
+
+it('refreshes both role counts after Team Management reassigns a user while preserving the edit draft', async () => {
+  savedRoles.push(customRole(7), { ...customRole(1), id: 'other-role', name: 'Other' });
+  mount(); await enterEdit();
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Unsaved rename' } });
+  fireEvent.change(screen.getByLabelText('Description — Optional'), { target: { value: 'Unsaved description' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'View Contacts' }));
+  savedRoles[0] = customRole(6);
+  savedRoles[1] = { ...customRole(2), id: 'other-role', name: 'Other' };
+  fetcher.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, data: { id: 'assigned-user', tenantId: 'tenant-a', role: 'Other', status: 'ACTIVE' } }) });
+  await act(async () => { await usersService.update('assigned-user', { role: 'Other' }); });
+  await screen.findByText('6 users assigned');
+  expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', 'Unsaved rename');
+  expect(screen.getByLabelText('Description — Optional')).toHaveProperty('value', 'Unsaved description');
+  expect(screen.getByRole('checkbox', { name: 'View Contacts' })).toHaveProperty('checked', true);
+  expect(puts()).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByText('6 users')).toBeTruthy(); expect(screen.getByText('2 users')).toBeTruthy();
+  await enterEdit('Other'); expect(screen.getByText('2 users assigned')).toBeTruthy();
+});
+
+it('refreshes role counts after successful direct assignment and removal', async () => {
+  await openEdit([], 7);
+  savedRoles[0] = customRole(8);
+  await act(async () => { await rolesService.assign('assigned-user', 'staff-role'); });
+  await screen.findByText('8 users assigned');
+  savedRoles[0] = customRole(7);
+  await act(async () => { await rolesService.unassign('assigned-user', 'staff-role'); });
+  await screen.findByText('7 users assigned');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByText('7 users')).toBeTruthy();
+});
+
+it('keeps the persisted count after rename, reopening and remounting', async () => {
+  const view = await openEdit([], 7);
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Renamed staff' } });
+  expect(screen.getByText('7 users assigned')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await screen.findByText('Renamed staff'); expect(screen.getByText('7 users')).toBeTruthy();
+  await enterEdit('Renamed staff'); expect(screen.getByText('7 users assigned')).toBeTruthy();
+  view.unmount(); mount();
+  await enterEdit('Renamed staff'); expect(screen.getByText('7 users assigned')).toBeTruthy();
+});
+
+it('keeps the last confirmed count during initial loading and background refresh without a zero placeholder', async () => {
+  savedRoles.push(customRole(7));
+  let finish!: () => void; rolesPending = new Promise(resolve => { finish = resolve; });
+  mount();
+  expect(screen.getByRole('status', { name: 'Loading roles and permissions' })).toBeTruthy();
+  expect(screen.queryByText(/^0 users/)).toBeNull();
+  await act(async () => finish()); await enterEdit();
+  rolesPending = new Promise(resolve => { finish = resolve; });
+  savedRoles[0] = customRole(8);
+  act(() => { window.dispatchEvent(new Event('leadcrm:users-changed')); });
+  expect(screen.getByText('7 users assigned')).toBeTruthy(); expect(screen.queryByText('0 users assigned')).toBeNull();
+  await act(async () => finish()); await screen.findByText('8 users assigned');
+});
+
+it.each(['resolve', 'reject'] as const)('ignores an older role refresh that finishes with %s after the latest response', async outcome => {
+  await openEdit([], 7);
+  let finish!: () => void;
+  rolesPending = new Promise<void>((resolve, reject) => { finish = outcome === 'resolve' ? resolve : () => reject(new Error('Stale refresh failed')); });
+  act(() => { window.dispatchEvent(new Event('leadcrm:users-changed')); });
+  rolesPending = undefined;
+  savedRoles[0] = customRole(8);
+  act(() => { window.dispatchEvent(new Event('leadcrm:users-changed')); });
+  await screen.findByText('8 users assigned');
+  await act(async () => finish());
+  expect(screen.getByText('8 users assigned')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByText('8 users')).toBeTruthy(); expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('discards a pending role response after changing tenant', async () => {
+  savedRoles.push(customRole(7));
+  let finish!: () => void; rolesPending = new Promise(resolve => { finish = resolve; });
+  const view = mount();
+  mocks.tenantId = 'tenant-b'; rolesPending = undefined;
+  savedRoles[0] = { ...customRole(2), tenantId: 'tenant-b', name: 'Tenant B staff' };
+  view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
+  await screen.findByText('Tenant B staff');
+  await act(async () => finish());
+  expect(screen.getByText('2 users')).toBeTruthy(); expect(screen.queryByText('7 users')).toBeNull();
 });

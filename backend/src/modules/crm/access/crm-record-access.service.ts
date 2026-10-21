@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { hasModulePermission, isWorkspaceAccessible, isTaskAssignmentRestrictedRole, isTaskManagerRole, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
+import { hasModulePermission, isWorkspaceAccessible, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
 import { resolveEffectivePermissions } from '../../administration/roles/roles.repository';
 import { AppError } from '../../../shared/errors/app-error';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
@@ -52,30 +52,31 @@ export async function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy>
   // not promote an employee to Client Admin, including an extra admin-named role.
   const clientAdmin = user.role === 'Client Admin';
   const permissions = resolveEffectivePermissions(user);
-  const taskManager = !clientAdmin && isTaskManagerRole(user.role);
+  const taskManager = !clientAdmin && hasModulePermission(permissions, 'tasks', 'canViewAll');
   let taskTeamUserIds: string[] | undefined;
   if (taskManager) {
     const groupIds = (user.groupMemberships ?? []).map(member => member.groupId);
     const members = groupIds.length ? await db.user.findMany({
       where: { tenantId: user.tenantId, groupMemberships: { some: { tenantId: user.tenantId, groupId: { in: groupIds } } } },
-      select: { id: true, role: true },
+      select: { id: true },
     }) : [];
     // Inactive historical assignees remain manageable; new assignment separately checks eligibility.
-    taskTeamUserIds = [...new Set([user.id, ...members.filter(member => isTaskAssignmentRestrictedRole(member.role)).map(member => member.id)])];
+    taskTeamUserIds = [...new Set([user.id, ...members.map(member => member.id)])];
   }
   return { userId: user.id, tenantId: user.tenantId, clientAdmin, permissions,
-    taskAssignmentRestricted: isTaskAssignmentRestrictedRole(user.role) || taskManager, taskManager, taskTeamUserIds,
+    taskAssignmentRestricted: !clientAdmin, taskManager, taskTeamUserIds,
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
 }
 
 /** Shared by scoped Prisma reads and the fixed SQL archive query. */
-export function taskReadWhere(policy: Pick<ReadPolicy, 'tenantId' | 'userId' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>): Prisma.TaskWhereInput {
+export function taskReadWhere(policy: Pick<ReadPolicy, 'tenantId' | 'userId' | 'clientAdmin' | 'permissions' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>): Prisma.TaskWhereInput {
+  if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', 'canView')) return { tenantId: policy.tenantId, assignedUserId: { in: [] } };
   return { tenantId: policy.tenantId, ...(policy.taskAssignmentRestricted
     ? { assignedUserId: policy.taskTeamUserIds ? { in: policy.taskTeamUserIds } : policy.userId } : {}) };
 }
 
-export function taskAssigneeInScope(policy: Pick<ReadPolicy, 'userId' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>, assignedUserId: string): boolean {
-  return !policy.taskAssignmentRestricted || (policy.taskTeamUserIds ?? [policy.userId]).includes(assignedUserId);
+export function taskAssigneeInScope(policy: Pick<ReadPolicy, 'userId' | 'clientAdmin' | 'permissions' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>, assignedUserId: string): boolean {
+  return policy.clientAdmin || hasModulePermission(policy.permissions, 'tasks', 'canView') && (policy.taskTeamUserIds ?? [policy.userId]).includes(assignedUserId);
 }
 
 /** Related metadata must retain the source module's View boundary. */

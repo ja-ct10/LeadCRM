@@ -12,8 +12,8 @@ import { InlineEditRows } from './inline-edit-rows';
 
 async function uploadCustomFieldFile(module: CustomFieldModule, recordId: string | undefined, file: File) {
   if (!file.size || file.size > CLOSING_FILE_MAX_BYTES) throw new Error('Choose a nonempty file no larger than 10 MB.');
-  const params = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
-  const path = recordId ? `/crm/${module}/${encodeURIComponent(recordId)}/files` : `/crm/${module}/custom-field-uploads`;
+  const params = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream', ...(recordId ? { recordId } : {}) });
+  const path = `/crm/${module}/custom-field-uploads`;
   return (await apiClient.upload<{ data: RecordFileMetadata }>(`${path}?${params}`, new Blob([file], { type: 'application/octet-stream' }))).data;
 }
 

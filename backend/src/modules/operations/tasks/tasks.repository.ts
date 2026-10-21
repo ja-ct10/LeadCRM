@@ -337,7 +337,7 @@ export async function findTaskOptions(
     const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const rows = await prisma.deal.findMany({
       where: { ...where, deletedAt: null, AND: [...buildSearchClauses(search, ['title']), related.deal, await crmReadWhere(prisma, tenantId, 'deals')],
-        ...(policy?.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy?.assignmentRestricted ? { assignedUserId: policy.userId } : {}) },
+        ...(policy?.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy?.taskAssignmentRestricted ? { assignedUserId: policy.userId } : {}) },
       take: 50,
       orderBy: [{ title: "asc" }, { id: "asc" }],
       select: { id: true, title: true },
@@ -362,7 +362,7 @@ export async function findFilteredDealOptions(tenantId: string, query: import('z
   const related = await relatedOptionFilters(tenantId, query.leadIds);
   const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null,
     AND: [...buildSearchClauses(query.search, ['title']), related.deal, await crmReadWhere(prisma, tenantId, 'deals')],
-    ...(policy.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy.assignmentRestricted ? { assignedUserId: policy.userId } : {}),
+    ...(policy.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy.taskAssignmentRestricted ? { assignedUserId: policy.userId } : {}),
     ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.productInterestId ? { productInterestId: query.productInterestId } : {}),
     ...(query.category ? { productInterestRecord: { tenantId, category: query.category === '__uncategorized' ? '' : { equals: query.category, mode: 'insensitive' } } } : {}),
