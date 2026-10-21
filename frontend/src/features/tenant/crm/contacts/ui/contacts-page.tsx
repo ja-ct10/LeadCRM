@@ -122,9 +122,8 @@ export default function ContactsPage(): React.ReactElement {
     page: currentPage, limit: pageSize, search: debouncedSearch,
     sort: sort ? `${sort.field}:${sort.direction}` : undefined, filters: serverFilters,
   };
-  const { data: cachedResponse, refetch: fetchContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage<ContactsV2Response | Contact>({
+  const { data: cachedResponse, refetch: fetchContacts, refetchSilently: syncContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage<ContactsV2Response | Contact>({
     module: 'contacts', disabled: !tabAccess.firstId, revalidateOnInvalidation: true,
-    intervalMs: highlightId ? undefined : 60_000,
     params: highlightId ? { recordId: highlightId } : { ...query },
     fetchFn: async signal => {
       if (!highlightId) return contactsV2Api.list(query, signal);
@@ -305,7 +304,7 @@ export default function ContactsPage(): React.ReactElement {
       const results = await Promise.allSettled(ids.map(id => contactsV2Api.archive(id)));
       const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
       setContactSelectedIds(previous => new Set([...previous].filter(id => failedIds.includes(id))));
-      await fetchContacts();
+      await syncContacts();
       if (failedIds.length) {
         confirmArchive(failedIds, ids.length === 1 ? name : `${failedIds.length} contact${failedIds.length === 1 ? '' : 's'}`);
         const failure = results.find(result => result.status === 'rejected');
@@ -358,7 +357,8 @@ export default function ContactsPage(): React.ReactElement {
       searchPlaceholder="Search contacts..."
       onRefresh={refreshContacts}
       refreshDisabled={isInitialLoad || isRefreshing || manualRefreshing}
-      refreshing={isRefreshing || manualRefreshing}
+      refreshing={manualRefreshing}
+      fetching={isRefreshing}
       loading={isInitialLoad || isColumnsLoading}
       loadingLabel={isInitialLoad ? 'Loading contacts...' : 'Loading columns...'}
       onManageColumns={openManageColumns}
@@ -424,7 +424,7 @@ export default function ContactsPage(): React.ReactElement {
       {/* ── Bottom Pagination + Per Page ─────────────────────── */}
       {filteredContacts.length > 0 && (
         <div>
-          <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} refreshing={isRefreshing} />
+          <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} refreshing={manualRefreshing} />
         </div>
       )}
 
@@ -520,7 +520,7 @@ export default function ContactsPage(): React.ReactElement {
             await contactsV2Api.create({ ...data, requestId: contactCreation.current.requestId });
             toast.success('Contact created successfully');
           }
-          await fetchContacts();
+          await syncContacts();
         } catch (err: unknown) {
           throw err instanceof Error ? err : new Error('Failed to save contact');
         }

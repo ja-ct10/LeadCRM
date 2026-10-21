@@ -31,12 +31,24 @@ export function uuid(): string {
 }
 
 export const CRM_STATUS_PRESENTATION: Record<CrmStatus, { color: string; dot: string; styles: string }> = {
-  Inquiry: { color: '#64748b', dot: 'bg-slate-500', styles: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600' },
-  Hot: { color: '#ef4444', dot: 'bg-red-500', styles: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' },
-  Warm: { color: '#f59e0b', dot: 'bg-amber-500', styles: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20' },
-  Cold: { color: '#3b82f6', dot: 'bg-blue-500', styles: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' },
-  'Closed Deal': { color: '#8b5cf6', dot: 'bg-purple-500', styles: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20' },
-  Cancelled: { color: '#334155', dot: 'bg-slate-700 dark:bg-slate-300', styles: 'bg-slate-800 text-slate-50 border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:border-slate-500' },
+  Inquiry: { color: '#64748b', dot: 'bg-slate-500',
+    styles: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'
+      + ' hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300 focus:bg-slate-100 focus:text-slate-600 dark:focus:bg-slate-700 dark:focus:text-slate-300 active:bg-slate-100 active:text-slate-600 dark:active:bg-slate-700 dark:active:text-slate-300' },
+  Hot: { color: '#ef4444', dot: 'bg-red-500',
+    styles: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
+      + ' hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-500/10 dark:hover:text-red-400 focus:bg-red-50 focus:text-red-700 dark:focus:bg-red-500/10 dark:focus:text-red-400 active:bg-red-50 active:text-red-700 dark:active:bg-red-500/10 dark:active:text-red-400' },
+  Warm: { color: '#f59e0b', dot: 'bg-amber-500',
+    styles: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'
+      + ' hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10 dark:hover:text-amber-400 focus:bg-amber-50 focus:text-amber-700 dark:focus:bg-amber-500/10 dark:focus:text-amber-400 active:bg-amber-50 active:text-amber-700 dark:active:bg-amber-500/10 dark:active:text-amber-400' },
+  Cold: { color: '#3b82f6', dot: 'bg-blue-500',
+    styles: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20'
+      + ' hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-500/10 dark:hover:text-blue-400 focus:bg-blue-50 focus:text-blue-700 dark:focus:bg-blue-500/10 dark:focus:text-blue-400 active:bg-blue-50 active:text-blue-700 dark:active:bg-blue-500/10 dark:active:text-blue-400' },
+  'Closed Deal': { color: '#8b5cf6', dot: 'bg-purple-500',
+    styles: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20'
+      + ' hover:bg-purple-50 hover:text-purple-700 dark:hover:bg-purple-500/10 dark:hover:text-purple-400 focus:bg-purple-50 focus:text-purple-700 dark:focus:bg-purple-500/10 dark:focus:text-purple-400 active:bg-purple-50 active:text-purple-700 dark:active:bg-purple-500/10 dark:active:text-purple-400' },
+  Cancelled: { color: '#334155', dot: 'bg-slate-700 dark:bg-slate-300',
+    styles: 'bg-slate-800 text-slate-50 border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:border-slate-500'
+      + ' hover:bg-slate-800 hover:text-slate-50 dark:hover:bg-slate-950 dark:hover:text-slate-100 focus:bg-slate-800 focus:text-slate-50 dark:focus:bg-slate-950 dark:focus:text-slate-100 active:bg-slate-800 active:text-slate-50 dark:active:bg-slate-950 dark:active:text-slate-100' },
 };
 
 export function getCRMStatusStyles(status: string): string {

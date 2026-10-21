@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TaskListQuery, TaskPage, TaskSummary } from "@leadcrm/shared";
 import { useAuth } from "@/store/AuthContext";
 import { useData } from "@/store/DataContext";
@@ -19,6 +19,11 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
   const queryKey = JSON.stringify(query);
   const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}:${groupAccess}:${taskScopeRevision}:${getPageCacheGeneration()}`;
   const key = `${identity}:${queryKey}:${tasksRevision}`;
+  const [manualRequest, setManualRequest] = useState<{ scope: string; revision: number }>();
+  const refresh = useCallback(() => {
+    setManualRequest({ scope: identity + queryKey, revision: tasksRevision });
+    refreshTasks();
+  }, [identity, queryKey, tasksRevision, refreshTasks]);
   const [result, setResult] = useState<{
     key: string;
     scope: string;
@@ -27,7 +32,10 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
     error?: string;
   }>();
   useEffect(() => {
-    if (!canRead || !tenant) return;
+    if (result?.key === key) setManualRequest(undefined);
+  }, [result?.key, key]);
+  useEffect(() => {
+    if (!canRead || !tenant?.id) return;
     let current = true;
     const input: TaskListQuery = JSON.parse(queryKey);
     Promise.all([queryTasks(input), queryTaskSummary(input)])
@@ -48,7 +56,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
     return () => {
       current = false;
     };
-  }, [key, queryKey, canRead, tenant, queryTasks, queryTaskSummary, preserveOnRefresh, identity]);
+  }, [key, queryKey, canRead, tenant?.id, queryTasks, queryTaskSummary, preserveOnRefresh, identity]);
   const visible = result?.key === key || preserveOnRefresh && result?.scope === identity + queryKey ? result : undefined;
   useTaskDueTransition(visible?.summary?.nextStatusChangeAt, visible?.summary?.evaluatedAt);
   return {
@@ -58,8 +66,10 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
     error: visible?.error,
     loading: canRead && !!tenant && !visible?.page && result?.key !== key,
     refreshing: canRead && !!tenant && !!visible?.page && result?.key !== key,
+    isManualRefreshing: canRead && !!tenant && manualRequest?.scope === identity + queryKey && manualRequest.revision < tasksRevision && result?.key !== key,
     canRead,
-    refresh: refreshTasks,
+    refresh,
+    refreshSilently: refreshTasks,
     identity,
   };
 }

@@ -42,7 +42,7 @@ afterEach(cleanup);
 it('opens with only Sales Pipeline, reads its current stage and cancels without a mutation', async () => {
   const action = await menu();
   expect(action.getAttribute('aria-disabled')).toBe('false');
-  expect(action.textContent).toContain('Current pipeline: Sales Pipeline');
+  expect(action.textContent).toBe('Change stage');
   fireEvent.click(action);
   const dialog = await screen.findByRole('dialog', { name: 'Change Deal stage' });
   const location = within(dialog).getByRole('region', { name: 'Current deal location' });
@@ -75,7 +75,7 @@ it('prevents a no-op move even if the disabled current stage is selected program
 });
 it('reads a renamed pipeline by its ID instead of assuming the Sales Pipeline label', async () => {
   mocks.pipelines = [{ ...sales, name: 'Enterprise Sales' }];
-  const action = await menu(); expect(action.textContent).toContain('Current pipeline: Enterprise Sales'); fireEvent.click(action);
+  const action = await menu(); expect(action.textContent).toBe('Change stage'); fireEvent.click(action);
   expect(within(await screen.findByRole('region', { name: 'Current deal location' })).getByText('Enterprise Sales')).toBeTruthy();
   expect(screen.queryByLabelText('Choose the target pipeline')).toBeNull();
 });
@@ -136,12 +136,12 @@ it('retains the selected stage and error when saving fails, then permits a retry
 it('retains closed Deal restrictions even when another pipeline is available', async () => {
   mocks.deal.stageId = 'won'; mocks.pipelines = [sales, renewals];
   const action = await menu(); expect(action.getAttribute('aria-disabled')).toBe('true');
-  expect(action.textContent).toContain('Only open deals can change stage here.'); fireEvent.click(action);
+  expect(action.title).toContain('Only open deals can change stage here.'); expect(action.textContent).toBe('Change stage'); fireEvent.click(action);
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 it('disables stage changes if the actual current pipeline cannot be read', async () => {
   mocks.pipelines = [renewals]; const action = await menu(); expect(action.getAttribute('aria-disabled')).toBe('true');
-  expect(action.textContent).toContain('Current pipeline or stage is unavailable');
+  expect(action.title).toContain('Current pipeline or stage is unavailable'); expect(action.textContent).toBe('Change stage');
 });
 it('hides the action without deals.edit permission', async () => {
   mocks.canEdit = false;

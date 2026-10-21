@@ -27,7 +27,6 @@ export function useModuleData<T extends object = Record<string, unknown>>({ modu
     disabled,
     params: queryParams,
     revalidateOnInvalidation: ['leads', 'contacts', 'accounts'].includes(moduleId),
-    intervalMs: recordId ? undefined : 60_000,
     fetchFn: async (signal) => {
       if (recordId) {
         // Resolve the selected record independently of list filters and pagination.
@@ -57,7 +56,9 @@ export function useModuleData<T extends object = Record<string, unknown>>({ modu
     isLoading: result.isInitialLoad || result.isRefreshing,
     isInitialLoad: result.isInitialLoad,
     isRefreshing: result.isRefreshing,
+    isManualRefreshing: result.isManualRefreshing,
     error: result.error,
     refetch: result.refetch,
+    refetchSilently: result.refetchSilently,
   };
 }

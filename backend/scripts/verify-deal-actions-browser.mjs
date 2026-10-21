@@ -118,14 +118,15 @@ async function runAcceptance() {
   assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);record('Transfer endpoint enforces deals.edit before any mutation');
   await page.goto(base+'/crm/deals');
   await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
-  const pipelineField=page.getByRole('combobox',{name:'Pipeline',exact:true});
-  assert.equal(await pipelineField.inputValue(),pipeline.id);
+  const pipelineField=page.getByRole('textbox',{name:'Pipeline',exact:true});
+  assert.equal(await pipelineField.inputValue(),pipeline.name);
+  assert.equal(await pipelineField.getAttribute('readonly'),'');
   assert.equal(await page.getByRole('button',{name:'New Deal',exact:true}).getAttribute('aria-haspopup'),null);
   assert.equal(await page.getByRole('button',{name:'Manage pipeline stages',exact:true}).count(),0);
   await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).hover();
   await page.getByRole('tooltip',{name:'More deal actions'}).waitFor();
   await page.keyboard.press('Escape');
-  record('Deals header exposes direct creation and pipeline selection after Export; action tooltip works; stage management removed');
+  record('Deals header exposes direct creation and the read-only pipeline name; action tooltip works; stage management removed');
   await page.getByRole('button',{name:'New Deal',exact:true}).click();
   const newDeal=page.getByRole('dialog');
   await newDeal.getByRole('heading',{name:'New Deal',exact:true}).waitFor();
@@ -157,10 +158,10 @@ async function runAcceptance() {
   await qualifiedCard.getByText('Oct 20, 2026',{exact:true}).waitFor();
   for await(const {theme,width} of responsiveMatrix(page,{themes:['Classic','Light','Dark','System']})) {
     for (const label of ['Active Open Deals','Total Open Value','Closed Won Revenue']) assert.equal(await page.getByText(label,{exact:true}).count(),0);
-    const control=page.getByRole('combobox',{name:'Pipeline',exact:true});
-    assert.equal(await control.inputValue(),pipeline.id);
+    const control=page.getByRole('textbox',{name:'Pipeline',exact:true});
+    assert.equal(await control.inputValue(),pipeline.name);
     assert.equal(await control.isEnabled(),true);
-    assert.ok((await control.locator('option').allTextContents()).includes(pipeline.name));
+    assert.equal(await control.getAttribute('readonly'),'');
     const button=page.getByRole('button',{name:'New Deal',exact:true});
     assert.equal(await button.getAttribute('aria-haspopup'),null);assert.equal(await button.locator('.lucide-chevron-down,.lucide-chevron-up').count(),0);
     assert.equal(await page.getByText('Import File',{exact:true}).count(),0);
@@ -214,7 +215,7 @@ async function runAcceptance() {
     await page.goto(base+'/crm/deals?'+parameter+'='+id);
     await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
     await page.reload();await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
-    assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).inputValue(),pipeline.id);
+    assert.equal(await page.getByRole('textbox',{name:'Pipeline',exact:true}).inputValue(),pipeline.name);
     record(`${parameter} relationship navigation and refresh retain the authorized Deal board`);
   }
   await page.goto(base+'/crm/deals?highlight='+direct.id);

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   canCreate: true, mockData: true, searchParams: '',
   data: {
     tasks: [] as TaskRecord[], meta: { total: 0 }, summary: { active: 0, overdue: 0, completed: 0 },
-    loading: false, refreshing: false, error: undefined as string | undefined,
+    loading: false, refreshing: false, isManualRefreshing: false, error: undefined as string | undefined,
     canRead: true, identity: 'tenant:agent', refresh: vi.fn(),
   },
   columnsLoading: false, query: vi.fn(), users: [],
@@ -32,7 +32,7 @@ vi.mock('@/shared/components/manage-columns-drawer', () => ({ ManageColumnsDrawe
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.canCreate = true; mocks.columnsLoading = false; mocks.mockData = true; mocks.searchParams = '';
-  Object.assign(mocks.data, { tasks: [], meta: { total: 0 }, loading: false, refreshing: false, error: undefined, canRead: true, identity: 'tenant:agent' });
+  Object.assign(mocks.data, { tasks: [], meta: { total: 0 }, loading: false, refreshing: false, isManualRefreshing: false, error: undefined, canRead: true, identity: 'tenant:agent' });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -164,9 +164,13 @@ it('preserves loading, retry, empty-card refresh and populated table transitions
   const heading = screen.getByRole('heading', { name: 'No tasks yet' });
   mocks.data.refreshing = true;
   rerender(<TaskBoard />);
+  expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBe(heading);
+  mocks.data.isManualRefreshing = true;
+  rerender(<TaskBoard />);
   expect(screen.getByRole('status', { name: 'Refreshing data...' })).toBeTruthy();
   expect(screen.queryByRole('heading', { name: 'No tasks yet' })).toBeNull();
-  mocks.data.refreshing = false;
+  mocks.data.refreshing = false; mocks.data.isManualRefreshing = false;
   rerender(<TaskBoard />);
   expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBe(heading);
   mocks.data.tasks = [{ id: 'task', tenantId: 'tenant', title: 'Follow up', status: 'pending', dueDate: '2026-10-14T00:00:00Z', createdAt: '2026-10-13T00:00:00Z' } as TaskRecord];

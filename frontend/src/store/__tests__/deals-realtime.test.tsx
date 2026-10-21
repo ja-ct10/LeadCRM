@@ -9,11 +9,12 @@ import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { PipelineKanbanBoard } from '@/features/tenant/crm/pipeline/ui/pipeline-kanban-board';
 import type { Deal, Pipeline } from '../types';
 import { useTasks } from '@/features/tenant/operations/tasks/use-tasks';
+import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 
 const state = vi.hoisted(() => ({ id: 'actor', tenant: 'tenant', denied: false }));
 vi.mock('../AuthContext', () => ({ useAuth: () => ({
   user: { id: state.id, role: 'Staff', status: 'ACTIVE' }, tenant: { id: state.tenant },
-  permissions: { tasks: { canView: true } }, isPermissionsLoaded: true,
+  permissions: { tasks: { canView: true, canEdit: true, canCreate: true } }, isPermissionsLoaded: true,
   userCan: (module: string) => !(state.denied && module === 'deals'), isLoading: false,
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
@@ -35,11 +36,11 @@ const pipeline = { id: 'pipeline', name: 'Sales', stages: [
 ] } as Pipeline;
 const row = (stageId = 'lead') => ({ id: 'deal', title: 'Live opportunity', tenantId: state.tenant, pipelineId: pipeline.id, stageId, value: 1000, priority: 'HIGH' });
 let rows = [row()];
-let intercept: ((url: URL) => Promise<Response> | undefined) | undefined;
+let intercept: ((url: URL, init?: RequestInit) => Promise<Response> | undefined) | undefined;
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, meta: { hasMore: false } }), { status, headers: { 'Content-Type': 'application/json' } });
-const fetcher = vi.fn(async (path: string) => {
+const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
   const url = new URL(path, 'http://localhost');
-  const held = intercept?.(url); if (held) return held;
+  const held = intercept?.(url, init); if (held) return held;
   if (url.pathname.endsWith('/crm/deals')) return response(rows);
   if (url.pathname.endsWith('/crm/pipelines')) return response([pipeline]);
   return response([]);
@@ -73,11 +74,12 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 
-it('evicts Task rows, summaries and details on CRM revisions even when the replacement reads fail', async () => {
+it('retains Task rows, summaries and details on a failed content refresh, then evicts on access denial', async () => {
   let revoked = false;
+  let status = 503;
   intercept = url => {
     if (!url.pathname.includes('/operations/tasks')) return undefined;
-    if (revoked) return Promise.resolve(response([], 503));
+    if (revoked) return Promise.resolve(response([], status));
     if (url.pathname.endsWith('/summary')) return Promise.resolve(response({ total: 1 }));
     if (url.pathname.endsWith('/task')) return Promise.resolve(response({ id: 'task' }));
     return Promise.resolve(response([{ id: 'task' }]));
@@ -88,6 +90,12 @@ it('evicts Task rows, summaries and details on CRM revisions even when the repla
   await waitFor(() => expect(screen.getByTestId('task-detail').textContent).toBe('task'));
   revoked = true;
   act(() => source().emit('crm-change'));
+  await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => path.includes('/operations/tasks/task'))).toHaveLength(2));
+  expect(screen.getByTestId('task-rows').textContent).toBe('task');
+  expect(screen.getByTestId('task-total').textContent).toBe('1');
+  expect(screen.getByTestId('task-detail').textContent).toBe('task');
+  status = 403;
+  act(() => source().emit('crm-change', '2'));
   await waitFor(() => expect(screen.getByTestId('task-rows').textContent).toBe(''));
   expect(screen.getByTestId('task-total').textContent).toBe('');
   expect(screen.getByTestId('task-detail').textContent).toBe('');
@@ -115,6 +123,65 @@ it('updates Qualified stage, High priority badge and counts through crm-change w
   // Duplicate revisions must not refetch, including after reconciliation completed.
   act(() => source().emit('crm-change'));
   expect(sharedReads() - before).toBe(1);
+  // The server sends its current snapshot on every SSE reconnect.
+  act(() => { source().emit('open'); source().emit('crm-change'); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+  expect(sharedReads() - before).toBe(1);
+});
+
+it.each(['edit', 'create'] as const)('keeps the real %s Task editor mounted through content events and recoverable read failures', async mode => {
+  let failed = false, release: ((value: Response) => void) | undefined;
+  let saved = {
+    id: 'task', tenantId: 'tenant', title: 'Follow up', description: 'Saved notes', status: 'pending', priority: 'Medium',
+    assignedUserId: 'actor', createdById: 'actor', dueDate: '2099-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', dealIds: ['deal'],
+  };
+  intercept = (url, init) => {
+    if (!url.pathname.includes('/operations/tasks')) return undefined;
+    if (url.pathname.endsWith('/options')) return Promise.resolve(response([{ id: 'deal', label: 'Linked Deal' }]));
+    if (url.pathname.endsWith('/task') && init?.method === 'PUT') {
+      const input = JSON.parse(String(init.body));
+      saved = { ...saved, title: input.title, updatedAt: '2026-01-02T00:00:00.000Z' };
+      return Promise.resolve(response(saved));
+    }
+    if (url.pathname.endsWith('/task') && failed) return new Promise(resolve => { release = resolve; });
+    if (url.pathname.endsWith('/task')) return Promise.resolve(response(saved));
+    if (url.pathname.endsWith('/summary')) return Promise.resolve(response({ total: 1, active: 1 }));
+    return Promise.resolve(response([saved]));
+  };
+  render(<DataProvider><RelatedTasks links={{ dealId: 'deal' }} allowCreate readOnly={false} /></DataProvider>);
+  await screen.findByRole('button', { name: /Follow up/ });
+  if (mode === 'edit') {
+    fireEvent.click(screen.getByRole('button', { name: /Follow up/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Task actions' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit task' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Title' }));
+  } else fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+  const input = mode === 'edit' ? screen.getByRole('textbox', { name: 'Title' }) : screen.getByLabelText('Title *');
+  fireEvent.change(input, { target: { value: 'Keep this draft' } });
+  failed = true;
+  act(() => source().emit('crm-change'));
+  if (mode === 'edit') {
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(input.isConnected).toBe(true);
+    expect(input).toHaveProperty('value', 'Keep this draft');
+    await act(async () => release!(response([], 503)));
+    await screen.findByRole('button', { name: 'Retry loading task' });
+  } else await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => path.includes('/operations/tasks/summary')).length).toBeGreaterThan(1));
+  expect(input.isConnected).toBe(true);
+  expect(input).toHaveProperty('value', 'Keep this draft');
+  expect(screen.queryByRole('status', { name: /Refreshing/ })).toBeNull();
+  if (mode === 'edit') {
+    failed = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading task' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry loading task' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull());
+    await screen.findByRole('heading', { name: 'Keep this draft' });
+    expect(fetcher.mock.calls.filter(([path, init]) => path.endsWith('/operations/tasks/task') && init?.method === 'PUT')).toHaveLength(1);
+    expect(saved.dealIds).toEqual(['deal']);
+    await screen.findByRole('button', { name: /Keep this draft/ });
+  }
 });
 
 it('coalesces bootstrap/manual reads and ignores an old bootstrap after a newer revision', async () => {
@@ -129,6 +196,26 @@ it('coalesces bootstrap/manual reads and ignores an old bootstrap after a newer 
   await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:lost'));
   await act(async () => { release(response([row('lead')])); });
   expect(screen.getByTestId('shared').textContent).toBe('deal:lost');
+});
+
+it('retains pipeline revisions across reconnects and removes its recovery listeners on unmount', async () => {
+  const view = render(<DataProvider><View /></DataProvider>);
+  await waitFor(() => expect(screen.getByTestId('shared').textContent).toBe('deal:lead'));
+  const stream = Events.sources.find(entry => entry.url.endsWith('/pipelines/events'))!;
+  const reads = () => fetcher.mock.calls.filter(([path]) => path.endsWith('/crm/pipelines')).length;
+  const initial = reads();
+  await act(async () => stream.emit('pipeline-change', '1'));
+  expect(reads()).toBe(initial + 1);
+  await act(async () => { stream.emit('open'); stream.emit('pipeline-change', '1'); });
+  expect(reads()).toBe(initial + 1);
+  await act(async () => stream.emit('pipeline-change', '2'));
+  expect(reads()).toBe(initial + 2);
+  await act(async () => window.dispatchEvent(new Event('online')));
+  expect(reads()).toBe(initial + 3);
+  view.unmount();
+  expect(Events.sources.every(entry => entry.closed)).toBe(true);
+  await act(async () => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
+  expect(reads()).toBe(initial + 3);
 });
 
 it('rejects pre-mutation responses, retains data on transport errors, and clears it on access loss', async () => {

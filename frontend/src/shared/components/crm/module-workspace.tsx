@@ -153,6 +153,8 @@ export interface ModuleWorkspaceProps {
   /** Refresh handler */
   onRefresh?: () => void | Promise<unknown>;
   refreshing?: boolean;
+  /** Background reads remain accessible without animating the manual refresh UI. */
+  fetching?: boolean;
   /** KPI strip cards (Accounts, Deals) */
   kpiCards?: KpiCard[];
   /** Extra toolbar content (e.g. pipeline selector) */
@@ -239,6 +241,7 @@ export function ModuleWorkspace({
   onViewModeChange,
   onRefresh,
   refreshing = false,
+  fetching = false,
   kpiCards,
   toolbarExtra,
   exportAction,
@@ -527,7 +530,7 @@ export function ModuleWorkspace({
 
         {/* Content area */}
         <TableRefreshContext.Provider value={refreshing}>
-        <div className="flex-1 min-w-0 flex flex-col" aria-busy={refreshing}>
+        <div className="flex-1 min-w-0 flex flex-col" aria-busy={fetching || refreshing}>
           {/* Render active view from VIEW_OPTIONS registry when moduleConfig is provided */}
           {loading ? (
             <TableLoadingState label={loadingLabel} />

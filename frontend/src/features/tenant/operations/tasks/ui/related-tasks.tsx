@@ -48,7 +48,7 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
             : "Tasks"}
         </span>
         <div className="flex gap-2">
-          <RefreshButton label="Refresh tasks" refreshing={data.loading || data.refreshing} onClick={data.refresh} />
+          <RefreshButton label="Refresh tasks" disabled={data.loading || data.refreshing} refreshing={data.isManualRefreshing} onClick={data.refresh} />
           {allowCreate && !readOnly && !!(links.dealId || links.dealIds?.length) && canCreate && (
             <Button
               size="sm"
@@ -72,7 +72,7 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
         </p>
       )}
       <div className="relative divide-y divide-border" aria-busy={data.refreshing}>
-        {data.refreshing && <DataLoadingSpinner label="Refreshing tasks..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
+        {data.isManualRefreshing && <DataLoadingSpinner label="Refreshing tasks..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         {data.tasks.map((task) => (
           <button
             key={task.id}

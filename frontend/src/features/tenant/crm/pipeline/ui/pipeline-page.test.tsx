@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => {
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', role: state.role }, tenant: { id: 'tenant' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [], addDeals: state.addDeals, moveDealStage: state.moveDealStage, refreshPipelines: state.refreshPipelines }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => state.permissions.includes(permission) }));
-vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, setData: state.setData, isInitialLoad: false }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: state.setData, isInitialLoad: false }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/shared/components/crm', () => ({ DealPanel: () => null }));

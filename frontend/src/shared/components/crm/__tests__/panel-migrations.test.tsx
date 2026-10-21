@@ -633,10 +633,13 @@ it('edits the primary Contact from Deal Details without writing Deal engagement 
   mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
     contactId: 'contact-one', contactDeals: [{ contactId: 'contact-one', contact: { id: 'contact-one' } }] } }
     : path === '/crm/contacts/contact-one' ? { data: { ...records.contacts, id: 'contact-one', tenantId: 'tenant' } } : original(path));
+  mocks.put.mockResolvedValueOnce({ data: { ...records.contacts, id: 'contact-one', tenantId: 'tenant', status: 'Cold' } });
   render(<CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { name: records.deals.title });
   fireEvent.click(await screen.findByRole('button', { name: 'Customer Status' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Cold' }));
   await waitFor(() => expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/crm/contacts/contact-one', { status: 'Cold' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Customer Status' }).textContent).toBe('Cold'));
   expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
   expect(mocks.move).not.toHaveBeenCalled();
 });

@@ -715,7 +715,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       clearTimeout(queued);
       queued = setTimeout(() => {
         ['leads','contacts','accounts','deals','activities','tasks','settings','field-layout',
-          'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id, true, module === 'tasks'));
+          'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id));
         void dealsRefresh.current();
       }, 100);
     };
@@ -725,7 +725,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (revision === previous) return;
       previous = revision; reconcile();
     });
-    source.addEventListener('open', () => { previous = ''; });
     source.addEventListener('crm-access-changed', () => {
       clearTimeout(queued); dealsRequest.current?.controller.abort(); setDeals([]); setTasks([]);
       clearPageCache(true); source.close();
@@ -750,12 +749,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previous = revision;
       void refresh();
     });
-    source.addEventListener('open', () => { previous = ''; });
     source.addEventListener('pipeline-access-changed', () => { setPipelines([]); pipelineGeneration.current++; source.close(); });
     const wake = () => { if (document.visibilityState !== 'hidden') void refresh(); };
     window.addEventListener('online', wake); window.addEventListener('focus', wake); document.addEventListener('visibilitychange', wake);
-    const fallback = setInterval(wake, 60000);
-    return () => { stopped = true; source.close(); pipelineGeneration.current++; clearInterval(fallback); window.removeEventListener('online', wake); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
+    return () => { stopped = true; source.close(); pipelineGeneration.current++; window.removeEventListener('online', wake); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
   }, [dataIdentity, workspaceReady, canReadPipelines, user?.id]);
 
   const addContact = async (leadData: any): Promise<void> => {

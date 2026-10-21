@@ -14,7 +14,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useModuleData } from '@/shared/hooks/use-module-data';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
-import { invalidatePageCache } from '@/shared/cache/page-cache';
 import { accountsService } from '../services/accounts.service';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useAuth } from '@/store/AuthContext';
@@ -45,7 +44,7 @@ const EMPTY_FILTERS: AccountFilters = {
 export function useAccounts(params?: UseAccountsParams) {
   const { tenant } = useAuth();
 
-  const { data, meta, facets, isInitialLoad, isRefreshing, error, refetch } = useModuleData({
+  const { data, meta, facets, isInitialLoad, isRefreshing, isManualRefreshing, error, refetch } = useModuleData({
     moduleId: 'accounts',
     disabled: params?.disabled,
     page: params?.page ?? 1,
@@ -102,15 +101,13 @@ export function useAccounts(params?: UseAccountsParams) {
         setDisplayAccounts((prev) => [...prev, newAccount]);
       } else {
         await accountsService.create({ ...formData, tenantId: tenant.id });
-        invalidatePageCache('accounts', tenant.id);
-        refetch();
       }
       toast.success('Account created.');
       setIsFormOpen(false);
     } catch (err) {
       throw err;
     }
-  }, [tenant, refetch]);
+  }, [tenant]);
 
   const handleUpdate = useCallback(async (id: string, formData: AccountMutationInput) => {
     try {
@@ -123,8 +120,6 @@ export function useAccounts(params?: UseAccountsParams) {
         setDisplayAccounts((prev) => prev.map((c) => c.id === id ? { ...c, ...formData } : c));
       } else {
         await accountsService.update(id, formData as unknown as Record<string, unknown>);
-        invalidatePageCache('accounts', tenant?.id ?? '');
-        refetch();
       }
       toast.success('Account updated.');
       setIsFormOpen(false);
@@ -132,13 +127,11 @@ export function useAccounts(params?: UseAccountsParams) {
     } catch (err) {
       throw err;
     }
-  }, [tenant, refetch]);
+  }, [tenant]);
 
   const handleArchive = useCallback(async (id: string) => {
     await accountsService.archive(id);
-    invalidatePageCache('accounts', tenant?.id ?? '');
-    refetch();
-  }, [tenant, refetch]);
+  }, []);
 
   const handleOpenCreate = useCallback(() => { setEditTarget(null); setIsFormOpen(true); }, []);
   const handleOpenEdit   = useCallback((account: Account) => { setEditTarget(account); setIsFormOpen(true); }, []);
@@ -157,6 +150,7 @@ export function useAccounts(params?: UseAccountsParams) {
     isLoading,
     /** True during background refresh (existing data remains visible). */
     isRefreshing,
+    isManualRefreshing,
     error,
     refetch: loadAccounts,
     isFormOpen,

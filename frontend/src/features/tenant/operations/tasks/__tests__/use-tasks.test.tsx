@@ -33,6 +33,22 @@ it('keeps the same query visible during background refresh and a read failure', 
   expect(result.current.refreshing).toBe(false);
 });
 
+it('ends manual feedback when its read settles and keeps later revisions silent', async () => {
+  const hook = renderHook(() => useTasks());
+  await waitFor(() => expect(hook.result.current.tasks).toHaveLength(1));
+  let resolve!: (value: unknown) => void;
+  mocks.data.queryTasks.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  act(() => hook.result.current.refresh());
+  mocks.data.tasksRevision++; hook.rerender();
+  expect(hook.result.current.isManualRefreshing).toBe(true);
+  await act(async () => resolve({ data: [{ id: 'task' }], meta: { total: 1 } }));
+  expect(hook.result.current.isManualRefreshing).toBe(false);
+  mocks.data.queryTasks.mockReturnValueOnce(new Promise(() => {}));
+  mocks.data.tasksRevision++; hook.rerender();
+  expect(hook.result.current.refreshing).toBe(true);
+  expect(hook.result.current.isManualRefreshing).toBe(false);
+});
+
 it('clears prior rows when the query, identity, or permissions change', async () => {
   const { result, rerender } = renderHook(({ search }) => useTasks({ search }, true), { initialProps: { search: '' } });
   await waitFor(() => expect(result.current.tasks).toHaveLength(1));
@@ -43,6 +59,14 @@ it('clears prior rows when the query, identity, or permissions change', async ()
   expect(result.current.tasks).toEqual([]);
   mocks.canRead = false; rerender({ search: '' });
   expect(result.current.tasks).toEqual([]); expect(result.current.canRead).toBe(false);
+});
+
+it('does not repeat reads when the auth context replaces the same tenant object', async () => {
+  const hook = renderHook(() => useTasks());
+  await waitFor(() => expect(hook.result.current.tasks).toHaveLength(1));
+  const reads = mocks.data.queryTasks.mock.calls.length;
+  mocks.auth.tenant = { id: 'tenant' }; hook.rerender();
+  expect(mocks.data.queryTasks).toHaveBeenCalledTimes(reads);
 });
 
 it('discards previously visible rows when the API revokes access', async () => {

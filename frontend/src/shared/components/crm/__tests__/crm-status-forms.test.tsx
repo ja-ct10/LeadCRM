@@ -29,6 +29,12 @@ beforeEach(() => {
   transport.put.mockResolvedValue({ success: true, data: { id: 'contact' } });
 });
 
+it('renders a readable badge without an editing control for unauthorized users', () => {
+  render(<CustomerStatusMenu status="Cancelled" canEdit={false} onChange={vi.fn()} />);
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.getByText('Cancelled')).toBeTruthy();
+});
+
 it.each(CRM_STATUSES)('keeps manual Lead Inquiry when status %s is injected and preserves selected Product IDs', async status => {
   const submitted = vi.fn();
   render(<LeadFormSheet isOpen onClose={() => {}} onSave={data => submitted(toBackendCreateContact(data))} />);

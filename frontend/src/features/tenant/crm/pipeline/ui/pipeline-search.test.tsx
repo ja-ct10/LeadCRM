@@ -9,7 +9,7 @@ vi.mock('next/navigation', () => { const router = { replace: state.replace }; re
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 'tenant' }, tenant: { id: 'tenant' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [], refreshPipelines: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, setData: vi.fn() }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: vi.fn() }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: state.get } }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -44,7 +44,7 @@ it('selects the exact pipeline and highlights its card without automatically ope
   const refreshes = state.refetch.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'Close Deal details' }));
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(state.refetch).toHaveBeenCalledTimes(refreshes + 1);
+  expect(state.refetch).toHaveBeenCalledTimes(refreshes);
   expect(screen.getByRole('button', { name: 'Search-selected Deal' }).getAttribute('data-search-highlight')).toBeNull();
 });
 

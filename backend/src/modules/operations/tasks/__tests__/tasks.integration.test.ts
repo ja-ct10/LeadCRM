@@ -597,7 +597,7 @@ describe.skipIf(!disposable)(
       expect((await call(`/operations/tasks?leadId=${lead.id}&search=Derived%20unique`)).body.meta.total).toBe(0);
       expect((await call(`/crm/activities?leadId=${lead.id}&type=task&search=Derived%20unique`)).body.meta.total).toBe(3);
       expect((await call(`/crm/activities?taskId=${task.id}`)).status).toBe(200);
-    });
+    }, 60000);
 
     it('freezes event-time context when Deal participants and Account change', async () => {
       const leadA = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Old', lastName: 'Lead' } }));

@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { clearPageCache } from '@/shared/cache/page-cache';
+import { clearPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
@@ -77,10 +77,11 @@ it('keeps automatic synchronization quiet and replaces the rows when it resolves
   await screen.findByTestId('contacts');
   let resolve!: (value: unknown) => void;
   mocks.list.mockReturnValueOnce(new Promise(done => { resolve = done; }));
-  fireEvent(window, new Event('focus'));
+  act(() => invalidatePageCache('contacts', 'tenant'));
   await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
   expect(screen.getByTestId('contacts').textContent).toBe('Original');
   expect(screen.queryByText('Loading contacts...')).toBeNull();
+  expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull();
   expect(screen.getByTestId('contacts').closest('[hidden]')).toBeNull();
   await act(async () => resolve(response('Synchronized')));
   await waitFor(() => expect(screen.getByTestId('contacts').textContent).toBe('Synchronized'));

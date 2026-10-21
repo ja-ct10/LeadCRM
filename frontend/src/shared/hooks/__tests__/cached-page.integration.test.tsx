@@ -4,7 +4,7 @@ import { useModuleData } from '../use-module-data';
 import { useCachedPage } from '../use-cached-page';
 import { useModuleCounts } from '../use-module-counts';
 import { useLeadsData } from '@/features/tenant/crm/leads/hooks/use-leads-data';
-import { clearPageCache, getPageCacheSize, invalidatePageCache } from '@/shared/cache/page-cache';
+import { clearPageCache, getPageCache, getPageCacheSize, invalidatePageCache } from '@/shared/cache/page-cache';
 
 const mocks = vi.hoisted(() => ({
   auth: { isLoading: false, authError: null as string | null, tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Sales Rep' } },
@@ -33,6 +33,80 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearPageCache(); });
 
 describe('real cached request lifecycle', () => {
+  it.each(['user', 'tenant', 'role', 'clear', 'evict', 'disabled', 'unmount'] as const)('rejects an old canonical response after a %s scope change', async change => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'authorized' }).mockImplementation(() => new Promise(() => {}));
+    const hook = renderHook(({ disabled }) => useCachedPage({ module: 'contacts', params: { recordId: 'one' }, fetchFn, disabled }), { initialProps: { disabled: false } });
+    await waitFor(() => expect(hook.result.current.data).toEqual({ id: 'authorized' }));
+    const oldSetData = hook.result.current.setData;
+    act(() => {
+      if (change === 'user') mocks.auth.user = { id: 'next-user', role: 'Viewer' };
+      if (change === 'tenant') mocks.auth.tenant = { id: 'next-tenant' };
+      if (change === 'role') mocks.auth.user = { ...mocks.auth.user, role: 'Viewer' };
+      if (change === 'clear') clearPageCache(true);
+      if (change === 'evict') invalidatePageCache('contacts', 'tenant-a', true, true);
+    });
+    if (change === 'unmount') hook.unmount();
+    else hook.rerender({ disabled: change === 'disabled' });
+    const entries = getPageCacheSize();
+    const cached = () => getPageCache('contacts', mocks.auth.tenant.id, { query: { recordId: 'one' }, userId: mocks.auth.user.id, role: mocks.auth.user.role })?.data;
+    const before = cached();
+    act(() => oldSetData({ id: 'late mutation' }));
+    expect(getPageCacheSize()).toBe(entries);
+    expect(cached()).toEqual(before);
+    if (change !== 'unmount') expect(hook.result.current.data).toBeUndefined();
+  });
+
+  it('accepts a canonical mutation result after an ordinary content invalidation', async () => {
+    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn: async () => ({ id: 'saved' }) }));
+    await waitFor(() => expect(hook.result.current.data).toEqual({ id: 'saved' }));
+    const setData = hook.result.current.setData;
+    act(() => { invalidatePageCache('contacts', 'tenant-a'); setData({ id: 'canonical' }); });
+    expect(hook.result.current.data).toEqual({ id: 'canonical' });
+  });
+
+  it.each([401, 403, 404])('does not restore a late canonical result after an authoritative %s response', async status => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'authorized' }).mockRejectedValueOnce(Object.assign(new Error('Unavailable'), { status }));
+    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    await waitFor(() => expect(hook.result.current.data).toEqual({ id: 'authorized' }));
+    const setData = hook.result.current.setData;
+    await act(async () => { await hook.result.current.refetchSilently(); });
+    expect(hook.result.current.errorStatus).toBe(status);
+    act(() => setData({ id: 'late mutation' }));
+    expect(hook.result.current.data).toBeUndefined();
+    expect(hook.result.current.errorStatus).toBe(status);
+  });
+
+  it('keeps background synchronization silent and coalesces a deliberate refresh with the same read', async () => {
+    const initial = deferred<string[]>(), background = deferred<string[]>();
+    const fetchFn = vi.fn().mockReturnValueOnce(initial.promise).mockReturnValueOnce(background.promise);
+    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn, revalidateOnInvalidation: true }));
+    expect(hook.result.current.isInitialLoad).toBe(true);
+    expect(hook.result.current.isManualRefreshing).toBe(false);
+    await act(async () => initial.resolve(['saved']));
+    act(() => invalidatePageCache('contacts', 'tenant-a'));
+    await waitFor(() => expect(hook.result.current.isRefreshing).toBe(true));
+    expect(hook.result.current.data).toEqual(['saved']);
+    expect(hook.result.current.isManualRefreshing).toBe(false);
+    let first!: Promise<void>, second!: Promise<void>;
+    act(() => { first = hook.result.current.refetch(); second = hook.result.current.refetch(); });
+    expect(first).toBe(second);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.isManualRefreshing).toBe(true);
+    await act(async () => { background.resolve(['updated']); await first; });
+    expect(hook.result.current.data).toEqual(['updated']);
+    expect(hook.result.current.isManualRefreshing).toBe(false);
+  });
+
+  it('preserves usable data and ends manual feedback after a failed explicit refresh', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(['saved']).mockRejectedValueOnce(new Error('Offline'));
+    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    await waitFor(() => expect(hook.result.current.data).toEqual(['saved']));
+    await act(async () => { await hook.result.current.refetch(); });
+    expect(hook.result.current.data).toEqual(['saved']);
+    expect(hook.result.current.error).toBe('Offline');
+    expect(hook.result.current.isManualRefreshing).toBe(false);
+  });
+
   it('evicts a selected Task immediately on Group scope invalidation and ignores the previous request', async () => {
     const stale = deferred<{ id: string }>(), current = deferred<{ id: string }>();
     const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'previously-authorized' }).mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
