@@ -23,7 +23,7 @@ it('describes Camxian access without public signup or Google authentication', ()
   expect(screen.getByText('Use the registered staff email provided to your Client Administrator. Contact your administrator for access.')).toBeTruthy();
 });
 
-it.each([false, true])('keeps login arguments unchanged with Remember me checked=%s', async checked => {
+it.each([false, true])('passes Remember me to login with checked=%s', async checked => {
   render(<ModernLoginPage onNavigate={vi.fn()} />);
   const remember = screen.getByRole('checkbox', { name: 'Remember me' }) as HTMLInputElement;
   expect(remember.checked).toBe(false);
@@ -39,7 +39,7 @@ it.each([false, true])('keeps login arguments unchanged with Remember me checked
   await waitFor(() => expect((screen.getByRole('button', { name: 'Login' }) as HTMLButtonElement).disabled).toBe(false));
   await act(async () => { fireEvent.submit(screen.getByLabelText('Password').closest('form')!); });
   expect(remember.checked).toBe(checked);
-  expect(auth.login).toHaveBeenCalledExactlyOnceWith('staff@camxian.com', 'ExistingPassword1!');
+  expect(auth.login).toHaveBeenCalledExactlyOnceWith('staff@camxian.com', 'ExistingPassword1!', checked);
 });
 
 it('renders the login footer with brand, support, company links, and copyright', () => {

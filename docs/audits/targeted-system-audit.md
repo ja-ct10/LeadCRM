@@ -52,6 +52,9 @@ Local builds, lint, database-backed scenarios and browser acceptance are recorde
 
 Intermediate failures are retained in ignored `data/outputs/system-audit/` reports. Counts below describe executed cases, with selected reruns distinguished from whole-suite gates.
 
+- Initial GitHub PR #187 CI: all three TypeScript jobs and backend unit checks passed (**1,355 tests / 158 files**, plus QA-script and watcher checks). The full frontend run exposed **8 outdated test failures / 2 files**, with **2,850 passes**: login expectations omitted the new Remember Me argument, and the Deal-action fixture still mocked the retired edit drawer instead of the existing Details panel. Updated those expectations/fixtures while retaining draft-preservation and five access-revocation cases; subsequent CI results belong to the PR checks.
+- Merge-preparation regression rerun: **27/27 passed**, clean native exit across those two corrected files (`data/outputs/targeted-merge-ci-regressions-native.json`). The preceding sandbox attempt ran no tests because worker startup timed out.
+
 - Backend unit rerun: **129/129 passed**, clean exit (`targeted-implementation/backend-final-verified.json`).
 - Frontend: **750 selected assertions have executed passes**. The combined run reported **527 passed, 0 failed**, exited nonzero and omitted the entire CRM panel file; the isolated panel rerun passed **223/223 with clean exit** (`targeted-implementation/{frontend-final-verified,panels-final-verified}.json`). The combined invocation is not claimed as a clean full-run gate. These cases include all 55 manual form/status/draft cases and the fixed inline Escape regression.
 - Lint/TypeScript: **3 workspaces passed**, including integration-test types (`data/outputs/targeted-lint-stable-final.log`).
