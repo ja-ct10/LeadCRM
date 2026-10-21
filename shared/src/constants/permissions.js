@@ -34,6 +34,7 @@ exports.Permission = {
     DEALS_ARCHIVE: 'deals.archive',
     DEALS_MANAGE_STAGES: 'deals.manage_stages',
     TASKS_VIEW: 'tasks.view',
+    TASKS_VIEW_ALL: 'tasks.view_all',
     TASKS_CREATE: 'tasks.create',
     TASKS_EDIT: 'tasks.edit',
     TASKS_COMPLETE: 'tasks.complete',

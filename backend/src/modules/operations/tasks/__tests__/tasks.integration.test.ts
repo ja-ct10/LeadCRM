@@ -207,8 +207,8 @@ describe.skipIf(!disposable)(
       const completer = await prisma.user.create({ data: { tenantId, role: role.name, email: `completer-${Date.now()}@camxian.com`, firstName: 'Task', lastName: 'Completer',
         mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(), userRoles: { create: { roleId: role.id } } } });
       const auth = (await issueAuthSession(completer)).token;
-      expect((await call(`/operations/tasks/${first.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: updated.updatedAt }, auth)).status).toBe(403);
-      const owned = await scope(() => prisma.task.create({ data: { tenantId, createdById: completer.id, assignedUserId: owner.id, title: 'Completer-owned', dueDate: new Date('2030-01-01') } }));
+      expect((await call(`/operations/tasks/${first.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: updated.updatedAt }, auth)).status).toBe(404);
+      const owned = await scope(() => prisma.task.create({ data: { tenantId, createdById: completer.id, assignedUserId: completer.id, title: 'Completer-owned', dueDate: new Date('2030-01-01') } }));
       const completed = await call(`/operations/tasks/${owned.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: owned.updatedAt.toISOString() }, auth);
       expect(completed.status).toBe(200);
       expect(completed.body.data).toMatchObject({ status: 'completed', completedById: completer.id });
@@ -341,7 +341,7 @@ describe.skipIf(!disposable)(
     };
     const history = (taskId: string) => prisma.activity.findMany({ where: { tenantId, taskId }, orderBy: [{ createdAt: 'asc' }, { title: 'asc' }] });
 
-    it('enforces creator ownership on update, complete, archive and mixed-owner bulk without losing view access', async () => {
+    it('preserves administrator creator restrictions while permitting the assigned user to manage the Task', async () => {
       const task = await create('Ownership protected');
       // Exercise the assignee with every existing Task grant, and another Client Admin.
       await prisma.rolePermission.updateMany({ where: { tenantId, role: { name: 'Task staff' }, module: 'tasks' },
@@ -353,7 +353,7 @@ describe.skipIf(!disposable)(
       const beforeHistory = await history(task.id);
       const beforeAudit = await prisma.auditLog.findMany({ where: { tenantId, entityType: 'Task', entityId: task.id } });
       const beforeLinks = await prisma.taskDeal.findMany({ where: { taskId: task.id } });
-      for (const auth of [assigneeToken, adminToken]) {
+      for (const auth of [adminToken]) {
         expect((await call(`/operations/tasks/${task.id}`, 'GET', undefined, auth)).status).toBe(200);
         for (const [suffix, method, payload] of [['', 'PUT', { title: 'Denied', dealIds: [deal.id] }], ['/complete', 'PATCH', undefined], ['/archive', 'PATCH', undefined]] as const) {
           const response = await call(`/operations/tasks/${task.id}${suffix}`, method, payload, auth);
@@ -365,6 +365,8 @@ describe.skipIf(!disposable)(
       expect(await history(task.id)).toEqual(beforeHistory);
       expect(await prisma.auditLog.findMany({ where: { tenantId, entityType: 'Task', entityId: task.id } })).toEqual(beforeAudit);
       expect(await prisma.taskDeal.findMany({ where: { taskId: task.id } })).toEqual(beforeLinks);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { title: 'Assigned user edit' }, assigneeToken)).status).toBe(200);
+      expect((await call(`/operations/tasks/${task.id}/complete`, 'PATCH', undefined, assigneeToken)).status).toBe(200);
       const otherTask = await scope(() => prisma.task.create({ data: { tenantId, createdById: admin.id, assignedUserId: owner.id, title: 'Other-owned', dueDate: new Date('2030-01-01') } }));
       const legacy = await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: owner.id, title: 'No creator', dueDate: new Date('2030-01-01') } }));
       for (const operation of ['complete', 'archive'] as const) {
@@ -503,9 +505,10 @@ describe.skipIf(!disposable)(
       const staff = await prisma.user.create({ data: { tenantId, firstName: 'Self', lastName: 'Staff', email: `task-self-${Date.now()}@camxian.com`, role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
       await prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId: role.id } });
       const auth = (await issueAuthSession(staff)).token;
+      const assignedDeal = await newDeal('Self-assigned staff Deal', { assignedUserId: staff.id });
       const options = await call('/operations/tasks/options?kind=user', 'GET', undefined, auth);
       expect(options.body.data.map((row: any) => row.id)).toEqual([staff.id]);
-      const own = await call('/operations/tasks', 'POST', { ...draft('Explicit self-assignment'), assignedUserId: staff.id }, auth);
+      const own = await call('/operations/tasks', 'POST', { ...draft('Explicit self-assignment'), dealIds: [assignedDeal.id], assignedUserId: staff.id }, auth);
       expect(own.status).toBe(201);
       expect(own.body.data).toMatchObject({ assignedUserId: staff.id, createdById: staff.id });
       expect((await call('/operations/tasks', 'POST', { ...draft('Unauthorized other assignment'), assignedUserId: owner.id }, auth)).status).toBe(403);

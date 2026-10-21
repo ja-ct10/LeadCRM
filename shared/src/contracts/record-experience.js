@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RecordEmailAttachmentContextSchema = exports.RECORD_FILE_MAX_BYTES = exports.LeadStatusSchema = exports.LEAD_STATUSES = exports.CrmStatusSchema = exports.COMPANY_SIZE_OPTIONS = exports.LeadSourceSchema = exports.LEAD_SOURCES = exports.CRM_STATUSES = void 0;
+exports.RecordEmailAttachmentContextSchema = exports.CRM_FILE_FORMAT_ERROR = exports.CRM_FILE_SIZE_ERROR = exports.CRM_FILE_ACCEPT = exports.CRM_FILE_EXTENSIONS = exports.RECORD_FILE_MAX_BYTES = exports.LeadStatusSchema = exports.LEAD_STATUSES = exports.CrmStatusSchema = exports.COMPANY_SIZE_OPTIONS = exports.LeadSourceSchema = exports.LEAD_SOURCES = exports.CRM_STATUSES = void 0;
 exports.isAssignableAgent = isAssignableAgent;
 exports.normalizeCrmStatus = normalizeCrmStatus;
+exports.crmFileExtension = crmFileExtension;
+exports.crmFileValidationError = crmFileValidationError;
 const zod_1 = require("zod");
 exports.CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled'];
 exports.LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'];
@@ -24,6 +26,23 @@ function normalizeCrmStatus(status) {
     return exports.CRM_STATUSES.find(value => value.toLowerCase() === status?.toLowerCase()) ?? 'Warm';
 }
 exports.RECORD_FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** Manual CRM Files tabs only; custom-field and import policies remain independent. */
+exports.CRM_FILE_EXTENSIONS = ['csv', 'png', 'jpg', 'jpeg', 'pdf', 'txt', 'docx'];
+exports.CRM_FILE_ACCEPT = exports.CRM_FILE_EXTENSIONS.map(extension => `.${extension}`).join(',');
+exports.CRM_FILE_SIZE_ERROR = 'File size must not exceed 10 MB.';
+exports.CRM_FILE_FORMAT_ERROR = 'Unsupported file format. Please upload CSV, PNG, JPG, JPEG, PDF, TXT, or DOCX files.';
+function crmFileExtension(name) {
+    const extension = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
+    return exports.CRM_FILE_EXTENSIONS.find(allowed => allowed === extension);
+}
+function crmFileValidationError(file) {
+    if (file.size > exports.RECORD_FILE_MAX_BYTES)
+        return exports.CRM_FILE_SIZE_ERROR;
+    if (!crmFileExtension(file.name))
+        return exports.CRM_FILE_FORMAT_ERROR;
+    if (!file.size)
+        return 'Choose a nonempty file.';
+}
 exports.RecordEmailAttachmentContextSchema = zod_1.z.object({
     recordModule: zod_1.z.enum(['leads', 'contacts', 'deals']),
     recordId: zod_1.z.string().uuid(),

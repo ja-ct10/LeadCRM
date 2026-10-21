@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Archive, Calendar, ChevronDown, ListTodo, MoreHorizontal, Pencil, User, X } from 'lucide-react';
-import { TASK_MANUAL_STATUSES, TASK_STATUS_LABELS, taskDisplayStatus, taskAssociationIds, isTaskAssignmentRestrictedRole, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
+import { TASK_MANUAL_STATUSES, TASK_STATUS_LABELS, taskDisplayStatus, taskAssociationIds, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -41,7 +41,8 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
   const { user } = useAuth();
   const { updateTask, deleteTask, users } = useData();
   const canRead = useHasPermission('tasks.view'), canEdit = useHasPermission('tasks.edit'), assignGrant = useHasPermission('tasks.assign');
-  const canAssign = assignGrant && !isTaskAssignmentRestrictedRole(user?.role ?? '');
+  const groupAccess = useHasPermission('tasks.view_all');
+  const canAssign = assignGrant && (user?.role === 'Client Admin' || groupAccess);
   const canComplete = useHasPermission('tasks.complete'), canArchive = useHasPermission('tasks.archive'), canCreateDeals = useHasPermission('deals.create');
   const readableRecords = { deal: useHasPermission('deals.view'), lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'), account: useHasPermission('accounts.view') };
   const recordId = initialTask?.id ?? taskId!;
@@ -58,10 +59,10 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
   const heading = useId();
   const latest = USE_MOCK_DATA ? saved : detail.data;
   const unavailable = !canRead || [401, 403, 404].includes(detail.errorStatus ?? 0) ||
-    !!latest && isTaskAssignmentRestrictedRole(user?.role ?? '') && latest.assignedUserId !== user?.id;
+    !!latest && user?.role !== 'Client Admin' && !groupAccess && latest.assignedUserId !== user?.id;
   const ready = !!saved && !unavailable && (USE_MOCK_DATA || !!detail.data);
   useReadRecordNotifications('Task', recordId, !USE_MOCK_DATA && ready && !detail.isInitialLoad && !detail.isRefreshing && !detail.error);
-  const owned = ready && canManageTask(latest, user);
+  const owned = ready && canManageTask(latest, user, groupAccess);
   const mutable = owned && !readOnly && !latest?.isArchived;
   const pending = busy || inline.busy;
   const changed = !!saved && !!detail.data && (saved.updatedAt !== detail.data.updatedAt || !saved.updatedAt && JSON.stringify(saved) !== JSON.stringify(detail.data));

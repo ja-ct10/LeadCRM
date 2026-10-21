@@ -107,15 +107,20 @@ it('consumes the search highlight when another Deal card opens', async () => {
   expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=other', { scroll: false });
 });
 
-it('bypasses local filters only for the authorized target and switches pipelines through the existing selector', async () => {
+it('bypasses local filters only for the authorized target and keeps its pipeline read-only', async () => {
   render(<PipelinePage />);
   fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: 'No match' } });
   expect(await screen.findByRole('button', { name: 'Search-selected Deal' })).toBeTruthy();
-  const field = screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLSelectElement;
-  expect(field.value).toBe('other');
-  fireEvent.change(field, { target: { value: 'sales' } });
-  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=sales', { scroll: false });
-  expect((screen.getByRole('textbox', { name: 'Search deals' }) as HTMLInputElement).value).toBe('');
+  const field = screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement;
+  expect(field.value).toBe('Other Pipeline');
+  expect(field.readOnly).toBe(true);
+  state.replace.mockClear();
+  fireEvent.click(field);
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(screen.queryByRole('combobox')).toBeNull();
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect((screen.getByRole('textbox', { name: 'Search deals' }) as HTMLInputElement).value).toBe('No match');
+  expect(screen.getByTestId('board').getAttribute('data-pipeline')).toBe('other');
 });
 it('preserves explicit Deal-detail navigation', async () => {
   state.params = 'dealId=selected'; render(<PipelinePage />);

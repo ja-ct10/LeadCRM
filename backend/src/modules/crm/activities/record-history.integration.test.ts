@@ -21,7 +21,7 @@ beforeAll(async () => {
   await db.tenant.createMany({ data: ['a','b'].map(id => ({ id, name: id, slug: id, onboardingStep: 3, onboardingCompletedAt: now })) });
   await db.user.createMany({ data: ['admin','contact-reader','denied'].map(id => ({ id, tenantId: 'a', firstName: id, lastName: 'Test', email: `${id}@camxian.com`, role: id === 'admin' ? 'Client Admin' : id, mustChangePassword: false, onboardingCompletedAt: now })) });
   await db.roleDefinition.create({ data: { id: 'contact-role', tenantId: 'a', name: 'contact-reader' } });
-  await db.rolePermission.create({ data: { tenantId: 'a', roleId: 'contact-role', module: 'contacts', canView: true, canEdit: true } });
+  await db.rolePermission.create({ data: { tenantId: 'a', roleId: 'contact-role', module: 'contacts', canView: true, canViewAll: true, canEdit: true } });
   await db.userRole.create({ data: { tenantId: 'a', roleId: 'contact-role', userId: 'contact-reader' } });
   await db.contact.create({ data: { id: 'converted-contact', tenantId: 'a', firstName: 'Converted', lastName: 'Contact', email: 'converted@example.test' } });
   await db.contact.create({ data: { id: 'foreign-contact', tenantId: 'b', firstName: 'Foreign', lastName: 'Contact', email: 'foreign@example.test' } });

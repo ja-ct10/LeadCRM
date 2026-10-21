@@ -60,7 +60,7 @@ describe.skipIf(!disposable)('custom-role Settings access with persisted assignm
     otherTenantId = (await prisma.tenant.create({ data: { name: 'Other Settings QA', slug: `other-settings-access-${Date.now()}`, email: 'other@camxian.com', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
     adminRoleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true,
       permissions: { create: PERMISSION_MODULES.map(module => row(module.key, Object.fromEntries(module.actions.map(action => [action, true])))) } } })).id;
-    salesRoleId = (await role('Sales', [row('leads', { canView: true, canEdit: true }), row('tasks', { canView: true }), row('roles'), row('settings')])).id;
+    salesRoleId = (await role('Sales', [row('leads', { canView: true, canViewMy: true, canEdit: true }), row('tasks', { canView: true }), row('roles'), row('settings')])).id;
     const admin = await actor('Client Admin', []); adminToken = admin.token; adminId = admin.user.id;
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;

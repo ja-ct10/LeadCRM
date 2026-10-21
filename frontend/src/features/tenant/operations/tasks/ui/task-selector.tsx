@@ -4,7 +4,6 @@ import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
-import { isTaskAssignmentRestrictedRole, isTaskManagerRole } from '@leadcrm/shared';
 import { taskTeamUserIds } from '../task-relations';
 import { useData } from "@/store/DataContext";
 import { getAssignableAgents } from "@/shared/utils/assigned-agents";
@@ -51,6 +50,10 @@ export function TaskSelector(props: TaskSelectorProps) {
   const id = useId();
   const { users, contacts, deals, organizations } = useData();
   const { user, tenant } = useAuth();
+  const groupAccess = useHasPermission('tasks.view_all');
+  const assignGrant = useHasPermission('tasks.assign');
+  const inTaskScope = (assignedUserId: string | null | undefined) => !!user && (user.role === 'Client Admin' ||
+    !!assignedUserId && (groupAccess ? taskTeamUserIds(user, users) : [user.id]).includes(assignedUserId));
   const { products } = useProductInterests();
   const canAccounts = useHasPermission('accounts.view'), canProducts = useHasPermission('products.view');
   const [accountId, setAccountId] = useState(''), [category, setCategory] = useState(''), [productInterestId, setProductInterestId] = useState('');
@@ -59,6 +62,11 @@ export function TaskSelector(props: TaskSelectorProps) {
   const categories = [...new Set(products.map(product => product.category).filter((value): value is string => !!value))].sort();
   const selectionAbort = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const changed = () => { selectionAbort.current?.abort(); setOpen(false); setOptions([]); };
+    window.addEventListener('leadcrm:groups-changed', changed);
+    return () => window.removeEventListener('leadcrm:groups-changed', changed);
+  }, []);
   const [above, setAbove] = useState(false);
   const [search, setSearch] = useState("");
   const filters = { search, ...(accountId ? { accountId } : {}), ...(category ? { category } : {}), ...(productInterestId ? { productInterestId } : {}), ...(leadIds.length ? { leadIds: leadIds.join(',') } : {}) };
@@ -106,14 +114,14 @@ export function TaskSelector(props: TaskSelectorProps) {
             kind === "user"
               ? getAssignableAgents(users, ['tasks'])
                   .filter((u) => u.tenantId === tenant?.id && u.status.toLowerCase() === "active")
-                  .filter(u => !user || (isTaskAssignmentRestrictedRole(user.role) ? u.id === user.id : !isTaskManagerRole(user.role) || taskTeamUserIds(user, users).includes(u.id)))
+                  .filter(u => inTaskScope(u.id) && (assignGrant || u.id === user?.id))
                   .map((u) => ({
                     id: u.id,
                     label: u.firstName + " " + u.lastName,
                   }))
               : kind === "deal"
                 ? deals
-                    .filter(d => !user || (isTaskManagerRole(user.role) ? !!d.assignedUserId && taskTeamUserIds(user, users).includes(d.assignedUserId) : !isTaskAssignmentRestrictedRole(user.role) || d.assignedUserId === user.id))
+                    .filter(d => inTaskScope(d.assignedUserId))
                     .filter(
                       (d) =>
                         !leadIds.length ||
@@ -179,6 +187,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     accountId, category, productInterestId, page, products,
     tenant?.id,
     user?.id,
+    user?.role, groupAccess, assignGrant,
     selfAssignmentOnly,
     users,
     contacts,

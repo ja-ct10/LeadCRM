@@ -6,20 +6,18 @@ import {
   TaskQuerySchema,
   StoredTaskStatusSchema,
   taskDisplayStatus,
-  isTaskManagerRole,
   isTaskOverdue,
-  isTaskAssignmentRestrictedRole,
   type TaskListQuery,
   type TaskPage,
   type TaskSummary,
 } from "@leadcrm/shared";
 import type { Task } from "@/store/types";
-import { subscribePageCacheInvalidation } from "@/shared/cache/page-cache";
+import { invalidatePageCache, subscribePageCacheInvalidation } from "@/shared/cache/page-cache";
 import { tasksApi } from "@/shared/services/tasks.api";
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { matchesSearch } from '@/shared/utils/search';
 
-type TaskQueryActor = { id: string; tenantId: string; role: string; taskTeamUserIds?: string[] };
+type TaskQueryActor = { id: string; tenantId: string; role: string; canReadTasks?: boolean; taskGroupAccess?: boolean; taskTeamUserIds?: string[] };
 
 export function localTaskQuery(
   tasks: Task[],
@@ -32,9 +30,8 @@ export function localTaskQuery(
     .filter((task) => {
       const status = StoredTaskStatusSchema.parse(task.status);
       return (
-        (!actor || task.tenantId === actor.tenantId && (isTaskManagerRole(actor.role)
-          ? (actor.taskTeamUserIds ?? [actor.id]).includes(task.assignedUserId)
-          : !isTaskAssignmentRestrictedRole(actor.role) || task.assignedUserId === actor.id)) &&
+        (!actor || actor.canReadTasks && task.tenantId === actor.tenantId && (actor.role === 'Client Admin' ||
+          (actor.taskGroupAccess ? actor.taskTeamUserIds ?? [actor.id] : [actor.id]).includes(task.assignedUserId))) &&
         Boolean(task.isArchived) === query.archived &&
         (!query.priority || task.priority === query.priority) &&
         (!query.assignedUserId ||
@@ -122,6 +119,7 @@ export function localTaskQuery(
 /** One query owner, mounted inside the existing DataProvider. No additional Task store. */
 export function useTaskQueries(identity: string, tasks: Task[], mock: boolean, actor?: TaskQueryActor) {
   const [tasksRevision, setRevision] = useState(0);
+  const [taskScopeRevision, setScopeRevision] = useState(0);
   const owner = useRef({
     identity,
     pages: new Map<string, Promise<TaskPage>>(),
@@ -140,12 +138,15 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean, a
   }, []);
   useEffect(() => {
     let queued: ReturnType<typeof setTimeout> | undefined;
-    const unsubscribe = subscribePageCacheInvalidation((module) => {
+    const unsubscribe = subscribePageCacheInvalidation((module, _tenantId, evict) => {
       if (["*", "activities", "tasks", "leads", "contacts", "accounts", "deals"].includes(module)) {
+        if (evict || module === '*') { clearTimeout(queued); refreshTasks(); setScopeRevision(value => value + 1); return; }
         clearTimeout(queued); queued = setTimeout(refreshTasks, 0);
       }
     });
-    return () => { unsubscribe(); clearTimeout(queued); };
+    const scopeChanged = () => invalidatePageCache('tasks', undefined, true, true);
+    window.addEventListener('leadcrm:groups-changed', scopeChanged);
+    return () => { unsubscribe(); clearTimeout(queued); window.removeEventListener('leadcrm:groups-changed', scopeChanged); };
   }, [refreshTasks]);
   const queryTasks = useCallback(
     (query: TaskListQuery = {}) => {
@@ -188,8 +189,8 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean, a
     [mock],
   );
   return useMemo(
-    () => ({ tasksRevision, refreshTasks, queryTasks, queryTaskSummary }),
-    [tasksRevision, refreshTasks, queryTasks, queryTaskSummary],
+    () => ({ tasksRevision, taskScopeRevision, refreshTasks, queryTasks, queryTaskSummary }),
+    [tasksRevision, taskScopeRevision, refreshTasks, queryTasks, queryTaskSummary],
   );
 }
 

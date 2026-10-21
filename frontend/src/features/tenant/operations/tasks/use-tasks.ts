@@ -9,14 +9,15 @@ import { getPageCacheGeneration } from '@/shared/cache/page-cache';
 
 export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
   const { user, tenant } = useAuth();
-  const { queryTasks, queryTaskSummary, tasksRevision, refreshTasks } =
+  const { queryTasks, queryTaskSummary, tasksRevision, taskScopeRevision, refreshTasks } =
     useData();
   const canRead = useHasPermission("tasks.view");
+  const groupAccess = useHasPermission('tasks.view_all');
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
   const queryKey = JSON.stringify(query);
-  const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}:${getPageCacheGeneration()}`;
+  const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}:${groupAccess}:${taskScopeRevision}:${getPageCacheGeneration()}`;
   const key = `${identity}:${queryKey}:${tasksRevision}`;
   const [result, setResult] = useState<{
     key: string;

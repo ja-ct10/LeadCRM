@@ -1,0 +1,177 @@
+{
+  "branch": "codex/dynamic-task-scope-uploads",
+  "head": "d6f75ce2212274e7c1c696460e072f68e0e11fed",
+  "staged": [],
+  "modified": [
+    "backend/src/modules/administration/archived-data/archive-date-page.integration.test.ts",
+    "backend/src/modules/administration/roles/__tests__/custom-role-settings.integration.test.ts",
+    "backend/src/modules/administration/roles/__tests__/roles.integration.test.ts",
+    "backend/src/modules/crm/access/crm-record-access.service.ts",
+    "backend/src/modules/crm/activities/record-history.integration.test.ts",
+    "backend/src/modules/crm/closing-requirements/custom-fields.integration.test.ts",
+    "backend/src/modules/crm/record-files/record-files.routes.ts",
+    "backend/src/modules/crm/record-files/record-files.service.ts",
+    "backend/src/modules/operations/tasks/__tests__/task-assignment-visibility.integration.test.ts",
+    "backend/src/modules/operations/tasks/__tests__/tasks.integration.test.ts",
+    "backend/src/modules/operations/tasks/__tests__/tasks.service.test.ts",
+    "backend/src/modules/operations/tasks/tasks.repository.ts",
+    "backend/src/modules/operations/tasks/tasks.service.ts",
+    "frontend/src/features/tenant/administration/roles/services/roles.service.ts",
+    "frontend/src/features/tenant/administration/roles/ui/permission-matrix.tsx",
+    "frontend/src/features/tenant/crm/pipeline/ui/pipeline-page.test.tsx",
+    "frontend/src/features/tenant/crm/pipeline/ui/pipeline-page.tsx",
+    "frontend/src/features/tenant/crm/pipeline/ui/pipeline-search.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/__tests__/task-board-empty-state.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/__tests__/task-data.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/__tests__/task-editor.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/__tests__/task-interactions.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/__tests__/use-tasks.test.tsx",
+    "frontend/src/features/tenant/operations/tasks/task-data.ts",
+    "frontend/src/features/tenant/operations/tasks/task-relations.ts",
+    "frontend/src/features/tenant/operations/tasks/ui/task-board.tsx",
+    "frontend/src/features/tenant/operations/tasks/ui/task-details.tsx",
+    "frontend/src/features/tenant/operations/tasks/ui/task-editor.tsx",
+    "frontend/src/features/tenant/operations/tasks/ui/task-selector.tsx",
+    "frontend/src/features/tenant/operations/tasks/ui/task-table.tsx",
+    "frontend/src/features/tenant/operations/tasks/use-tasks.ts",
+    "frontend/src/features/tenant/settings/ui/__tests__/roles-permissions.test.tsx",
+    "frontend/src/features/tenant/settings/ui/roles-permissions.tsx",
+    "frontend/src/shared/cache/page-cache.ts",
+    "frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx",
+    "frontend/src/shared/components/crm/__tests__/record-custom-fields.test.tsx",
+    "frontend/src/shared/components/crm/crm-record-view.tsx",
+    "frontend/src/shared/components/crm/record-custom-fields.tsx",
+    "frontend/src/shared/components/crm/record-files-tab.test.tsx",
+    "frontend/src/shared/components/crm/record-files-tab.tsx",
+    "frontend/src/shared/hooks/__tests__/cached-page.integration.test.tsx",
+    "frontend/src/shared/hooks/use-cached-page.ts",
+    "frontend/src/store/DataContext.tsx",
+    "frontend/src/store/__tests__/deals-realtime.test.tsx",
+    "shared/src/constants/permission-modules.js",
+    "shared/src/constants/permission-modules.ts",
+    "shared/src/constants/permissions.js",
+    "shared/src/constants/permissions.ts",
+    "shared/src/constants/role-templates.js",
+    "shared/src/constants/role-templates.ts",
+    "shared/src/contracts/record-experience.js",
+    "shared/src/contracts/record-experience.ts",
+    "shared/src/contracts/task.contract.js",
+    "shared/src/contracts/task.contract.ts"
+  ],
+  "untracked": [
+    "backend/src/modules/crm/record-files/__tests__/file-fixtures.ts",
+    "backend/src/modules/crm/record-files/record-file-validation.test.ts",
+    "backend/src/modules/crm/record-files/record-file-validation.ts",
+    "backend/src/modules/crm/record-files/record-files.integration.test.ts",
+    "data/outputs/dynamic-task-files-verification.md",
+    "data/outputs/local-task-files-audit-generated.json",
+    "data/outputs/local-task-files-audit-inventory.json",
+    "data/outputs/local-task-files-audit.md",
+    "frontend/src/features/tenant/administration/roles/services/roles.service.test.ts"
+  ],
+  "repairs": [
+    "backend/src/modules/crm/record-files/record-file-validation.ts",
+    "backend/src/modules/crm/record-files/record-file-validation.test.ts",
+    "backend/src/modules/crm/record-files/record-files.integration.test.ts",
+    "frontend/src/store/DataContext.tsx",
+    "frontend/src/store/__tests__/deals-realtime.test.tsx",
+    "backend/src/modules/administration/archived-data/archive-date-page.integration.test.ts",
+    "backend/src/modules/crm/activities/record-history.integration.test.ts",
+    "backend/src/modules/crm/closing-requirements/custom-fields.integration.test.ts"
+  ],
+  "nativeLatest": {
+    "passed": 171,
+    "failed": 0,
+    "skipped": 0
+  },
+  "nativeSuites": [
+    {
+      "label": "src/modules/administration/archived-data/archive-date-page.integration.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582700867-7a9f8dae-27b2-487f-9187-5b0705eb76c3/integration-1.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/administration/groups/groups.integration.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-2.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/administration/roles/__tests__/custom-role-settings.integration.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-3.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/administration/roles/__tests__/roles.integration.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-4.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/administration/users/user-groups.integration.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-5.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/crm/access/crm-record-access.integration.test.ts",
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-6.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/crm/activities/record-history.integration.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582700867-7a9f8dae-27b2-487f-9187-5b0705eb76c3/integration-2.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/crm/closing-requirements/custom-fields.integration.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582834518-3ae56a5d-9129-4046-b000-80753e74dc11/integration-1.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/crm/record-files/record-files.integration.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582918884-c009544f-97c5-4ed5-9a78-0fa8a55d231e/integration-1.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/operations/tasks/__tests__/task-assignment-visibility.integration.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-10.json",
+      "sourceChanged": false
+    },
+    {
+      "label": "src/modules/operations/tasks/__tests__/tasks.integration.test.ts",
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "report": "data/outputs/system-audit/1792582295191-485b7f2b-f794-4e30-a9f0-0561653f84f9/integration-11.json",
+      "sourceChanged": false
+    }
+  ]
+}

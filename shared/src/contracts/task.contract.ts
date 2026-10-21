@@ -272,15 +272,6 @@ export interface TaskOption {
   id: string;
   label: string;
 }
-/** Task visibility uses the current primary role, independently of CRM edit restrictions. */
-export function isTaskAssignmentRestrictedRole(role: string): boolean {
-  return ['sales', 'salesagent', 'salesrepresentative', 'salesrep', 'salesstaff'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
-}
-
-export function isTaskManagerRole(role: string): boolean {
-  return ['salesmanager', 'headofsales'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
-}
-
 export function isTaskOverdue(
   task: { status: string; dueDate?: string | null; isArchived?: boolean },
   now = Date.now(),

@@ -135,6 +135,7 @@ describe("Task service authority", () => {
   });
 
   it('keeps completion-only permission independent when a precondition is supplied', async () => {
+    db.task.findFirst.mockResolvedValue({ ...original, assignedUserId: actorId });
     db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, status: 'ACTIVE', role: 'Task completer',
       tenant: { status: 'ACTIVE' }, userRoles: [{ tenantId, role: { tenantId, name: 'Task completer', isArchived: false,
         permissions: [{ tenantId, module: 'tasks', canView: true, canComplete: true }] } }] }));

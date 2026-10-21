@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({ attachment: vi.fn(), canDelete: false }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.canDelete }));
 vi.mock('@/features/tenant/inbox/services/gmail.service', () => ({ fetchGmailAttachment: mocks.attachment }));
 import { RecordFilesTab } from './record-files-tab';
+import { CRM_FILE_ACCEPT, CRM_FILE_FORMAT_ERROR, CRM_FILE_SIZE_ERROR, RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.canDelete = false;
@@ -14,6 +15,41 @@ beforeEach(() => {
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it('uses the primary picker button and displays the supported formats and size before upload', () => {
+  render(<RecordFilesTab files={[]} restrictFormats onUpload={vi.fn()} />);
+  const picker = screen.getByLabelText('Choose file') as HTMLInputElement;
+  expect(picker.accept).toBe(CRM_FILE_ACCEPT);
+  expect(screen.getByText('Supported formats: CSV, PNG, JPG, JPEG, PDF, TXT, DOCX')).toBeTruthy();
+  expect(screen.getByText('Maximum file size: 10 MB per file')).toBeTruthy();
+  const click = vi.spyOn(picker, 'click');
+  const button = screen.getByRole('button', { name: 'Upload File' });
+  expect(button.style.backgroundColor).toBe('var(--primary)');
+  fireEvent.click(button); expect(click).toHaveBeenCalledOnce();
+});
+
+it.each(['csv','png','jpg','jpeg','pdf','txt','docx'])('uploads an allowed %s file through the existing callback', async extension => {
+  const onUpload = vi.fn().mockResolvedValue(undefined);
+  render(<RecordFilesTab files={[]} restrictFormats onUpload={onUpload} />);
+  const file = new File(['content'], `allowed.${extension}`);
+  fireEvent.change(screen.getByLabelText('Choose file'), { target: { files: [file] } });
+  await waitFor(() => expect(onUpload).toHaveBeenCalledWith(file));
+});
+
+it('blocks invalid picker and dropped files and allows a maximum-size dropped file', async () => {
+  const onUpload = vi.fn().mockResolvedValue(undefined);
+  render(<RecordFilesTab files={[]} restrictFormats onUpload={onUpload} />);
+  const picker = screen.getByLabelText('Choose file');
+  fireEvent.change(picker, { target: { files: [new File(['bad'], 'bad.zip')] } });
+  expect(toast.error).toHaveBeenLastCalledWith(CRM_FILE_FORMAT_ERROR);
+  const zone = picker.parentElement!;
+  const large = new File(['large'], 'large.txt'); Object.defineProperty(large, 'size', { value: RECORD_FILE_MAX_BYTES + 1 });
+  fireEvent.drop(zone, { dataTransfer: { files: [large] } });
+  expect(toast.error).toHaveBeenLastCalledWith(CRM_FILE_SIZE_ERROR); expect(onUpload).not.toHaveBeenCalled();
+  const valid = new File(['maximum'], 'maximum.txt'); Object.defineProperty(valid, 'size', { value: RECORD_FILE_MAX_BYTES });
+  fireEvent.dragOver(zone); fireEvent.drop(zone, { dataTransfer: { files: [valid] } });
+  await waitFor(() => expect(onUpload).toHaveBeenCalledWith(valid));
+});
 
 it('shows persisted file history metadata and a download action', () => {
   render(<RecordFilesTab files={[{
@@ -35,9 +71,9 @@ it('shows a disabled upload loading state until the API call settles', async () 
   fireEvent.change(picker, { target: { files: [file] } });
   expect(await screen.findByRole('status', { name: 'Uploading file' })).toBeTruthy();
   expect(picker.disabled).toBe(true);
-  expect(screen.queryByRole('button', { name: 'Upload file' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Upload File' })).toBeNull();
   await act(async () => { finishUpload(); });
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload file' })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload File' })).toBeTruthy());
   expect(onUpload).toHaveBeenCalledWith(file);
   expect(toast.success).toHaveBeenCalledWith('agreement.pdf uploaded');
 });
@@ -50,7 +86,7 @@ it('shows a useful upload error and lets the user retry', async () => {
   const picker = screen.getByLabelText('Choose file');
   fireEvent.change(picker, { target: { files: [new File(['%PDF-1.7'], 'agreement.pdf', { type: 'application/pdf' })] } });
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Storage unavailable'));
-  expect(screen.getByRole('button', { name: 'Upload file' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Upload File' })).toBeTruthy();
 });
 
 const reference = { id: 'gmail-reference', accountId: 'mailbox', messageId: 'message', attachmentId: 'original-pdf', name: 'quotation.pdf', type: 'application/pdf', size: 20173, sentAt: '2026-10-18T01:00:00Z' };

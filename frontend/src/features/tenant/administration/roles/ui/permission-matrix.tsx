@@ -3,7 +3,7 @@
 import React, { useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
-import { PERMISSION_MODULES, PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS } from '@leadcrm/shared';
+import { PERMISSION_MODULES, PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS, permissionLabel } from '@leadcrm/shared';
 import type { PermissionAction, PermissionFlags } from '@/store/types/roles.types';
 
 interface PermissionMatrixProps {
@@ -87,8 +87,8 @@ export function PermissionMatrix({ value, readOnly = false, onChange }: Permissi
                           : 'cursor-default opacity-70',
                         locked && 'opacity-60',
                       )}
-                      aria-label={`${checked ? 'Disable' : 'Enable'} ${ACTION_LABELS[action]} for ${mod.label}`}
-                      title={locked ? 'canView is required when other permissions are active' : undefined}
+                      aria-label={`${checked ? 'Disable' : 'Enable'} ${permissionLabel(mod, action)}`}
+                      title={locked ? 'canView is required when other permissions are active' : mod.key === 'tasks' && action === 'canViewAll' ? 'Group Tasks: access Tasks assigned to members of your Groups. Action permissions remain separate.' : undefined}
                     >
                       {checked && <Check size={11} strokeWidth={3} />}
                     </button>

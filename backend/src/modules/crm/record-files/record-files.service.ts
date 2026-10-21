@@ -11,12 +11,13 @@ import type { MailboxAttachment, RecordEmailAttachmentContext, RecordEmailAttach
 import { recordMailboxScope } from '../../../integrations/gmail/mailbox-record-scope';
 import { readMailboxContent } from '../../../integrations/gmail/mailbox-attachments';
 import sanitizeHtml from 'sanitize-html';
+import { validateCrmFile } from './record-file-validation';
 
 export type FileModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 const links = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const;
 const actor = { uploadedBy: { select: { firstName: true, lastName: true } } } as const;
 const types = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv', 'application/zip', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] as const;
-export const UploadMetadataSchema = z.object({ name: recordText(255).pipe(z.string().min(1)).transform(value => value.replace(/[\\/]/g, '_')), type: z.union([z.enum(types), z.literal('application/octet-stream')]) });
+export const UploadMetadataSchema = z.object({ name: recordText(255).pipe(z.string().min(1)).transform(value => value.replace(/[\\/]/g, '_')), type: z.string().min(1).max(150) });
 
 function storage() {
   return privateObjectStorage(process.env.RECORD_FILES_STORAGE_BUCKET || 'crm-record-files');
@@ -103,13 +104,14 @@ export async function listEmailAttachments(tenantId: string, userId: string, con
   }
   return page;
 }
-export async function uploadFile(module: FileModule, id: string | null, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
+export async function uploadFile(module: FileModule, id: string | null, tenantId: string, userId: string, input: unknown, bytes: Buffer, source: 'files' | 'custom-field' = 'files') {
   if (id) await requireRecord(module, id, tenantId);
   if (id) await salesTransaction(tx => assertCrmRecordMutation(tx, module, id));
   const submitted = UploadMetadataSchema.parse(input);
   const extension = submitted.name.split('.').pop()?.toLowerCase();
   const inferred: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-  const data = { ...submitted, type: submitted.type === 'application/octet-stream' ? inferred[extension ?? ''] ?? submitted.type : submitted.type };
+  const data = { ...submitted, type: source === 'files' && id && module !== 'accounts' ? validateCrmFile(submitted.name, submitted.type, bytes)
+    : submitted.type === 'application/octet-stream' ? inferred[extension ?? ''] ?? submitted.type : submitted.type };
   if (!(types as readonly string[]).includes(data.type)) throw new AppError('This file type is not supported.', 400);
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > RECORD_FILE_MAX_BYTES) throw new AppError('Choose a nonempty file no larger than 10 MB.', 400);
   // Refuse mislabeled binary files. Downloads always use attachment + nosniff.

@@ -52,7 +52,7 @@ it('uses the CRM shell spacing and shared search without Deals KPI cards', () =>
   for (const label of ['Active Open Deals', 'Total Open Value', 'Closed Won Revenue']) expect(screen.queryByText(label)).toBeNull();
   expect(container.firstElementChild?.className).not.toMatch(/(?:^|\s)(?:sm:)?p-\d/);
   expect(screen.getByRole('textbox', { name: 'Search deals' }).className).toContain('h-8');
-  expect(screen.getByRole('combobox', { name: 'Pipeline' }).className).toContain('h-8');
+  expect(screen.getByRole('textbox', { name: 'Pipeline' }).className).toContain('h-8');
   expect(screen.getByRole('heading', { name: 'Deals' })).toBeTruthy();
   expect(screen.getByTestId('board')).toBeTruthy();
 });
@@ -120,9 +120,10 @@ it('preserves Client Admin search, owner and stage filters without a personal ta
 
 it('shows a readable persisted pipeline and a direct New Deal button without import controls', () => {
   render(<PipelinePage />);
-  const pipeline = screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLSelectElement;
-  expect(pipeline.value).toBe('sales'); expect(pipeline.disabled).toBe(false);
-  expect(within(pipeline).getByRole('option', { name: 'Sales Pipeline' })).toBeTruthy();
+  const pipeline = screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement;
+  expect(pipeline.value).toBe('Sales Pipeline'); expect(pipeline.readOnly).toBe(true); expect(pipeline.disabled).toBe(false);
+  expect(screen.queryByRole('combobox', { name: 'Pipeline' })).toBeNull();
+  expect(screen.queryByRole('option')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Manage pipeline stages' })).toBeNull();
   const create = screen.getByRole('button', { name: 'New Deal' });
   expect(create.hasAttribute('aria-haspopup')).toBe(false);
@@ -143,18 +144,34 @@ it.each(['default', 'Lead', 'first'])('preserves the %s stage fallback passed to
 it('prefers Sales Pipeline over the first available record and displays a persisted fallback name', () => {
   state.pipelines.unshift({ id: 'other', name: 'Existing Pipeline', stages: [{ id: 'open', name: 'Open' }] });
   const view = render(<PipelinePage />);
-  expect((screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLSelectElement).value).toBe('sales');
+  expect((screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement).value).toBe('Sales Pipeline');
   state.pipelines = state.pipelines.filter(p => p.id !== 'sales'); view.rerender(<PipelinePage />);
-  expect((screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLSelectElement).value).toBe('other');
+  expect((screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement).value).toBe('Existing Pipeline');
 });
 
-it('selects the deep-linked pipeline and navigates when the selection changes', () => {
+it('reflects pipeline name changes without changing the creation pipeline or stage', () => {
+  const view = render(<PipelinePage />);
+  state.pipelines[0].name = 'Regional Sales'; view.rerender(<PipelinePage />);
+  expect((screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement).value).toBe('Regional Sales');
+  fireEvent.click(screen.getByRole('button', { name: 'New Deal' }));
+  const form = screen.getByRole('dialog', { name: 'New Deal' });
+  expect(form.getAttribute('data-pipeline')).toBe('sales');
+  expect(form.getAttribute('data-stage')).toBe('lead');
+});
+
+it('displays the deep-linked pipeline without offering pipeline selection', () => {
   state.params = 'pipelineId=other';
   state.pipelines.push({ id: 'other', name: 'Existing Pipeline', stages: [{ id: 'open', name: 'Open' }] });
   render(<PipelinePage />);
-  expect((screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLSelectElement).value).toBe('other');
-  fireEvent.change(screen.getByRole('combobox', { name: 'Pipeline' }), { target: { value: 'sales' } });
-  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=sales', { scroll: false });
+  const pipeline = screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement;
+  expect(pipeline.value).toBe('Existing Pipeline');
+  expect(pipeline.readOnly).toBe(true);
+  fireEvent.click(pipeline);
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(screen.queryByRole('combobox')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'New Deal' }));
+  expect(screen.getByRole('dialog', { name: 'New Deal' }).getAttribute('data-pipeline')).toBe('other');
+  expect(screen.getByRole('dialog', { name: 'New Deal' }).getAttribute('data-stage')).toBe('open');
 });
 
 it('keeps creation permission independent and removes stage management from Deals', () => {
@@ -162,10 +179,24 @@ it('keeps creation permission independent and removes stage management from Deal
   const view = render(<PipelinePage />);
   expect(screen.queryByRole('button', { name: 'New Deal' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Manage pipeline stages' })).toBeNull();
-  expect(screen.getByRole('combobox', { name: 'Pipeline' })).toBeTruthy();
+  expect(screen.getByRole('textbox', { name: 'Pipeline' })).toBeTruthy();
   cleanup(); state.permissions = ['deals.view_all', 'deals.view_my', 'deals.create']; view.unmount(); render(<PipelinePage />);
   expect(screen.getByRole('button', { name: 'New Deal' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Manage pipeline stages' })).toBeNull();
+});
+
+it('leaves the field blank until pipeline data loads through the existing loading state', () => {
+  const pipeline = state.pipelines[0]; state.pipelines = [];
+  const view = render(<PipelinePage />);
+  const field = screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement;
+  expect(field.value).toBe(''); expect(field.readOnly).toBe(true);
+  expect(screen.getByRole('status', { name: 'Loading pipeline board' })).toBeTruthy();
+  expect(screen.queryByTestId('board')).toBeNull();
+  expect(state.refreshPipelines).toHaveBeenCalledOnce();
+  state.pipelines = [pipeline]; view.rerender(<PipelinePage />);
+  expect(field.value).toBe(pipeline.name);
+  expect(screen.queryByRole('status', { name: 'Loading pipeline board' })).toBeNull();
+  expect(screen.getByTestId('board')).toBeTruthy();
 });
 
 it('disables creation without a stage and leaves missing pipeline errors retryable', async () => {
@@ -174,7 +205,7 @@ it('disables creation without a stage and leaves missing pipeline errors retryab
   expect((screen.getByRole('button', { name: 'New Deal' }) as HTMLButtonElement).disabled).toBe(true);
   state.pipelines = []; state.refreshPipelines.mockRejectedValueOnce(new Error('Pipeline unavailable'));
   view.rerender(<PipelinePage />);
-  expect((screen.getByRole('combobox', { name: 'Pipeline' }) as HTMLInputElement).value).toBe('');
+  expect((screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement).value).toBe('');
   expect(screen.queryByRole('button', { name: 'New Deal' })).toBeNull();
   expect((await screen.findByRole('alert')).textContent).toBe('Pipeline unavailable');
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));

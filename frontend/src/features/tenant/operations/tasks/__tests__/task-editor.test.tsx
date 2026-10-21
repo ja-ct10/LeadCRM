@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   canEdit: true,
   canEditLeads: true,
   canAssign: true,
+  groupAccess: true,
   deniedPermissions: [] as string[],
   detail: {} as { data?: import('@leadcrm/shared').TaskRecord; error: string | null; errorStatus?: number; isInitialLoad: boolean; isRefreshing: boolean; refetch: ReturnType<typeof vi.fn>; setData: ReturnType<typeof vi.fn> },
   options: vi.fn(),
@@ -41,7 +42,7 @@ vi.mock("@/shared/hooks/use-permissions", () => ({
   useHasPermission: (permission: string) =>
     mocks.deniedPermissions.includes(permission) ? false : permission === "leads.edit"
       ? mocks.canEditLeads
-      : permission === 'tasks.assign' ? mocks.canAssign : permission !== "tasks.edit" || mocks.canEdit,
+      : permission === 'tasks.view_all' ? mocks.groupAccess : permission === 'tasks.assign' ? mocks.canAssign : permission !== "tasks.edit" || mocks.canEdit,
 }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => mocks.detail }));
 vi.mock('../ui/task-selector', async () => {
@@ -77,7 +78,7 @@ const task = {
 afterEach(cleanup);
 beforeEach(() => {
   user.role = 'Task staff';
-  vi.resetAllMocks(); mocks.canEdit = true; mocks.canEditLeads = true; mocks.canAssign = true; mocks.deniedPermissions = []; mocks.captureLayout = undefined;
+  vi.resetAllMocks(); mocks.canEdit = true; mocks.canEditLeads = true; mocks.canAssign = true; mocks.groupAccess = true; mocks.deniedPermissions = []; mocks.captureLayout = undefined;
   mocks.detail = { data: task, error: null, isInitialLoad: false, isRefreshing: false, refetch: vi.fn(), setData: vi.fn(saved => { mocks.detail.data = saved; }) };
   mocks.updateTask.mockImplementation(async (_id, patch) => { const { expectedUpdatedAt, ...changes } = patch; return { ...mocks.detail.data, ...changes, updatedAt: '2026-10-18T00:00:00.000Z' }; });
   mocks.options.mockResolvedValue({ data: [{ id: 'owner', label: 'Test Owner' }] });
@@ -94,8 +95,8 @@ function enableEditing() {
 }
 function editField(label: string) { enableEditing(); fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` })); }
 
-it.each(['Sales Agent', 'Sales Representative'])('creates a personal %s Task with a read-only To do field and no assignment dropdown', async role => {
-  user.role = role;
+it.each(['Sales Associate', 'Renamed custom role'])('creates a personal %s Task with a read-only To do field and no assignment dropdown', async role => {
+  user.role = role; mocks.groupAccess = false;
   render(<TaskEditor links={{ dealIds: ['deal'] }} onClose={vi.fn()} />);
   const status = screen.getByRole('textbox', { name: 'Status' });
   expect(status).toHaveProperty('readOnly', true);
@@ -108,15 +109,15 @@ it.each(['Sales Agent', 'Sales Representative'])('creates a personal %s Task wit
   await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending', assignedUserId: user.id })));
 });
 
-it.each(['Sales Agent', 'Sales Manager', 'Head of Sales'])('lets a permitted %s manage an assigned Task created by another user', role => {
-  user.role = role; mocks.detail.data = { ...task, createdById: 'someone-else' };
+it.each(['Sales Associate', 'Sales Admin', 'Renamed custom role'])('lets a permitted %s manage an assigned Task created by another user', role => {
+  user.role = role; mocks.groupAccess = false; mocks.detail.data = { ...task, createdById: 'someone-else' };
   render(<TaskEditor task={task} onClose={vi.fn()} />);
   expect(screen.getByRole('button', { name: 'Task actions' })).toBeTruthy();
-  if (role === 'Sales Agent') { enableEditing(); expect(screen.queryByRole('button', { name: 'Edit Assigned Agent' })).toBeNull(); }
+  enableEditing(); expect(screen.queryByRole('button', { name: 'Edit Assigned Agent' })).toBeNull();
 });
 
-it.each(['Sales Agent', 'Sales Representative'])('removes an open %s detail and its controls after reassignment', async role => {
-  user.role = role;
+it.each(['Sales Associate', 'Renamed custom role'])('removes an open %s detail and its controls after reassignment', async role => {
+  user.role = role; mocks.groupAccess = false;
   const { rerender } = render(<TaskEditor task={task} onClose={vi.fn()} />);
   expect(screen.getByRole('heading', { name: task.title })).toBeTruthy();
   mocks.detail.data = { ...task, assignedUserId: 'other-agent' };
@@ -172,8 +173,9 @@ it('renders saved fields, metadata, permission-filtered ID links and collapsible
   expect(within(history).queryByRole('button', { name: /^Edit/ })).toBeNull();
 });
 
-it.each(['assignee', 'admin', 'missing', 'null', 'readOnly', 'archived', 'permissions'] as const)('keeps %s viewers read-only without preventing viewing or collapsing cards', mode => {
-  mocks.detail.data = { ...task, ...(mode === 'assignee' || mode === 'admin' ? { createdById: 'someone-else' } : mode === 'missing' ? { createdById: undefined } : mode === 'null' ? { createdById: null } : {}), isArchived: mode === 'archived' };
+it.each(['admin', 'missing', 'null', 'readOnly', 'archived', 'permissions'] as const)('keeps %s viewers read-only without preventing viewing or collapsing cards', mode => {
+  if (['admin', 'missing', 'null'].includes(mode)) user.role = 'Client Admin';
+  mocks.detail.data = { ...task, ...(mode === 'admin' ? { createdById: 'someone-else' } : mode === 'missing' ? { createdById: undefined } : mode === 'null' ? { createdById: null } : {}), isArchived: mode === 'archived' };
   if (mode === 'permissions') { mocks.canEdit = false; mocks.canAssign = false; mocks.deniedPermissions = ['tasks.complete', 'tasks.archive']; }
   render(<TaskEditor task={task} readOnly={mode === 'readOnly'} onClose={vi.fn()} />);
   expect(screen.getByRole('heading', { name: task.title })).toBeTruthy();

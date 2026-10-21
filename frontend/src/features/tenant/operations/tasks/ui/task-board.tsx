@@ -7,7 +7,6 @@ import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 import {
   TASK_COLUMN_DEFINITIONS,
-  isTaskAssignmentRestrictedRole,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   taskDateRange,
@@ -59,7 +58,8 @@ export default function TaskBoard() {
     canEdit = useHasPermission("tasks.edit"),
     canDelete = useHasPermission("tasks.archive");
   const canComplete = useHasPermission("tasks.complete"), assignGrant = useHasPermission("tasks.assign");
-  const canAssign = assignGrant && !isTaskAssignmentRestrictedRole(user?.role ?? '');
+  const groupAccess = useHasPermission('tasks.view_all');
+  const canAssign = assignGrant && (user?.role === 'Client Admin' || groupAccess);
   const [period, setPeriod] = useState<Period>("all");
   const [search, setSearch] = useState(""),
     [debounced, setDebounced] = useState("");
@@ -114,7 +114,7 @@ export default function TaskBoard() {
   };
   const queryKey = JSON.stringify(query);
   const data = useTasks(query, true);
-  const ownedSelection = (ids: string[]) => ids.length > 0 && ids.every(id => canManageTask(data.tasks.find(task => task.id === id), user));
+  const ownedSelection = (ids: string[]) => ids.length > 0 && ids.every(id => canManageTask(data.tasks.find(task => task.id === id), user, groupAccess));
   const allSelectedOwned = ownedSelection(selected);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
   const identity = useRef(data.identity);
@@ -195,7 +195,7 @@ export default function TaskBoard() {
   }, [showFilters, data.canRead, data.identity, filterSearch, users]);
 
   const change = async (task: TaskRecord) => {
-    if (!canManageTask(task, user) || mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
+    if (!canManageTask(task, user, groupAccess) || mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
     const started = identity.current;
     mutationPending.current = true;
     setBusy(true);

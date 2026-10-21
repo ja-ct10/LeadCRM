@@ -141,6 +141,7 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     "label": "Tasks",
     "actions": [
       "canView",
+      "canViewAll",
       "canCreate",
       "canEdit",
       "canComplete",
@@ -279,6 +280,7 @@ export const PERMISSION_GROUPS = [
 ];
 
 export function permissionLabel(module: PermissionModuleDefinition, action: PermissionAction): string {
+  if (module.key === 'tasks' && action === 'canViewAll') return 'Group Tasks';
   if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {
     return PERMISSION_ACTION_LABELS[action] + ' ' + (action === 'canViewActive' && module.key === 'leads' ? 'Lead' : module.label);
   }

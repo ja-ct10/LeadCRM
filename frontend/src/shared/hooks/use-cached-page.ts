@@ -105,8 +105,8 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
   useEffect(() => {
     if (!enabled) return;
     let queued: ReturnType<typeof setTimeout> | undefined;
-    const unsubscribe = subscribePageCacheInvalidation((changedModule, changedTenant) => {
-      if (changedModule === '*') {
+    const unsubscribe = subscribePageCacheInvalidation((changedModule, changedTenant, evict) => {
+      if (changedModule === '*' || evict && changedModule === module && (!changedTenant || changedTenant === tenantId)) {
         setState({ key, data: undefined, fetching: true, error: null });
         clearTimeout(queued); void refetch(); return;
       }

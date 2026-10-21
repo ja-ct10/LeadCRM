@@ -1,7 +1,7 @@
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.canMutate, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: mocks.role === 'Client Admin' } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 // Apply the final tab visibility immediately; animation timing is covered in browser checks.
 vi.mock('motion/react', async importOriginal => {
   const actual = await importOriginal<typeof import('motion/react')>();
@@ -15,10 +15,10 @@ vi.mock('motion/react', async importOriginal => {
     get: (target, property) => property === 'div' ? StaticDiv : Reflect.get(target, property),
   }), useReducedMotion: () => true };
 });
-const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn(), userId: 'user', role: 'Client Admin', authenticated: true, canMutate: true }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), upload: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn(), userId: 'user', role: 'Client Admin', authenticated: true, canMutate: true }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put, post: mocks.post } }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put, post: mocks.post, upload: mocks.upload } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: mocks.authenticated ? { id: mocks.userId, tenantId: 'tenant', role: mocks.role } : undefined }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
@@ -40,6 +40,30 @@ const records = {
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', companyName: 'North Company', assignedUserId: 'user' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
+
+it.each(['leads', 'contacts', 'deals'] as const)('shows a persisted Files-tab upload immediately on %s', async module => {
+  const saved = { id: 'uploaded-file', name: 'persisted.txt', type: 'text/plain', size: 5, uploadedAt: '2026-10-21T00:00:00Z', url: '/authorized/file' };
+  mocks.upload.mockResolvedValueOnce({ data: saved });
+  render(<CrmRecordView module={module} id="one" />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Files' }));
+  const picker = await screen.findByLabelText('Choose file');
+  expect(picker.getAttribute('accept')).toBe('.csv,.png,.jpg,.jpeg,.pdf,.txt,.docx');
+  fireEvent.change(picker, { target: { files: [new File(['saved'], saved.name, { type: saved.type })] } });
+  await screen.findByText(saved.name);
+  expect(mocks.upload.mock.calls[0][0]).toBe(`/crm/${module}/one/files?name=persisted.txt&type=text%2Fplain`);
+});
+
+it('does not restore an old upload response after authorization clears the cache', async () => {
+  let finish!: (value: unknown) => void;
+  mocks.upload.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<CrmRecordView module="leads" id="one" />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Files' }));
+  fireEvent.change(await screen.findByLabelText('Choose file'), { target: { files: [new File(['saved'], 'old-session.txt', { type: 'text/plain' })] } });
+  await waitFor(() => expect(mocks.upload).toHaveBeenCalledOnce());
+  act(() => clearPageCache());
+  await act(async () => finish({ data: { id: 'stale', name: 'old-session.txt', type: 'text/plain', size: 5, uploadedAt: '2026-10-21T00:00:00Z', url: '/old-session/file' } }));
+  expect(screen.queryByText('old-session.txt')).toBeNull();
+});
 
 const personSurfaces = (['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface })));
 
@@ -453,7 +477,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   expect(screen.queryByText('Security, Cabling, CCTV')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
   if (module !== 'deals') {
-    expect(screen.getByRole('button', { name: 'Upload file' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Upload File' })).toBeTruthy();
     await screen.findByText('No files uploaded yet.');
   } else await screen.findByText('No files uploaded yet.');
   panel.unmount();

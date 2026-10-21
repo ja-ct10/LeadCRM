@@ -13,7 +13,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
+import { RECORD_FILE_MAX_BYTES, CRM_FILE_ACCEPT, crmFileValidationError } from '@leadcrm/shared';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { DataLoadingSkeleton } from './data-view-states';
 import { cn } from '@/lib/utils';
@@ -48,6 +48,7 @@ export interface RecordFilesTabProps {
   deletePermission?: PermissionKey;
   /** Callback when a file is uploaded */
   onUpload?: (file: File) => Promise<void>;
+  restrictFormats?: boolean;
   /** Callback when a file is deleted */
   onDelete?: (fileId: string) => Promise<void>;
   emailContext?: RecordEmailAttachmentContext;
@@ -86,16 +87,18 @@ function formatDate(iso: string): string {
 
 interface UploadZoneProps {
   onUpload?: (file: File) => Promise<void>;
+  restrictFormats?: boolean;
 }
 
-function UploadZone({ onUpload }: UploadZoneProps): React.ReactElement {
+function UploadZone({ onUpload, restrictFormats }: UploadZoneProps): React.ReactElement {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File): Promise<void> => {
     if (!onUpload || isUploading) return;
-    if (!file.size || file.size > RECORD_FILE_MAX_BYTES) { toast.error('Choose a nonempty file no larger than 10 MB.'); return; }
+    const validation = restrictFormats ? crmFileValidationError(file) : !file.size || file.size > RECORD_FILE_MAX_BYTES ? 'Choose a nonempty file no larger than 10 MB.' : undefined;
+    if (validation) { toast.error(validation); return; }
     setIsUploading(true);
     try {
       await onUpload(file);
@@ -136,6 +139,7 @@ function UploadZone({ onUpload }: UploadZoneProps): React.ReactElement {
       <input
         ref={fileInputRef}
         type="file"
+        accept={restrictFormats ? CRM_FILE_ACCEPT : undefined}
         onChange={handleChange}
         className="hidden"
         aria-label="Choose file"
@@ -147,15 +151,19 @@ function UploadZone({ onUpload }: UploadZoneProps): React.ReactElement {
       </p>
       {!isUploading ? (
         <Button
-          variant="outline"
+          variant={restrictFormats ? 'default' : 'outline'}
           size="sm"
           onClick={() => fileInputRef.current?.click()}
           className="gap-1.5"
         >
           <Plus className="h-3.5 w-3.5" />
-          Upload file
+          Upload File
         </Button>
       ) : null}
+      {restrictFormats && <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+        <p>Supported formats: CSV, PNG, JPG, JPEG, PDF, TXT, DOCX</p>
+        <p>Maximum file size: 10 MB per file</p>
+      </div>}
     </div>
   );
 }
@@ -267,6 +275,7 @@ export function RecordFilesTab({
   onRetry,
   deletePermission,
   onUpload,
+  restrictFormats,
   onDelete,
   emailContext,
   attachmentAccessKey,
@@ -324,7 +333,7 @@ export function RecordFilesTab({
   return (
     <div className="w-full min-w-0 p-4 space-y-4">
       {/* Upload zone */}
-      {onUpload && <UploadZone onUpload={onUpload} />}
+      {onUpload && <UploadZone onUpload={onUpload} restrictFormats={restrictFormats} />}
       {loading && !files.length && <div role="status" aria-label="Loading files"><DataLoadingSkeleton rowCount={3} columnCount={2} rowHeight={76} /></div>}
       {error && <div role="alert" className="text-sm text-destructive">{error}{onRetry && <Button variant="ghost" onClick={onRetry}>Retry files</Button>}</div>}
 

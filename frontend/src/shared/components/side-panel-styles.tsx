@@ -29,10 +29,9 @@ export const panelPrimaryActionClass = responsiveTypography.control + ' ' + pane
 export const panelSecondaryActionClass = responsiveTypography.control + ' ' + panelSecondaryButtonClass +
   ' inline-flex items-center justify-center gap-2 border font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
-export function PanelSectionHeading({ number, children }: { number: number; children: ReactNode }) {
+export function PanelSectionHeading({ children }: { number: number; children: ReactNode }) {
   return (
-    <h3 className="flex items-center gap-3 text-sm font-bold text-foreground">
-      <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{number}</span>
+    <h3 className="flex min-h-6 items-center gap-3 text-sm font-bold text-foreground">
       <span className="min-w-0">{children}</span>
       <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border" />
     </h3>

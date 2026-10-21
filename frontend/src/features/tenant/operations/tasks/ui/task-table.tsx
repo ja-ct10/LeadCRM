@@ -61,6 +61,7 @@ export function TaskTable({
   onColumnWidthChange,
 }: Props) {
   const { user } = useAuth();
+  const groupAccess = useHasPermission('tasks.view_all');
   const selectable = canEdit || canArchive || canComplete || canAssign;
   const readableRecords = { lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'),
     deal: useHasPermission('deals.view'), account: useHasPermission('accounts.view') };
@@ -105,7 +106,7 @@ export function TaskTable({
   const cell = (task: TaskRecord, id: string): ReactNode => {
     switch (id) {
       case "action":
-        return canManageTask(task, user) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
+        return canManageTask(task, user, groupAccess) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
           <Button
             size="sm"
             variant="outline"
@@ -233,14 +234,14 @@ export function TaskTable({
           icon: <Eye size={14} />,
           onClick: () => onOpen(task),
         },
-        ...(canManageTask(task, user) && canEdit && !task.isArchived ? [{
+        ...(canManageTask(task, user, groupAccess) && canEdit && !task.isArchived ? [{
           id: "edit",
           label: "Edit",
           icon: <Edit size={14} />,
           disabled: busy || !canEdit || !!task.isArchived,
           onClick: () => onEdit(task),
         }] : []),
-        ...(canManageTask(task, user) && canArchive && !task.isArchived ? [{
+        ...(canManageTask(task, user, groupAccess) && canArchive && !task.isArchived ? [{
           id: "archive",
           label: "Archive",
           icon: <Archive size={14} />,

@@ -123,8 +123,8 @@ describe("Task contract and calendar rules", () => {
   });
 });
 describe("Task query owner", () => {
-  it.each(['Sales Agent', 'Sales Representative'])('scopes %s mock rows before filters, pagination and summaries', role => {
-    const actor = { id: 'owner', tenantId: 'tenant', role };
+  it.each(['Sales Associate', 'Sales Admin', 'Renamed custom role'])('scopes %s mock rows before filters, pagination and summaries', role => {
+    const actor = { id: 'owner', tenantId: 'tenant', role, canReadTasks: true };
     const rows = [task, { ...task, id: 'done', status: 'completed' as const, createdById: 'other' },
       { ...task, id: 'created-by-me', createdById: actor.id, assignedUserId: 'other' },
       { ...task, id: 'foreign', tenantId: 'foreign' }];
@@ -135,10 +135,9 @@ describe("Task query owner", () => {
     expect(localTaskQuery(rows, { assignedUserId: 'other' }, actor).page.data).toEqual([]);
     expect(localTaskQuery(rows, { search: 'Follow', overdue: true }, actor).page.data.map(row => row.id)).toEqual(['task']);
     expect(localTaskQuery(rows, {}, { ...actor, role: 'Sales Manager' }).page.meta.total).toBe(2);
-    expect(localTaskQuery(rows, {}, { ...actor, role: 'Sales Manager', taskTeamUserIds: ['owner', 'other'] }).page.meta.total).toBe(3);
-    for (const role of ['Top Management', 'Client Admin', 'Viewer']) {
-      expect(localTaskQuery(rows, {}, { ...actor, role }).page.meta.total).toBe(3);
-    }
+    expect(localTaskQuery(rows, {}, { ...actor, taskGroupAccess: true, taskTeamUserIds: ['owner', 'other'] }).page.meta.total).toBe(3);
+    expect(localTaskQuery(rows, {}, { ...actor, role: 'Client Admin' }).page.meta.total).toBe(3);
+    expect(localTaskQuery(rows, {}, { ...actor, canReadTasks: false }).page.meta.total).toBe(0);
   });
 
   it('refreshes both active session lists and summaries when assignment changes', async () => {
@@ -239,6 +238,15 @@ describe("Task query owner", () => {
       invalidatePageCache('contacts', 'tenant');
     });
     await waitFor(() => expect(result.current.tasksRevision).toBe(1));
+  });
+  it('evicts the query owner synchronously when Group authorization changes', async () => {
+    api.list.mockResolvedValue({ data: [task], meta: { total: 1 } });
+    const { result } = renderHook(() => useTaskQueries('tenant:user', [], false));
+    await result.current.queryTasks({});
+    act(() => window.dispatchEvent(new Event('leadcrm:groups-changed')));
+    expect(result.current.taskScopeRevision).toBe(1);
+    await result.current.queryTasks({});
+    expect(api.list).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ROLE_TEMPLATES = void 0;
 const permission_modules_1 = require("./permission-modules");
 const permissions = (modules, edit = false) => Object.fromEntries(permission_modules_1.PERMISSION_MODULES.filter(m => modules.includes(m.key)).map(m => [m.key, { ...permission_modules_1.EMPTY_PERMISSION_FLAGS, canView: true,
-        canViewAll: m.actions.includes('canViewAll'), canViewMy: m.actions.includes('canViewMy'), canViewActive: m.actions.includes('canViewActive'),
+        canViewAll: m.key !== 'tasks' && m.actions.includes('canViewAll'), canViewMy: m.actions.includes('canViewMy'), canViewActive: m.actions.includes('canViewActive'),
         canCreate: edit && m.actions.includes('canCreate'), canEdit: edit && m.actions.includes('canEdit') }]));
 exports.ROLE_TEMPLATES = [
     { key: 'sales-manager', name: 'Sales Manager', description: 'CRM editing. Pipeline configuration and other privileged actions require explicit grants.', permissions: permissions(['dashboard', 'leads', 'contacts', 'accounts', 'deals', 'tasks'], true) },
