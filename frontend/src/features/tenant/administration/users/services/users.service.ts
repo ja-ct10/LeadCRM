@@ -13,11 +13,13 @@ export const usersService = {
     await apiClient.post(`/administration/users/${id}/unlock`, {});
     invalidatePageCache('users'); window.dispatchEvent(new Event('leadcrm:users-changed'));
   },
-  getDirectory: async (): Promise<PaginatedResponse<User>> => {
+  getDirectory: async (signal?: AbortSignal): Promise<PaginatedResponse<User>> => {
     const data: User[] = [];
     let page = 1;
     for (;;) {
-      const response = await usersService.getAll({ page, limit: 100 });
+      signal?.throwIfAborted();
+      const response = await usersService.getAll({ page, limit: 100 }, signal);
+      signal?.throwIfAborted();
       data.push(...(response.data ?? []));
       if (!response.meta?.hasMore) return { ...response, data };
       page++;
@@ -32,8 +34,8 @@ export const usersService = {
     window.dispatchEvent(new Event('leadcrm:users-changed'));
     return { user: userAdapter.toModel(res.data.user), impact: res.data.impact };
   },
-  getAll: async (params?: Record<string, unknown>): Promise<PaginatedResponse<User>> => {
-    const res = await apiClient.get<PaginatedResponse<UserDTO>>('/administration/users', { params });
+  getAll: async (params?: Record<string, unknown>, signal?: AbortSignal): Promise<PaginatedResponse<User>> => {
+    const res = await apiClient.get<PaginatedResponse<UserDTO>>('/administration/users', { params, signal });
     return {
       ...res,
       data: userAdapter.toModels(res.data as any),

@@ -32,6 +32,24 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
+  it('protects the administrative directory with effective users.view and tenant scope', async () => {
+    const sales = await roleUser('Sales Associate', [{ module: 'deals', canView: true, canViewMy: true }]);
+    expect(await call('/administration/users?page=1&limit=100', sales.token)).toMatchObject({
+      status: 403, body: { success: false, error: 'Access denied' },
+    });
+    const viewer = await roleUser('Directory Viewer QA', [{ module: 'users', canView: true }]);
+    const otherTenant = await prisma.tenant.create({ data: { name: 'Directory isolation QA', slug: `directory-${Date.now()}` } });
+    const outsider = await prisma.user.create({ data: { tenantId: otherTenant.id, email: 'directory-outsider@camxian.com', firstName: 'Outside', lastName: 'User', role: 'Client Admin' } });
+    for (const token of [viewer.token, adminToken]) {
+      const result = await call('/administration/users?page=1&limit=100', token);
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      expect(result.body.data.length).toBeGreaterThan(0);
+      expect(result.body.data.every((user: { tenantId: string }) => user.tenantId === tenantId)).toBe(true);
+      expect(result.body.data.some((user: { id: string }) => user.id === outsider.id)).toBe(false);
+    }
+    await prisma.rolePermission.update({ where: { roleId_module: { roleId: viewer.roleId, module: 'users' } }, data: { canView: false } });
+    expect((await call('/administration/users', viewer.token)).status).toBe(403);
+  });
   it('enforces each of the 76 grants independently and requires its module View', async () => {
     const actor = await roleUser('Catalog QA', []);
     let count = 0;

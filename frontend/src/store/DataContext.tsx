@@ -4,7 +4,7 @@ const ClosingRecordPanel = dynamic(() => import('@/shared/components/crm/crm-rec
 import {taskAssociationIds, taskAssociationPatch, CreateDealBatchSchema, ManualCreateDealBatchSchema, dealAssociationPatch, productDealTitle, type ProductInterest, type DealAssociationChange} from "@leadcrm/shared";
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 
-import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
+import { isOnboardingComplete, permissionKeys, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
 import React, {
   createContext,
   useContext,
@@ -207,7 +207,7 @@ async function optionalModuleRead<T>(request: Promise<T>): Promise<T | null> {
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [closingDealId, setClosingDealId] = useState<string>();
-  const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
+  const { user, tenant, userCan, permissions: effectivePermissions, isPermissionsLoaded, permissionsError, isLoading: authLoading, authError } = useAuth();
   const workspaceReady = Boolean(!authLoading && !authError && user && (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
       (user.role !== "Client Admin" || isOnboardingComplete(user))));
 
@@ -306,13 +306,66 @@ export function DataProvider({ children }: { children: ReactNode }) {
     window.addEventListener('leadcrm:users-changed', refresh);
     return () => window.removeEventListener('leadcrm:users-changed', refresh);
   }, [refreshRoles]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [storedUsers, setUsers] = useState<User[]>([]);
+  const canReadUsers = Boolean(workspaceReady && user?.id && tenant?.id && isPermissionsLoaded && !permissionsError && userCan('users', 'canView'));
+  const usersIdentity = JSON.stringify([user?.id, tenant?.id, user?.role, workspaceReady, isPermissionsLoaded,
+    canReadUsers, permissionKeys(effectivePermissions ?? {}).sort()]);
+  const usersIdentityRef = useRef(usersIdentity);
+  usersIdentityRef.current = usersIdentity;
+  const [loadedUsersIdentity, setLoadedUsersIdentity] = useState<string | null>(null);
+  const users = useMemo(() => USE_MOCK_DATA || canReadUsers && loadedUsersIdentity === usersIdentity ? storedUsers : [],
+    [storedUsers, canReadUsers, loadedUsersIdentity, usersIdentity]);
+  const usersRequest = useRef<{ identity: string; controller: AbortController; valid: () => boolean; promise: Promise<void> } | null>(null);
+  const deniedUsersIdentity = useRef<string | null>(null);
+  const refreshUsers = useCallback((): Promise<void> => {
+    if (USE_MOCK_DATA || !canReadUsers || !user?.id || !tenant?.id || deniedUsersIdentity.current === usersIdentity) return Promise.resolve();
+    const identity = usersIdentity;
+    const pending = usersRequest.current;
+    if (pending?.identity === identity && pending.valid() && !pending.controller.signal.aborted) return pending.promise;
+    pending?.controller.abort();
+    const controller = new AbortController();
+    const valid = createPageCacheGuard('users');
+    const current = () => identity === usersIdentityRef.current && !controller.signal.aborted && valid();
+    const params = { query: { shared: true, directory: true }, userId: user.id, authorization: identity };
+    const promise = requestPageCache('users', tenant.id, params, async signal => {
+      const response = await usersService.getDirectory(signal);
+      return (response.data ?? []).filter(person => !person.isArchived);
+    }, controller.signal).then(rows => {
+      if (!current()) return;
+      setUsers(rows); setLoadedUsersIdentity(identity);
+    }).catch(error => {
+      if (!current() || error?.name === 'AbortError') return;
+      if ([401, 403, 404].includes((error as ApiRequestError).status ?? 0)) {
+        deniedUsersIdentity.current = identity;
+        setUsers([]); setLoadedUsersIdentity(null);
+        invalidatePageCache('users', tenant.id, false);
+      } else {
+        console.error('[DataContext] Failed to load users:', error);
+        toast.error('Failed to load users. Please refresh the page.');
+      }
+    }).finally(() => { if (usersRequest.current?.controller === controller) usersRequest.current = null; });
+    usersRequest.current = { identity, controller, valid, promise };
+    return promise;
+  }, [canReadUsers, usersIdentity, user?.id, tenant?.id]);
+  useLayoutEffect(() => {
+    if (USE_MOCK_DATA) return;
+    setUsers([]); setLoadedUsersIdentity(null);
+    deniedUsersIdentity.current = null;
+    if (!canReadUsers) invalidatePageCache('users', tenant?.id, false);
+    return () => {
+      usersRequest.current?.controller.abort(); usersRequest.current = null;
+      invalidatePageCache('users', tenant?.id, false);
+    };
+  }, [usersIdentity, canReadUsers, tenant?.id]);
   useEffect(() => {
+    if (USE_MOCK_DATA) return;
     let active = true;
-    const refresh = () => { if (!workspaceReady || USE_MOCK_DATA) return; void usersService.getDirectory().then(result => { if (active) setUsers(result.data ?? []); }).catch(() => {}); };
+    const refresh = () => { void refreshUsers(); };
+    // Strict Mode can replace an effect before its initial read starts.
+    queueMicrotask(() => { if (active) refresh(); });
     window.addEventListener('leadcrm:users-changed', refresh);
     return () => { active = false; window.removeEventListener('leadcrm:users-changed', refresh); };
-  }, [dataIdentity, workspaceReady]);
+  }, [refreshUsers]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const taskRows = useMemo(() => USE_MOCK_DATA ? tasks.map(task => ({
@@ -349,12 +402,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sharedIdentity = `${user?.id ?? ""}:${tenant?.id ?? ""}`;
-  const loadedSharedIdentity = useRef<string | null>(null);
   const [visibleIdentity, setVisibleIdentity] = useState(dataIdentity);
 
   const loadData = async () => {
-    const loadShared = loadedSharedIdentity.current !== sharedIdentity;
     if (!USE_MOCK_DATA && !workspaceReady) return;
     const identity = dataIdentityRef.current;
     const isCurrent = () => identity === dataIdentityRef.current;
@@ -383,13 +433,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //                        leads-table, notes-side-panel
         //   🔄 pipelines       → 9 consumers: pipeline-page, deals-page, dashboard,
         //                        reports, RecordPanelWrappers, form components
-        //   🔄 users           → 15+ consumers for assignee pickers across all modules
         //   🔄 tasks           → task-board, dashboard, RecordPanelWrappers, deals-page
         //   🔄 workflows       → workflows-page, campaign-builder, settings
-        const [orgsRes, pipelinesRes, usersRes] = await Promise.all([
+        const [orgsRes, pipelinesRes] = await Promise.all([
           canReadAccounts ? optionalModuleRead(organizationsService.getAll({ limit: 100 })) : Promise.resolve(null),
           optionalModuleRead(pipelineService.getPipelines()),
-          loadShared ? optionalModuleRead(usersService.getDirectory()) : Promise.resolve(null),
           refreshDeals(),
         ]);
 
@@ -398,11 +446,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
           ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
           : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
-        const apiUsers     = usersRes?.data ?? [];
 
         setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
         setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
-        if (loadShared) setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
       } catch (err) {
         if (!isCurrent()) return;
         console.error('[DataContext] Failed to load CRM data from API:', err);
@@ -414,9 +460,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           toast.error('Failed to load data. Please refresh the page.');
         }
       }
-
-      if (!isCurrent()) return;
-      if (loadShared) loadedSharedIdentity.current = sharedIdentity;
 
       if (!isCurrent()) return;
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
@@ -577,9 +620,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setOrganizations([]); setContacts([]); setDeals([]); setPipelines([]);
       setWorkflows([]); setCampaigns([]); setTemplates([]); setTasks([]);
       setWorkflowsError(''); setWorkflowsLoading(workspaceReady);
-      if (loadedSharedIdentity.current !== sharedIdentity) {
-        setUsers([]);
-      }
         
       setActivities([]);   setAuditLogs([]);
     }
