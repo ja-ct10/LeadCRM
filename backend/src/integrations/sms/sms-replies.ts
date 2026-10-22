@@ -67,7 +67,7 @@ export async function processSmsReply(input: unknown, now = new Date(), retryRev
     else await tx.contact.updateMany({ where, data: { lastCustomerReplyAt: receivedAt, firstUnansweredOutboundAt: null, engagementEvaluatedAt: now } });
     await tx.activity.create({ data: { tenantId: route.tenantId, ...link, createdById: route.userId, type: 'sms', title: 'Customer SMS reply received',
       description: event.message, metadata: { source: 'textbee', direction: 'inbound', smsId: event.smsId, occurredAt: receivedAt.toISOString() } } });
-    await classifyCustomerRecord(tx, route.tenantId, link, route.userId, { genuineReply: true }, now);
+    await classifyCustomerRecord(tx, route.tenantId, link, route.userId, { genuineReply: true, source: 'sms' }, now);
     await review('Verified customer reply processed.', 'processed');
   });
   return route ? tenantContext.run({ tenantId: route.tenantId }, work) : prisma.$transaction(async tx => {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GroupHeadSchema = exports.GroupMemberSchema = exports.UpdateGroupSchema = exports.CreateGroupSchema = exports.GroupNameSchema = void 0;
+exports.GroupMemberRoleSchema = exports.GroupHeadSchema = exports.GroupMemberSchema = exports.UpdateGroupSchema = exports.CreateGroupSchema = exports.GroupNameSchema = void 0;
 const zod_1 = require("zod");
 exports.GroupNameSchema = zod_1.z.string().trim().min(1, 'Name is required.').max(100, 'Name must be 100 characters or fewer.');
 exports.CreateGroupSchema = zod_1.z.object({ name: exports.GroupNameSchema }).strict();
@@ -13,3 +13,4 @@ exports.GroupMemberSchema = zod_1.z.union([
     }).strict(),
 ]);
 exports.GroupHeadSchema = zod_1.z.object({ userId: zod_1.z.string().uuid('Invalid user ID').nullable() }).strict();
+exports.GroupMemberRoleSchema = zod_1.z.object({ crmRoleId: zod_1.z.string().uuid().nullable() }).strict();

@@ -11,7 +11,7 @@ import { cleanWorkflowName, workflowNameKey, WORKFLOW_NAME_CONFLICT } from './wo
 import { assignmentOptions } from '../assignment/workflow-assignment.repository';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
 import { buildSearchClauses } from '../../../shared/helpers/search';
-import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, crmPolicyReadWhere } from '../../crm/access/crm-record-access.service';
 import { hasModulePermission } from '@leadcrm/shared';
 import { workflowLeaseWrite } from './workflow-lease';
 
@@ -19,8 +19,17 @@ async function executionVisibility(tenantId: string): Promise<Prisma.WorkflowExe
   const actor = crmActor.getStore();
   if (!actor) return {}; // Internal worker/tests have explicit tenant authority.
   const policy = await resolveCrmActor(prisma, actor);
-  const entities = Object.entries(WORKFLOW_MODULES).filter(([, module]) => policy.clientAdmin || hasModulePermission(policy.permissions, module, 'canView')).map(([entity]) => entity);
-  return { entityType: { in: entities } };
+  if (policy.clientAdmin) return {};
+  const modules = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' } as const;
+  const delegates = { lead: prisma.lead, contact: prisma.contact, account: prisma.account, deal: prisma.deal };
+  const scopes = await Promise.all(Object.entries(modules).map(async ([entity, module]) => {
+    if (hasModulePermission(policy.permissions, module, 'canViewAll')) return { entityType: entity };
+    const ids = await (delegates[entity as keyof typeof delegates] as typeof prisma.lead).findMany({
+      where: crmPolicyReadWhere(policy, module), select: { id: true },
+    });
+    return { entityType: entity, entityId: { in: ids.map(row => row.id) } };
+  }));
+  return { OR: scopes };
 }
 
 /** Dispatch snapshots and provider recovery evidence are server-only. */
@@ -28,7 +37,7 @@ async function executionDealsVisible(tenantId: string) {
   const actor = crmActor.getStore();
   if (!actor) return true;
   const policy = await resolveCrmActor(prisma, actor);
-  return policy.clientAdmin || hasModulePermission(policy.permissions, 'deals', 'canView');
+  return policy.clientAdmin || hasModulePermission(policy.permissions, 'deals', 'canViewAll');
 }
 function presentExecution<T extends { dispatchContext: unknown; leaseId: unknown; leaseUntil: unknown; dispatchStartedAt: unknown; steps: Array<{ resolvedInput: unknown; actionType: string; output: unknown }> }>(run: T, dealsVisible: boolean) {
   const { dispatchContext: _context, leaseId: _lease, leaseUntil: _until, dispatchStartedAt: _started, ...visible } = run;

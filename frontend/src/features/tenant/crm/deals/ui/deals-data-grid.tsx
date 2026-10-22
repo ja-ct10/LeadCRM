@@ -103,7 +103,7 @@ export function DealsDataGrid({
   viewMode = 'clip',
   currencyConfig,
 }: DealsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('deals');
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Deal> = useMemo(() => ({
@@ -217,7 +217,7 @@ export function DealsDataGrid({
       onEdit: onEdit ? () => onEdit(deal) : undefined,
       onDelete: onDelete ? () => onDelete(deal) : undefined,
       canEdit: canEdit && recordAccess.canMutate(deal),
-      canDelete: canDelete && recordAccess.canMutate(deal),
+      canDelete: canDelete && recordAccess.canMutate(deal, 'canArchive'),
     });
   }, [onRowClick, onEdit, onDelete, canEdit, canDelete, recordAccess.canMutate]);
 

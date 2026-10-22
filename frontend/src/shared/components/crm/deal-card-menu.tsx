@@ -70,7 +70,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
   const data = useData();
   const { user, tenant } = useAuth();
   const hasEditPermission = useHasPermission('deals.edit'), hasArchivePermission = useHasPermission('deals.archive');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('deals');
   const canTask = useHasPermission('tasks.create'), canLead = useHasPermission('leads.view'), canContact = useHasPermission('contacts.view');
   const canEmailLead = useHasPermission('leads.edit') && canLead && hasEditPermission, canEmailContact = useHasPermission('contacts.edit') && canContact && hasEditPermission;
   const { dialogProps, confirm } = useConfirmDialog();
@@ -84,7 +84,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
     fetchFn: async signal => (await apiClient.get<{ data: Record<string, unknown> }>('/crm/deals/' + encodeURIComponent(dealId), { signal })).data });
   const deal = USE_MOCK_DATA ? data.deals.find(d => d.id === dealId) ?? cardDeal : query.data ? toFrontendDeal(query.data) as Deal : cardDeal;
   const canEdit = hasEditPermission && recordAccess.canMutate(deal);
-  const canArchive = hasArchivePermission && recordAccess.canMutate(deal);
+  const canArchive = hasArchivePermission && recordAccess.canMutate(deal, 'canArchive');
   const pipeline = deal && dealStagePipeline(deal, data.pipelines);
   const stage = pipeline?.stages.find(s => s.id === deal?.stageId);
   const won = pipeline?.stages.filter(s => s.isWon) ?? [], lost = pipeline?.stages.filter(s => s.isLost) ?? [];

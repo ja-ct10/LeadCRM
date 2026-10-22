@@ -1,3 +1,4 @@
+import { GroupMemberRoleSchema } from '@leadcrm/shared';
 import { assertPermissions } from '../../core/permissions/permission.service';
 import { CreateUsersSchema, UpdateUsersSchema } from '../../modules/administration/users/users.dto';
 import { passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
@@ -89,6 +90,7 @@ router.get(   '/groups',                     authorize('groups.view'), groupCont
 router.post(  '/groups',                     authorize('groups.create'), validate(CreateGroupSchema), groupController.create);
 router.put(   '/groups/:id',                 authorize('groups.edit'), validate(UpdateGroupSchema), groupController.update);
 router.delete('/groups/:id',                 authorize('groups.delete'), groupController.remove);
+router.patch('/groups/:id/members/:userId', authorizeClientAdmin, authorize('groups.edit'), validate(GroupMemberRoleSchema), groupController.setMemberRole);
 router.patch( '/groups/:id/head',            authorizeClientAdmin, authorize('groups.edit'), validate(GroupHeadSchema), groupController.setHead);
 router.post(  '/groups/:id/members',         authorizeClientAdmin, authorize('groups.edit'), validate(GroupMemberSchema), groupController.addMember);
 router.delete('/groups/:id/members/:userId', authorizeClientAdmin, authorize('groups.edit'), groupController.removeMember);

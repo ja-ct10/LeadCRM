@@ -68,3 +68,20 @@ it('disables selection when no deals match', async () => {
   await screen.findByText('No matching records.');
   expect(screen.getByRole('button', { name: 'Select all matching deals' })).toHaveProperty('disabled', true);
 });
+
+it('keeps loaded options and selection without another read after unrelated provider arrays change', async () => {
+  const view = render(<Form />);
+  fireEvent.click(screen.getByRole('button', { name: 'Associated deals' }));
+  const option = await screen.findByRole('checkbox', { name: 'Deal 0' });
+  fireEvent.click(option);
+  expect(option).toHaveProperty('checked', true);
+  const requests = fixture.dealOptions.mock.calls.length;
+  fixture.data = { users: [], contacts: [], deals: [], organizations: [] };
+  fixture.products = [...fixture.products];
+  view.rerender(<Form />);
+  expect(screen.getByRole('checkbox', { name: 'Deal 0' })).toBe(option);
+  expect(screen.queryByText('Loading…')).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Deal 1' }));
+  await waitFor(() => expect(fixture.onChange).toHaveBeenLastCalledWith(['deal-0', 'deal-1']));
+  expect(fixture.dealOptions).toHaveBeenCalledTimes(requests);
+});

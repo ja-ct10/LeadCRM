@@ -5,7 +5,7 @@ import type { Lead as LeadRecord } from '@prisma/client';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
-import { assertCrmRecordMutation, assertCrmCreateAssignment, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, authorizedWorkflowScope, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
 import { normalizeCrmStatus, formatLeadName, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
@@ -15,8 +15,8 @@ import { readRecordValues, saveRecordValues } from '../closing-requirements/cust
 import { productRelationData } from '../leads/product-relations';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { convertClosedLead } from '../leads/lead-conversion.service';
-import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
-import { assertCustomerStatusEdit, classifyCustomerRecord } from '../customer-classification.service';
+import { assertClosedStatus, cancelOpenDeals, recordCustomerStatusChange } from '../engagement.service';
+import { assertCustomerStatusEdit, classifyCustomerRecord, prepareCustomerStatus } from '../customer-classification.service';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import prisma from '../../../config/database.config';
 import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
@@ -152,13 +152,13 @@ export async function createContact(
   createdById?: string,
 ) {
   const { requestId, productInterest, customFieldValues, newAccount, ...fields } = dto;
-  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
+  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId, 'leads', dto.ownerGroupId);
   if (dto.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
     if (!existing) await assertContactAccountSelection(tx, tenantId, fields.accountId);
     if (!existing && newAccount) {
-      const account = await createLinkedAccount(tx, tenantId, newAccount, createdById);
+      const account = await createLinkedAccount(tx, tenantId, newAccount, createdById, dto.ownerGroupId);
       fields.accountId = account.id; fields.companyName = account.name;
     } else if (!existing && fields.accountId) {
       const account = await tx.account.findFirst({ where: { tenantId, id: fields.accountId, isArchived: false, deletedAt: null }, select: { name: true } });
@@ -183,6 +183,7 @@ export async function updateContact(
   try {
     const data: Record<string, unknown> = { ...dto };
     delete data.customFieldValues;
+    delete data.expectedUpdatedAt;
     delete data.newAccount;
     if (updatedById) data.updatedById = updatedById;
     // Stamp lastStatusChangedAt when status actually changes
@@ -193,12 +194,15 @@ export async function updateContact(
       await assertCrmRecordMutation(tx, 'leads', id, 'edit', dto);
       const current = await tx.lead.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null } });
       if (!current) throw new NotFoundError('Active Lead');
+      if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Lead changed. Reload its current status before saving.');
       await assertCustomerStatusEdit(tx, tenantId, { leadId: id }, current, dto.status);
-      if (dto.status !== undefined && (dto.status !== current.status || Object.keys(dto).length === 1)) data.manualCancellation = dto.status === 'Cancelled';
+      const preparedStatus = await prepareCustomerStatus(tx, tenantId, { leadId: id }, dto.status !== current.status || authorizedWorkflowScope(tenantId) ? dto.status : undefined);
+      if (preparedStatus) { data.manualStatusContext = preparedStatus.checkpoint; data.status = preparedStatus.status; }
+      if (dto.status !== undefined && (dto.status !== current.status || Object.keys(dto).filter(key => key !== 'expectedUpdatedAt').length === 1)) data.manualCancellation = dto.status === 'Cancelled';
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
       await assertContactAccountSelection(tx, tenantId, dto.accountId, current.accountId);
       if (dto.newAccount) {
-        const account = await createLinkedAccount(tx, tenantId, dto.newAccount, updatedById);
+        const account = await createLinkedAccount(tx, tenantId, dto.newAccount, updatedById, (dto.ownerGroupId !== undefined ? dto.ownerGroupId : current.ownerGroupId));
         data.accountId = account.id; data.companyName = account.name; data.companyFromAccount = true;
       } else if (dto.accountId && dto.accountId !== current.accountId) {
         const account = await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null }, select: { name: true } });
@@ -225,9 +229,9 @@ export async function updateContact(
         return saved;
       };
       if (dto.status) {
-        if (dto.status !== current.status) data.lastStatusChangedAt = new Date();
+        if (data.status !== current.status) data.lastStatusChangedAt = new Date();
         else delete data.lastStatusChangedAt;
-        if (dto.status === 'Closed Deal' && dto.status !== current.status) await assertClosedStatus(tx, tenantId, { leadId: id });
+        if (data.status === 'Closed Deal' && data.status !== current.status) await assertClosedStatus(tx, tenantId, { leadId: id });
       }
       if (dto.productInterest) {
         const previous = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
@@ -241,7 +245,7 @@ export async function updateContact(
       }
       if (dto.productInterest) Object.assign(data, await productRelationData(tx, 'lead', tenantId, { ids: dto.productInterest }, current, true));
       if (dto.accountId && !await tx.account.findFirst({ where: { id: dto.accountId, tenantId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable in this workspace.');
-      if (dto.assignedUserId && dto.assignedUserId !== current.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
+      if (dto.assignedUserId && dto.assignedUserId !== current.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['leads', 'deals'], (dto.ownerGroupId !== undefined ? dto.ownerGroupId : current.ownerGroupId));
       const updated = await tx.lead.update({
       where: { id, tenantId },
       data,
@@ -252,9 +256,7 @@ export async function updateContact(
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     });
-      if (updatedById && dto.status && dto.status !== current.status) await tx.activity.create({ data: {
-        tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${current.status} to ${dto.status}`, description: 'Staff changed the CRM status.',
-      } });
+      if (updatedById && dto.status && updated.status !== current.status) await recordCustomerStatusChange(tx, tenantId, updatedById, { leadId: id }, current.status, normalizeCrmStatus(updated.status), 'Staff changed the CRM status.');
       if (updatedById && dto.assignedUserId !== undefined && dto.assignedUserId !== current.assignedUserId) {
         const assignment = dto.assignedUserId ? await assignmentSnapshot(tx, tenantId, current.assignedUserId, dto.assignedUserId, updatedById) : undefined;
         await tx.activity.create({ data: {

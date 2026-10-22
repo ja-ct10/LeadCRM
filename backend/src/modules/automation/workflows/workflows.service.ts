@@ -52,7 +52,11 @@ export async function getOptions(tenantId: string, userId: string) {
   const permissions = await findUserEffectivePermissions(userId, tenantId);
   const admin = user?.role === 'Client Admin';
   const marketing = admin || !!permissions.campaigns?.canView;
-  return repo.builderOptions(tenantId, marketing, Object.fromEntries(['contacts', 'accounts', 'leads', 'deals', 'products', 'users', 'roles', 'groups'].map(module => [module, admin || !!permissions[module]?.canView])) as { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles: boolean; groups: boolean });
+  const { resolveCrmActor } = await import('../../crm/access/crm-record-access.service.js');
+  const policy = await resolveCrmActor(prisma, { tenantId, userId });
+  const scopedView = Object.fromEntries((['contacts', 'accounts', 'leads', 'deals'] as const)
+    .map(module => [module, policy.groupGrants?.some(grant => grant.permissions[module]?.canView)]));
+  return repo.builderOptions(tenantId, marketing, Object.fromEntries(['contacts', 'accounts', 'leads', 'deals', 'products', 'users', 'roles', 'groups'].map(module => [module, admin || !!permissions[module]?.canView || !!scopedView[module]])) as { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles: boolean; groups: boolean });
 }
 
 export async function getWorkflows(tenantId: string, query: Record<string, unknown>) {

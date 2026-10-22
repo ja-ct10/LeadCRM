@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import * as service from './groups.service';
 
+export async function setMemberRole(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.setMemberRole(String(req.params.id), String(req.params.userId), req.body.crmRoleId, req.user!.tenantId, req.user!.userId) }); }
+  catch (error) { next(error); }
+}
+
 export async function getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const groups = await service.getAll(req.user!.tenantId);

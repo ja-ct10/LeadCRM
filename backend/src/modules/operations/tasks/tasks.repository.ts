@@ -11,7 +11,7 @@ import {
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
-import { crmActor, resolveCrmActor, taskReadWhere, taskAssigneeInScope, authorizedWorkflowScope, crmReadWhere } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, taskReadWhere, taskAssigneeInScope, authorizedWorkflowScope, crmReadWhere, mayReadCrmModule } from '../../crm/access/crm-record-access.service';
 import { eligibleAssignedAgents, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -357,7 +357,7 @@ export async function findFilteredDealOptions(tenantId: string, query: import('z
   const actor = crmActor.getStore();
   const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
   if (!policy) throw new AppError('Authenticated workspace context required.', 403);
-  if (query.accountId && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'accounts', 'canView')) throw new AppError('Account access required.', 403);
+  if (query.accountId && !await mayReadCrmModule(prisma, tenantId, 'accounts')) throw new AppError('Account access required.', 403);
   if ((query.productInterestId || query.category) && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'products', 'canView')) throw new AppError('Product access required.', 403);
   const related = await relatedOptionFilters(tenantId, query.leadIds);
   const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null,

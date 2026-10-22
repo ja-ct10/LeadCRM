@@ -7,7 +7,7 @@ export function assignedAgentName(users: readonly User[], id?: string): string {
 }
 
 /** Users whose role is reserved for tenant administration cannot be assigned as agents. */
-export function getAssignableAgents(users: readonly User[], modules?: readonly string[]): User[] {
+export function getAssignableAgents(users: readonly User[], modules?: readonly string[], ownerGroupId?: string | null): User[] {
   return users.filter(user => isAssignableAgent({ ...user,
-    ...(modules && user.assignableModules ? { assignableAgent: modules.every(module => user.assignableModules!.includes(module)) } : {}) }));
+    ...(modules && user.assignableModules ? { assignableAgent: modules.every(module => user.assignableModules!.includes(module) || !!ownerGroupId && !!user.assignableGroupModules?.[ownerGroupId]?.includes(module)) } : {}) }));
 }

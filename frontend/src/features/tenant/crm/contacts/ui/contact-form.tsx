@@ -1,4 +1,5 @@
 'use client';
+import { useCrmOwnerGroup } from '@/shared/components/crm/crm-owner-group';
 import { applyCrmFieldErrors, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
@@ -66,7 +67,7 @@ interface ContactFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('contacts');
   const actionAllowed = useHasPermission(initialData ? 'contacts.edit' : 'contacts.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('contacts', initialData?.id);
@@ -78,6 +79,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const selfAssigned = !isEdit && recordAccess.policy?.assignmentRestricted === true;
   const currentAgentName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || '';
   const [isSaving, setIsSaving] = useState(false);
+  const ownerGroup = useCrmOwnerGroup('contacts', initialData, isSaving);
+  const statusVersion = useRef(initialData);
+  useEffect(() => { statusVersion.current = initialData; }, [initialData?.id]);
 
   // New Contacts use the requested section order without rewriting saved layouts.
   const configuredFields = useMemo(() => {
@@ -163,6 +167,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     setSaveError('');
     // contactsV2Api translates the display aliases to Contact API columns.
     const cleaned: Partial<Contact> = {
+      ...ownerGroup.payload,
       customFieldValues: customFields.payload(),
       firstName: data.firstName || undefined,
       lastName: data.lastName || undefined,
@@ -170,7 +175,8 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
       ...organization.payload(),
       ...(isEdit ? { notes: data.notes || '' } : {}),
-      status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
+      status: isEdit && data.status === normalizeCrmStatus(statusVersion.current?.status) ? undefined : data.status || 'Inquiry',
+      ...(isEdit && data.status !== normalizeCrmStatus(statusVersion.current?.status) ? { expectedUpdatedAt: statusVersion.current?.updatedAt } : {}),
       leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: selfAssigned ? recordAccess.policy?.userId : data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
@@ -200,6 +206,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+        {ownerGroup.field}
         <ConfiguredFormLayout form={configuredFields} module="contacts">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
@@ -266,14 +273,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             <FieldWrap fieldKey="status" label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
               {!initialData ? <input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
                 <select
-                  {...register('status')} disabled={!!initialData?.statusManagedByDeals}
+                  {...register('status')}
                   id={`${fieldId}-status`}
                   aria-invalid={!!errors.status}
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}
                   className={`${selectCls} ${errors.status ? inputErrorCls : ''}`}
                 >
                   {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
+                    <option key={opt.value} value={opt.value} disabled={opt.value !== normalizeCrmStatus(initialData.status) && (initialData.statusEditOptions ? !initialData.statusEditOptions.includes(opt.value) : normalizeCrmStatus(initialData.status) === 'Cancelled' ? opt.value !== 'Inquiry' : normalizeCrmStatus(initialData.status) === 'Closed Deal' ? opt.value !== 'Cancelled' : opt.value === 'Closed Deal')}>
                       {opt.label}
                     </option>
                   ))}
@@ -356,7 +363,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                   name={field.name}
                   onBlur={field.onBlur}
                   onChange={field.onChange}
-                  users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
+                  ownerGroupId={ownerGroup.value} users={recordAccess.policy?.assignmentRestricted && !(initialData && recordAccess.canReassignRecord?.(initialData)) ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !(recordAccess.canReassignRecord?.(initialData) ?? recordAccess.canReassign))}
                   placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
                   className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
                   invalid={!!errors.assignedUserId}

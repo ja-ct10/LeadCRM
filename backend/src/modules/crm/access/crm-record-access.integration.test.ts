@@ -79,6 +79,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
   }, 60000);
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
 
+
   it.each(Object.keys(delegates).filter(module => module !== 'accounts'))('%s lists, searches, details and custom fields include every eligible assignment', async module => {
     const list = await call(`/${module}?limit=100`); expect(list.status).toBe(200);
     const ids = list.body.data.map((row: any) => row.id);
@@ -442,4 +443,71 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     expect((await call(`/deals/${id}`, admin, 'PUT', { engagementStatus: 'Hot' })).status).toBe(400);
     expect(await prisma.deal.findUniqueOrThrow({ where: { id } })).toEqual(before);
   });
+  it('evaluates membership CRM roles per owning Group and preserves manual status through unrelated saves', async () => {
+    const staff = await person('ScopedStaff', false, 'Scoped CRM Staff');
+    await prisma.rolePermission.updateMany({ where: { roleId: staff.roleId }, data: { canView: false, canViewAll: false, canViewMy: false, canViewActive: false } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Scoped CRM editor', permissions: { create:
+      Object.keys(delegates).map(module => ({ module, ...EMPTY_PERMISSION_FLAGS, canView: true, canViewAll: true, canEdit: true, canCreate: true })) } } });
+    const groups = await Promise.all([1, 2, 3].map(number => prisma.tenantGroup.create({ data: { tenantId, name: 'Scoped Group ' + number } })));
+    for (const [index, group] of groups.entries()) await prisma.tenantGroupMember.create({ data: { tenantId, groupId: group.id, userId: staff.id, isHead: index < 2, crmRoleId: index < 2 ? role.id : null } });
+    const customers = await Promise.all(groups.map((group, index) => prisma.contact.create({ data: { tenantId, ownerGroupId: group.id,
+      firstName: 'Group customer', lastName: String(index), email: randomUUID() + '@example.test', assignedUserId: b.id } })));
+    const hiddenAccount = await prisma.account.create({ data: { tenantId, ownerGroupId: groups[2].id, name: 'Private Group Account' } });
+    await prisma.contact.update({ where: { id: customers[0].id }, data: { accountId: hiddenAccount.id, companyName: hiddenAccount.name, companyFromAccount: true } });
+    const deal = await prisma.deal.create({ data: { tenantId, ownerGroupId: groups[0].id, title: 'Scoped opportunity', assignedUserId: b.id,
+      pipelineId: pipeline.id, stageId: stage.id, contactDeals: { create: { contactId: customers[0].id } } } });
+    for (const customer of customers.slice(0, 2)) expect((await call('/contacts/' + customer.id, staff)).status).toBe(200);
+    expect((await call('/contacts/' + customers[0].id, staff)).body.data).toMatchObject({ account: null, companyName: null });
+    expect((await call('/contacts/' + customers[1].id, staff, 'PUT', { accountId: hiddenAccount.id })).status).toBe(400);
+    expect((await call('/contacts/' + customers[2].id, staff)).status).toBe(404);
+    const list = await call('/contacts?limit=100', staff);
+    expect(list.status).toBe(200); expect(list.body.data.map((row: any) => row.id)).toEqual(expect.arrayContaining(customers.slice(0, 2).map(row => row.id)));
+    expect(list.body.data.some((row: any) => row.id === customers[2].id || row.id === records.contacts.unassigned.id)).toBe(false);
+    const currentVersion = (await prisma.contact.findUniqueOrThrow({ where: { id: customers[0].id } })).updatedAt.toISOString();
+    const saved = await call('/contacts/' + customers[0].id, staff, 'PUT', { status: 'Hot', expectedUpdatedAt: currentVersion });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200); expect(saved.body.data.status).toBe('Hot');
+    expect(saved.body.data).toMatchObject({ account: null, companyName: null });
+    expect(saved.body.data).not.toHaveProperty('manualStatusContext');
+    const dealProjection = (await call('/deals/' + deal.id, staff)).body.data;
+    expect(dealProjection.contact.companyName).toBeNull();
+    expect(dealProjection.contact).not.toHaveProperty('manualStatusContext');
+    expect(dealProjection.contactDeals[0].contact).not.toHaveProperty('manualStatusContext');
+    expect((await call('/contacts/' + customers[0].id, staff, 'PUT', { notes: 'Unrelated edit' })).body.data.status).toBe('Hot');
+    expect((await call('/contacts/' + customers[0].id, staff, 'PUT', { status: 'Cold', expectedUpdatedAt: customers[0].updatedAt.toISOString() })).status).toBe(409);
+    const history = await prisma.activity.findMany({ where: { tenantId, contactId: customers[0].id, type: 'stage_change' } });
+    expect(history).toHaveLength(1); expect(history[0].metadata).toMatchObject({ previousStatus: 'Inquiry', newStatus: 'Hot', source: 'manual' });
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(stage.id);
+    expect((await call('/contacts/' + customers[2].id, staff, 'PUT', { status: 'Warm' })).status).toBe(404);
+    expect((await call('/contacts/' + customers[0].id, staff, 'PUT', { ownerGroupId: groups[2].id })).status).toBe(403);
+    expect((await call('/contacts/' + customers[0].id, staff, 'PUT', { status: 'Closed Deal' })).status).toBe(400);
+    await prisma.tenantGroupMember.create({ data: { tenantId, groupId: groups[2].id, userId: admin.id, isHead: true } });
+    expect((await call('/contacts/' + records.contacts.unassigned.id, admin, 'PUT', { status: 'Warm' })).status).toBe(200);
+    const foreignGroup = await prisma.tenantGroup.create({ data: { tenantId: foreignTenant, name: 'Foreign ownership' } });
+    expect((await call('/contacts/' + customers[0].id, admin, 'PUT', { ownerGroupId: foreignGroup.id })).status).toBe(400);
+    const creates = [
+      ['leads', { firstName: 'Scoped create', lastName: 'Lead', email: randomUUID() + '@example.test', assignedUserId: b.id, productInterest: [] }],
+      ['contacts', { firstName: 'Scoped create', lastName: 'Contact', email: randomUUID() + '@example.test', assignedUserId: b.id, requestId: randomUUID() }],
+      ['accounts', { name: 'Scoped create Account' }],
+      ['deals', { title: 'Scoped create Deal', pipelineId: pipeline.id, stageId: stage.id, productInterestId: product.id, contactIds: [customers[1].id] }],
+    ] as const;
+    for (const [module, input] of creates) {
+      const created = await call('/' + module, staff, 'POST', { ...input, ownerGroupId: groups[1].id });
+      expect(created.status, module + ': ' + JSON.stringify(created.body)).toBe(201);
+      expect(created.body.data.ownerGroupId).toBe(groups[1].id);
+      expect((await call('/' + module + '/' + created.body.data.id, staff)).status).toBe(200);
+      expect((await call('/' + module, staff, 'POST', { ...input, ...('requestId' in input ? { requestId: randomUUID() } : {}) })).status).toBe(403);
+    }
+    expect((await call('/contacts/' + customers[1].id, admin, 'PUT', { ownerGroupId: groups[2].id })).status).toBe(200);
+    expect((await call('/contacts/' + customers[1].id, staff)).status).toBe(404);
+    expect((await call('/contacts/' + customers[1].id, admin, 'PUT', { ownerGroupId: groups[1].id })).status).toBe(200);
+    const unassigned = await call('/contacts/' + customers[1].id, admin, 'PUT', { ownerGroupId: null, newAccount: { name: 'Explicitly unassigned Account', requestId: randomUUID() } });
+    expect(unassigned.status, JSON.stringify(unassigned.body)).toBe(200);
+    expect(unassigned.body.data.ownerGroupId).toBeNull();
+    expect(await prisma.account.findUniqueOrThrow({ where: { id: unassigned.body.data.accountId } })).toMatchObject({ ownerGroupId: null });
+    expect((await call('/contacts/' + customers[1].id, admin, 'PUT', { ownerGroupId: groups[1].id })).status).toBe(200);
+    await prisma.tenantGroupMember.deleteMany({ where: { tenantId, groupId: groups[0].id, userId: staff.id } });
+    expect((await call('/contacts/' + customers[0].id, staff)).status).toBe(404);
+    expect((await call('/contacts/' + customers[1].id, staff, 'PUT', { status: 'Cold' })).status).toBe(200);
+  }, 60000);
+
 });

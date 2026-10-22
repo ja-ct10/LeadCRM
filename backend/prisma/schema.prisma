@@ -240,6 +240,7 @@ model RoleDefinition {
   tenant      Tenant             @relation(fields: [tenantId], references: [id])
   userRoles   UserRole[]
   permissions RolePermission[]
+  crmGroupMembers TenantGroupMember[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isArchived])
@@ -334,6 +335,10 @@ model Session {
 // TENANT GROUP
 // ─────────────────────────────────────────────────────────────
 model TenantGroup {
+  leads Lead[]
+  contacts Contact[]
+  accounts Account[]
+  deals Deal[]
   id        String   @id @default(uuid())
   tenantId  String
   name      String
@@ -353,6 +358,9 @@ model TenantGroup {
 // TENANT GROUP MEMBER (junction: group ↔ user)
 // ─────────────────────────────────────────────────────────────
 model TenantGroupMember {
+  crmRoleId String?
+  crmRole RoleDefinition? @relation(fields: [crmRoleId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  @@index([tenantId, crmRoleId])
   id       String @id @default(uuid())
   groupId  String
   userId   String
@@ -378,6 +386,9 @@ model TenantGroupMember {
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
+  ownerGroupId String?
+  ownerGroup TenantGroup? @relation(fields: [ownerGroupId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  @@index([tenantId, ownerGroupId])
   creationReceipts AccountCreationReceipt[]
   customFieldValues CustomFieldValue[]
   id               String    @id @default(uuid())
@@ -419,6 +430,10 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  manualStatusContext Json?
+  ownerGroupId String?
+  ownerGroup TenantGroup? @relation(fields: [ownerGroupId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  @@index([tenantId, ownerGroupId])
   customFieldValues CustomFieldValue[]
   // False only for legacy rows requiring explicit product reconciliation.
   productsNormalized Boolean @default(false)
@@ -499,6 +514,10 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  manualStatusContext Json?
+  ownerGroupId String?
+  ownerGroup TenantGroup? @relation(fields: [ownerGroupId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  @@index([tenantId, ownerGroupId])
   creationReceipts ContactCreationReceipt[]
   customFieldValues CustomFieldValue[]
   // False only for legacy rows requiring explicit product reconciliation.
@@ -626,6 +645,9 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  ownerGroupId String?
+  ownerGroup TenantGroup? @relation(fields: [ownerGroupId, tenantId], references: [id, tenantId], onDelete: NoAction)
+  @@index([tenantId, ownerGroupId])
   engagementStatus String @default("Inquiry")
   engagementEvaluatedAt DateTime?
   customFieldValues CustomFieldValue[]

@@ -38,4 +38,13 @@ describe('authoritative assignment eligibility', () => {
     expect((await eligibleAssignedAgents(db as never, tenantId, TASK_ASSIGNEE_REQUIREMENTS)).map(user => user.id)).toEqual(['staff']);
     await expect(assertEligibleAssignedAgent(db as never, tenantId, 'admin', TASK_ASSIGNEE_REQUIREMENTS)).rejects.toMatchObject({ statusCode: 400 });
   });
+  it('uses only a matching Group role for CRM assignment, preserving global and Task eligibility', () => {
+    const staff = agent({ userRoles: [], groupMemberships: [{ groupId: 'g1', crmRole: { tenantId, name: 'Group CRM', isArchived: false, isSystemRole: false,
+      permissions: [grant('contacts', { canView: true, canEdit: true }), grant('tasks', { canView: true })] } }] });
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'), 'g1')).toBe(true);
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'), 'g2')).toBe(false);
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'))).toBe(false);
+    expect(hasAssignedAgentAccess(staff, tenantId, TASK_ASSIGNEE_REQUIREMENTS, 'g1')).toBe(false);
+  });
+
 });

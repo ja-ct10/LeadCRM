@@ -1,19 +1,19 @@
 import { salesContext } from '../leads/sales-context';
 import { salesActivityDates } from '../sales-activity';
-import { assertCustomerStatusEdit, classifyCustomerRecord } from '../customer-classification.service';
+import { assertCustomerStatusEdit, classifyCustomerRecord, prepareCustomerStatus } from '../customer-classification.service';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
-import { assertCrmRecordMutation, assertCrmCreateAssignment, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, authorizedWorkflowScope, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
-import { NotFoundError } from '../../../shared/errors/http-error';
+import { ConflictError, NotFoundError } from '../../../shared/errors/http-error';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { assertClosedStatus, cancelOpenDeals, contactStatusValue, finalizeContactLifecycle } from '../engagement.service';
+import { assertClosedStatus, cancelOpenDeals, contactStatusValue, finalizeContactLifecycle, recordCustomerStatusChange } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { buildSearchClauses } from '../../../shared/helpers/search';
@@ -152,7 +152,7 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
-  const statusAction = dto.status !== undefined && Object.keys(dto).filter(key => dto[key] !== undefined).length === 1;
+  const statusAction = dto.status !== undefined && Object.keys(dto).filter(key => key !== 'expectedUpdatedAt' && dto[key] !== undefined).length === 1;
   const previous = await (salesContext.getStore() ?? prisma).contact.findFirst({ where: { id, tenantId } });
   if (dto.productInterestIds !== undefined && dto.productInterests !== undefined) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
@@ -163,15 +163,19 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     await assertCrmRecordMutation(tx, 'contacts', id, 'edit', dto);
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
     if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
-    const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
+    let status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
+    if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Contact changed. Reload its current status before saving.');
     await assertCustomerStatusEdit(tx, tenantId, { contactId: id }, current, status);
+    const preparedStatus = await prepareCustomerStatus(tx, tenantId, { contactId: id }, status !== normalizeCrmStatus(current.status) || authorizedWorkflowScope(tenantId) ? status : undefined);
+    if (preparedStatus) status = preparedStatus.status;
     if (status === 'Closed Deal') {
       if (normalizeCrmStatus(current.status) !== status) await assertClosedStatus(tx, tenantId, { contactId: id });
       await finalizeContactLifecycle(tx, tenantId, id, actorId);
     }
-    const { customFieldValues, productInterestIds: _productIds, newAccount, ...data } = dto;
+    const { customFieldValues, productInterestIds: _productIds, newAccount, expectedUpdatedAt: _version, ...data } = dto;
+    if (preparedStatus) data.manualStatusContext = preparedStatus.checkpoint;
     if (newAccount) {
-      const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
+      const account = await createLinkedAccount(tx, tenantId, newAccount, actorId, ((dto.ownerGroupId !== undefined ? dto.ownerGroupId : current.ownerGroupId)) as string | null | undefined);
       data.accountId = account.id; data.companyName = account.name; data.companyFromAccount = true;
     } else if (data.accountId && data.accountId !== current.accountId) {
       const account = await tx.account.findFirst({ where: { tenantId, id: String(data.accountId), isArchived: false, deletedAt: null }, select: { name: true } });
@@ -188,7 +192,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
       include: CONTACT_INCLUDE,
     });
     if (status && actorId && status !== normalizeCrmStatus(current.status)) {
-      await tx.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: 'Staff changed the CRM status.' } });
+      await recordCustomerStatusChange(tx, tenantId, actorId, { contactId: id }, current.status, status, 'Staff changed the CRM status.');
     }
     if (actorId && status === 'Cancelled' && (statusAction || normalizeCrmStatus(current.status) !== status)) await cancelOpenDeals(tx, tenantId, actorId, { contactId: id }, 'Staff explicitly cancelled the opportunity.');
     if (actorId && contact.assignedUserId && contact.assignedUserId !== current.assignedUserId) {

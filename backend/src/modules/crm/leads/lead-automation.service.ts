@@ -62,12 +62,12 @@ export async function resolveProducts(tx: Tx, tenantId: string, ids: string[]) {
   return unique.map(id => products.find(p => p.id === id)!);
 }
 
-export async function eligibleAgents(tx: Tx, tenantId: string, modules: CrmModule[] = ['leads', 'deals']) {
-  return eligibleAssignedAgents(tx, tenantId, modules.flatMap(module => crmAssignmentRequirements(module)));
+export async function eligibleAgents(tx: Tx, tenantId: string, modules: CrmModule[] = ['leads', 'deals'], ownerGroupId?: string | null) {
+  return eligibleAssignedAgents(tx, tenantId, modules.flatMap(module => crmAssignmentRequirements(module)), ownerGroupId);
 }
 
-export async function validateSalesOwner(tx: Tx, tenantId: string, id: string, modules: CrmModule[] = ['leads', 'deals']) {
-  const owner = (await eligibleAgents(tx, tenantId, modules)).find(user => user.id === id);
+export async function validateSalesOwner(tx: Tx, tenantId: string, id: string, modules: CrmModule[] = ['leads', 'deals'], ownerGroupId?: string | null) {
+  const owner = (await eligibleAgents(tx, tenantId, modules, ownerGroupId)).find(user => user.id === id);
   if (!owner) throw new ValidationError('Choose an active eligible agent with the required module permissions in this workspace.');
   return owner;
 }
@@ -108,7 +108,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
       continue;
     }
     const deal = await runCrmAutomaticCreation(tx, 'deals', lead.assignedUserId, () => tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
-      productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
+      ownerGroupId: lead.ownerGroupId, productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } }));
     if (kind === 'lead') await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     else await tx.contactDeal.create({ data: { ...scope, contactId: lead.id, dealId: deal.id, addedById: actorId } });
@@ -121,9 +121,9 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
 }
 
 /** Shared transactional rotation for new CRM records. */
-export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId?: string | null, modules: CrmModule[] = ['leads', 'deals']) {
-  const agents = await eligibleAgents(tx, tenantId, modules);
-  let agent = assignedUserId ? await validateSalesOwner(tx, tenantId, assignedUserId, modules) : undefined;
+export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId?: string | null, modules: CrmModule[] = ['leads', 'deals'], ownerGroupId?: string | null) {
+  const agents = await eligibleAgents(tx, tenantId, modules, ownerGroupId);
+  let agent = assignedUserId ? await validateSalesOwner(tx, tenantId, assignedUserId, modules, ownerGroupId) : undefined;
   if (!agent && agents.length) {
     const key = { tenantId, module: modules.includes('leads') ? 'lead-assignment' : `${modules[0]}-assignment`, key: 'default' };
     const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
@@ -151,7 +151,7 @@ export async function resolveFormSalesAgent(tx: Tx, tenantId: string) {
 }
 
 export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string, assignment: 'default' | 'public-form' = 'default') {
-  await assertCrmCreateAssignment(tx, input.tenantId, input.assignedUserId);
+  await assertCrmCreateAssignment(tx, input.tenantId, input.assignedUserId, 'leads', input.ownerGroupId);
   const scope = crmScope(input.tenantId);
   if (input.creationKey) {
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
@@ -165,10 +165,10 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     : await tx.productInterest.findMany({ where: { tenantId: scope.tenantId, active: true, name: { in: (input.productInterest ?? []) as string[] } } });
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
-  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, manualCancellation: input.status === 'Cancelled', status: input.status ?? 'Inquiry' } });
+  const lead = await runCrmAutomaticCreation(tx, 'leads', null, () => tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, manualCancellation: input.status === 'Cancelled', status: input.status ?? 'Inquiry' } }));
   const agent = assignment === 'public-form'
     ? await resolveFormSalesAgent(tx, scope.tenantId)
-    : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
+    : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId, ['leads', 'deals'], input.ownerGroupId);
   if (agent) {
     const score = (await weightedLeadScores(tx, scope.tenantId, [agent.id])).get(agent.id) ?? 0;
     await withAssignmentReason(tx, 'record_creation', () => tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } }));
