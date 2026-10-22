@@ -12,7 +12,7 @@ import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissio
 import { sendSms, assertSmsConfigured, getSmsSenderIdentity, getSmsDeviceId, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { runSubmissionPool } from './campaign-submission-pool';
 import { smsCampaignSummary, smsSent, smsDelivered } from './sms-campaign-outcomes';
-import { prepareSmsLinks } from './sms-link-tracking';
+import { readSmsLinkHistory } from './sms-link-tracking';
 import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience, campaignFieldsForAudienceSource } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
@@ -62,7 +62,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
     if (row.status === 'excluded') continue;
     if (row.clickedAt) clickingRecipients.add(row.id);
     trackingUpdatedAt = Math.max(trackingUpdatedAt, row.providerUpdatedAt?.getTime() ?? 0, row.clickedAt?.getTime() ?? 0);
-    for (const receipt of row.smsLinks ?? []) {
+    for (const receipt of readSmsLinkHistory(row.smsLinkHistory)) {
       if (!receipt.clickedAt || !campaignLinkDestination(receipt.url)) continue;
       const time = (receipt.lastClickedAt ?? receipt.clickedAt).getTime();
       const link = links.get(receipt.url) ?? { emails: new Set<string>(), total: 0, last: 0 };
@@ -76,7 +76,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
     const snapshot = recipient.personalization as Record<string, unknown> | null;
     const snapshotName = [snapshot?.first_name, snapshot?.last_name].filter(value => typeof value === 'string').join(' ').trim();
     const name = snapshotName || (person?.tenantId === tenantId ? `${person.firstName} ${person.lastName}`.trim() : '');
-    const linkActivity = campaign.type === 'SMS' ? (recipient.smsLinks ?? []).reduce((last, link) => Math.max(last, link.lastClickedAt?.getTime() ?? 0), 0) : 0;
+    const linkActivity = campaign.type === 'SMS' ? readSmsLinkHistory(recipient.smsLinkHistory).reduce((last, link) => Math.max(last, link.lastClickedAt?.getTime() ?? 0), 0) : 0;
     const last = Math.max(linkActivity, latestByEmail.get((recipient.email ?? '').toLowerCase()) ?? 0,
       ...[recipient.submittedAt, recipient.providerUpdatedAt, recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
     return {
@@ -118,7 +118,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
     : !campaign.submissionStartedAt && !campaign.sentCount ? 'not_sent' as const
     : !completeHistory || (campaign.type !== 'SMS' && campaign.sentCount > 0 && !emailDeliveryLogs.some(log => log.brevoMessageId)) ? 'historical_unavailable' as const
     : totalClicks > 0 ? 'recorded' as const
-    : !(campaign.type === 'SMS' ? campaignContacts.some(row => row.smsLinks?.length) : campaignHtmlLinks(sanitizeCampaignHtml(campaign.body ?? '')).length) ? 'no_links' as const : 'pending' as const;
+    : !(campaign.type === 'SMS' ? campaignContacts.some(row => readSmsLinkHistory(row.smsLinkHistory).length) : campaignHtmlLinks(sanitizeCampaignHtml(campaign.body ?? '')).length) ? 'no_links' as const : 'pending' as const;
   const measurable = !['draft', 'not_sent', 'historical_unavailable'].includes(trackingStatus);
   // Historical receipts still prove which recipients clicked each destination,
   // even when repeatable event totals cannot be reconstructed.
@@ -329,10 +329,10 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     if (!reserved.count) throw new AppError(`This campaign has ${eligible.length} eligible recipients, exceeding the available campaign allowance under the configured ${limit}/day limit. Reduce the audience or try another day.`, 409);
     }
     const sends = eligible.map(r => {
-      const tracked = campaign.type === 'SMS' ? prepareSmsLinks(buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } })) : { message: '', links: [] };
-      if (campaign.type === 'SMS' && !tracked.message.trim()) throw new AppError('Personalization left an SMS empty. Add recipient values or update the message.', 400);
-      return { ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type, smsLinks: tracked.links,
-        ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: tracked.message }
+      const message = campaign.type === 'SMS' ? buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } }) : '';
+      if (campaign.type === 'SMS' && !message.trim()) throw new AppError('Personalization left an SMS empty. Add recipient values or update the message.', 400);
+      return { ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type,
+        ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: message }
           : { ...renderCampaignMessage(content.subject, content.body, { ...r.personalization, ...sender }), sms: '' }) };
     });
     const tooLong = sends.filter(r => r.channel === 'SMS' && r.sms.length > SMS_MAX_LENGTH).length;
@@ -341,10 +341,8 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
       ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: r.personalization, status: 'pending' })),
       ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: { ...r.personalization, ...sender }, status: 'excluded', failureReason: r.reason })),
     ] });
-    const smsLinks = sends.flatMap(r => r.smsLinks.map(link => ({ ...link, ...scope, campaignContactId: r.id })));
-    if (smsLinks.length) await tx.smsCampaignLink.createMany({ data: smsLinks });
     if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
-    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId, smsTrackingVersion: 1 } : {}), ...content } });
+    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId, smsTrackingVersion: 0 } : {}), ...content } });
     return { recipients: sends, leaseId, smsDeviceId };
   }, { timeout: 30000 });
   activePreparations.add(preparation);

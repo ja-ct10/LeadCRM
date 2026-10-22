@@ -59,9 +59,11 @@ test('the complete release history deploys reviewed transitions while guarded co
   const defaultTemplateVariables = '20261211000000_normalize_default_campaign_template_variables';
   const mailboxActivityDeals = '20261212000000_mailbox_activity_deals';
   const accountNoteTriggerPermissions = '20261213000000_account_note_trigger_permissions';
+  const relationshipPreservation = '20261225000000_preserve_retired_relationships';
+  const relationshipTablesRetirement = '20261226000000_retire_unused_relationship_tables';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, '20261224000000_crm_group_status');
-  assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement]);
+  assert.equal(plan.through, relationshipTablesRetirement);
+  assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
     '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
@@ -82,16 +84,20 @@ test('the complete release history deploys reviewed transitions while guarded co
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);
   assert.throws(() => deploymentPlan([...rows, { migration_name: selected.at(-1) }], names), /FAILED_MIGRATION/);
   rows.push({ migration_name: relationship, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement] });
   rows.push({ migration_name: crm, finished_at: new Date() }, { migration_name: lead, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement] });
   rows.push({ migration_name: contact, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement] });
   rows.push({ migration_name: contactJobTitle, finished_at: new Date() }, { migration_name: accountRetirement, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [accountFieldRetirement, accountNotesRetirement] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement] });
   rows.push({ migration_name: accountFieldRetirement, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [accountNotesRetirement] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [accountNotesRetirement, relationshipTablesRetirement] });
   rows.push({ migration_name: accountNotesRetirement, finished_at: new Date() });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [relationshipTablesRetirement] });
+  assert.ok(selected.includes(relationshipPreservation));
+  assert.ok(!selected.includes(relationshipTablesRetirement));
+  rows.push({ migration_name: relationshipTablesRetirement, finished_at: new Date() });
   assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [] });
 });
 

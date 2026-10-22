@@ -107,12 +107,13 @@ it('inserts the default footer once on request and sends the author’s edited t
   await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
   expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: edited, subject: '' }));
 });
-it('previews tracked SMS length while preserving the original editable URL', async () => {
+it('previews the original SMS URL length and explains that links are not tracked', async () => {
   vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'info@example.test', trackingOrigin: 'https://crm.example.test' } });
   render(<CampaignBuilder initialType="SMS" onBack={vi.fn()} />);
   const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
   fireEvent.change(body, { target: { value: 'Visit https://destination.test/products?a=1&b=2' } });
-  await screen.findByText(/Counts include the tracking URL/);
+  await screen.findByText(/HTTP\/HTTPS URLs are sent as written/);
+  expect(screen.queryByText(/Counts include the tracking URL/)).toBeNull();
   expect(body.value).toBe('Visit https://destination.test/products?a=1&b=2');
   expect(screen.getByRole('link', { name: 'https://destination.test/products?a=1&b=2' }).getAttribute('href')).toBe('https://destination.test/products?a=1&b=2');
 });

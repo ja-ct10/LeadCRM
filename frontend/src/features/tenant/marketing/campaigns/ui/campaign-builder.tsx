@@ -1,5 +1,5 @@
 'use client';
-import { mapCampaignTextLinks, smsCampaignTrackingUrl, SMS_DEFAULT_FOOTER } from '@leadcrm/shared';
+import { SMS_DEFAULT_FOOTER } from '@leadcrm/shared';
 import { SmsFooterControl } from '@/shared/components/sms-footer-control';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
@@ -255,8 +255,8 @@ export function CampaignBuilder({
   let smsPreview = '', smsLengthPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
     smsPreview = buildFinalSms({ body: messageContent, variables: previewVariables });
-    smsLengthPreview = smsSettings.data?.trackingOrigin ? mapCampaignTextLinks(smsPreview, () => smsCampaignTrackingUrl(smsSettings.data!.trackingOrigin!, 'x'.repeat(24))) : smsPreview;
-    if (smsLengthPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit after personalization and link tracking.`;
+    smsLengthPreview = smsPreview;
+    if (smsLengthPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit after personalization.`;
   }
   function openSchedule() {
     if (requestLock.current || !maySend) return;
@@ -561,8 +561,8 @@ export function CampaignBuilder({
                 {campaignType === 'SMS' && <SmsFooterControl value={messageContent} onChange={setMessageContent} />}
                 {campaignType === 'SMS' && (
                   <div className="flex flex-col gap-1 mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{smsMessageStats(smsLengthPreview).characters} characters after personalization and link tracking · {smsMessageStats(smsLengthPreview).segments} SMS segment(s) · {smsMessageStats(smsLengthPreview).encoding} (sample recipient)</span>
-                    <span>HTTP/HTTPS links use a recipient tracking URL when sent. The preview opens original destinations; sent links use recipient tracking. {smsSettings.data?.trackingOrigin ? 'Counts include the tracking URL.' : 'Tracking configuration is unavailable; final link lengths are checked before sending.'}</span>
+                    <span>{smsMessageStats(smsLengthPreview).characters} characters after personalization · {smsMessageStats(smsLengthPreview).segments} SMS segment(s) · {smsMessageStats(smsLengthPreview).encoding} (sample recipient)</span>
+                    <span>HTTP/HTTPS URLs are sent as written. SMS link clicks are not tracked.</span>
                   </div>
                 )}
                 <div className="mt-2.5">

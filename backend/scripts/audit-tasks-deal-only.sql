@@ -1,4 +1,5 @@
--- Production discovery only. Never remap a legacy Task from candidate counts.
+-- Read-only discovery after retired-relationship preservation. Never remap a
+-- legacy Task from candidate counts or treat preserved Account links as active.
 BEGIN READ ONLY;
 
 WITH usage AS (
@@ -6,7 +7,7 @@ WITH usage AS (
     (SELECT count(*) FROM "TaskDeal" x WHERE x."taskId" = t.id) AS deals,
     (SELECT count(*) FROM "TaskLead" x WHERE x."taskId" = t.id) AS leads,
     (SELECT count(*) FROM "TaskContact" x WHERE x."taskId" = t.id) AS contacts,
-    (SELECT count(*) FROM "TaskAccount" x WHERE x."taskId" = t.id) AS accounts
+    jsonb_array_length(t."retiredAccountLinks") AS accounts
   FROM "Task" t
 )
 SELECT "tenantId", count(*) AS tasks,
@@ -18,7 +19,7 @@ SELECT "tenantId", count(*) AS tasks,
   count(*) FILTER (WHERE deals = 0) AS no_deals,
   count(*) FILTER (WHERE deals = 0 AND leads > 0 AND contacts + accounts = 0) AS lead_only,
   count(*) FILTER (WHERE deals = 0 AND contacts > 0 AND leads + accounts = 0) AS contact_only,
-  count(*) FILTER (WHERE deals = 0 AND accounts > 0 AND leads + contacts = 0) AS account_only,
+  count(*) FILTER (WHERE deals = 0 AND accounts > 0 AND leads + contacts = 0) AS retired_account_only,
   count(*) FILTER (WHERE (deals > 0)::int + (leads > 0)::int + (contacts > 0)::int + (accounts > 0)::int > 1) AS mixed,
   count(*) FILTER (WHERE deals + leads + contacts + accounts = 0) AS unassociated
 FROM usage GROUP BY "tenantId";
@@ -34,9 +35,6 @@ WITH candidates AS (
   SELECT tc."taskId", ld."dealId" FROM "TaskContact" tc
     JOIN "Lead" l ON l."contactId" = tc."contactId" AND l."tenantId" = tc."tenantId" AND l."convertedAt" IS NOT NULL
     JOIN "LeadDeal" ld ON ld."leadId" = l.id AND ld."tenantId" = l."tenantId"
-  UNION
-  SELECT ta."taskId", d.id FROM "TaskAccount" ta
-    JOIN "Deal" d ON d."accountId" = ta."accountId" AND d."tenantId" = ta."tenantId"
 )
 SELECT t.id, t."tenantId", count(DISTINCT d.id) AS eligible_candidates,
   array_agg(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) AS candidate_deal_ids

@@ -6,6 +6,7 @@ import { tenantContext } from "../../../../core/tenant/tenant-context";
 import { issueAuthSession } from "../../../../core/auth/auth-session";
 import app from "../../../../app";
 import { reassignTaskLinks } from '../tasks.repository';
+import { countAccountRelationships, reassignAccountRelationships } from '../../../crm/merge/merge.repository';
 import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/");
 const disposable =
@@ -393,7 +394,8 @@ describe.skipIf(!disposable)(
       const second = await newDeal('Second Deal');
       const task = await create('Multiple Deals', { dealIds: [deal.id, second.id, deal.id] });
       expect(task.dealIds).toEqual([deal.id, second.id]);
-      for (const model of [prisma.taskLead, prisma.taskContact, prisma.taskAccount]) expect(await model.count({ where: { taskId: task.id } })).toBe(0);
+      for (const model of [prisma.taskLead, prisma.taskContact]) expect(await model.count({ where: { taskId: task.id } })).toBe(0);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).retiredAccountLinks).toEqual([]);
       expect(await prisma.taskDeal.count({ where: { taskId: task.id } })).toBe(2);
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Keep links' })).body.data.dealIds).toEqual([deal.id, second.id]);
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [] })).status).toBe(400);
@@ -622,20 +624,42 @@ describe.skipIf(!disposable)(
       expect((await call(`/crm/activities?leadId=${leadB.id}&search=Frozen%20history`)).body.meta.total).toBe(1);
     });
 
-    it('preserves legacy Tasks and links through edits and merges without inventing Deals', async () => {
+    it('preserves legacy person Task links through edits and Lead merges without inventing Deals or Account associations', async () => {
       const source = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Legacy', lastName: 'Lead' } }));
       const task = await scope(() => prisma.task.create({ data: { tenantId, title: 'Legacy record', assignedUserId: owner.id,
         createdById: actor.id, dueDate: new Date('2026-01-01'), leadLinks: { create: { leadId: source.id } },
-        contactLinks: { create: { contactId: contact.id } }, accountLinks: { create: { accountId: account.id } } } }));
+        contactLinks: { create: { contactId: contact.id } } } }));
       await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Safe legacy management', status: 'completed' });
       const result = (await call(`/operations/tasks/${task.id}`)).body.data;
-      expect(result).toMatchObject({ dealIds: [], leadIds: [source.id], contactIds: [contact.id], accountIds: [account.id], createdById: actor.id });
+      expect(result).toMatchObject({ dealIds: [], leadIds: [source.id], contactIds: [contact.id], accountId: null, accountIds: [], accounts: [], createdById: actor.id });
+      expect(result).not.toHaveProperty('retiredAccountLinks');
+      expect((await call(`/operations/tasks?accountId=${account.id}&search=Legacy%20record`)).body.meta.total).toBe(0);
       const events = await history(task.id);
       await scope(() => prisma.$transaction(tx => reassignTaskLinks(tx, 'lead', lead.id, source.id, tenantId)));
       expect((await call(`/operations/tasks/${task.id}`)).body.data.leadIds).toEqual([lead.id]);
       expect((await history(task.id)).map(row => row.metadata)).toEqual(events.map(row => row.metadata));
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [deal.id] })).status).toBe(200);
       expect(await prisma.taskLead.count({ where: { taskId: task.id } })).toBe(1);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).retiredAccountLinks).toEqual([]);
+    });
+
+    it('moves Account task context through Deal merges without fabricating links for unassociated Tasks or changing frozen history', async () => {
+      const [sourceAccount, targetAccount] = await scope(() => Promise.all(['Source', 'Target'].map(name =>
+        prisma.account.create({ data: { tenantId, name: `Task merge ${name}` } }))));
+      const associatedDeal = await newDeal('Account Task context merge', { accountId: sourceAccount.id });
+      const current = await create('Account Task context merge', { dealIds: [associatedDeal.id] });
+      const legacy = await scope(() => prisma.task.create({ data: { tenantId, title: 'Retired Account context merge',
+        assignedUserId: owner.id, createdById: actor.id, dueDate: new Date() } }));
+      const events = await history(current.id);
+      expect((await scope(() => countAccountRelationships(sourceAccount.id, tenantId))).tasks).toBe(1);
+      const reassigned = await scope(() => prisma.$transaction(tx => reassignAccountRelationships(tx, targetAccount.id, sourceAccount.id, tenantId)));
+      expect(reassigned.tasks).toBe(1);
+      expect((await call(`/operations/tasks?accountId=${sourceAccount.id}`)).body.meta.total).toBe(0);
+      const related = await call(`/operations/tasks?accountId=${targetAccount.id}`);
+      expect(related.body.data.map((row: { id: string }) => row.id)).toEqual([current.id]);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: legacy.id } })).retiredAccountLinks).toEqual([]);
+      expect((await call(`/operations/tasks/${legacy.id}`)).body.data).toMatchObject({ dealIds: [], accountIds: [], accounts: [], accountId: null });
+      expect((await history(current.id)).map(row => row.metadata)).toEqual(events.map(row => row.metadata));
     });
 
     it('enforces Sales Deal assignments and Task permissions without granting CRM edit', async () => {

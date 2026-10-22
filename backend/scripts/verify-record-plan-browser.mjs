@@ -76,7 +76,10 @@ try {
       { tenantId: tenant.id, createdById: admin.id, type: 'note', title: `Keep ${module} note`, [linkKeys[module]]: records[module].id },
       { tenantId: tenant.id, createdById: admin.id, type: 'call', title: `Historical ${module} call`, [linkKeys[module]]: records[module].id },
     ] });
-    await prisma.task.create({ data: { tenantId: tenant.id, createdById: admin.id, assignedUserId: admin.id, title: `Actual ${module} task`, dueDate: new Date('2026-12-01T09:00:00Z'), [module === 'leads' ? 'leadLinks' : module === 'contacts' ? 'contactLinks' : module === 'accounts' ? 'accountLinks' : 'dealLinks']: { create: { [linkKeys[module]]: records[module].id } } } });
+    // Account task panels derive their current context from the owning Deal.
+    const taskLink = module === 'accounts' ? { dealLinks: { create: { dealId: deal.id } } }
+      : { [module === 'leads' ? 'leadLinks' : module === 'contacts' ? 'contactLinks' : 'dealLinks']: { create: { [linkKeys[module]]: records[module].id } } };
+    await prisma.task.create({ data: { tenantId: tenant.id, createdById: admin.id, assignedUserId: admin.id, title: `Actual ${module} task`, dueDate: new Date('2026-12-01T09:00:00Z'), ...taskLink } });
   }
   await prisma.activity.create({ data: { tenantId: tenant.id, createdById: admin.id, type: 'note', title: 'Inherited source note', leadId: source.id } });
   await prisma.task.create({ data: { tenantId: tenant.id, createdById: admin.id, assignedUserId: admin.id, title: 'Inherited source task', dueDate: new Date('2026-12-01T09:00:00Z'), leadLinks: { create: { leadId: source.id } } } });

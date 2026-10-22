@@ -764,4 +764,8 @@ Frontend permission guards improve the user flow; server checks enforce it. Grou
 
 ## Current rollout additions
 
+The [retired relationship rollout](retired-relationships.md) removes TaskAccount and SmsCampaignLink through a preserving expansion and separate guarded retirement. Current Account task context derives from associated Deals. Task responses retain compatible direct Account fields as `accountId: null`, `account: null`, `accountIds: []`, and `accounts: []`; private `retiredAccountLinks` is never serialized. Existing TaskLead/TaskContact reads and historical Activity/AuditLog events remain available.
+
+New SMS sends original personalized URLs, records `smsTrackingVersion: 0` and returns unavailable click totals/rates as `null`. Historical SMS reports retain frozen counts and destinations. Existing public `/public/sms-links/:token` and frontend `/s/:token` redirects remain supported without click writes. The private `smsLinkHistory` snapshot and opaque tokens are not included in report recipients. Sender settings return `trackingOrigin: null`. Provider delivery tracking and email engagement remain independent.
+
 Stop old backend processes, then apply `20261116000000_user_groups`, `20261117000000_campaign_submission_recovery`, `20261118000000_group_revisions` and `20261119000000_notification_utc_timestamps` after the existing migration history and before starting the updated backend. These preserve legacy Department values as same-tenant Group memberships, add durable interrupted submission handling, reuse the access-revision stream for Group synchronization and make new notification timestamps explicitly UTC. See [rollout](../README.md#forward-rollout) and the [polish plan](plans/system-polish.md).

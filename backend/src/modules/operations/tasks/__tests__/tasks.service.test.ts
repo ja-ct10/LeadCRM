@@ -26,6 +26,7 @@ vi.mock("../../../../config/database.config", () => ({ default: db }));
 vi.mock('../tasks.history', async importOriginal => ({ ...(await importOriginal<any>()), recordTaskHistory: vi.fn() }));
 import { recordTaskHistory } from '../tasks.history';
 import * as service from "../tasks.service";
+import { taskContextWhere } from '../tasks.repository';
 
 const tenantId = "task-tenant";
 const actorId = "task-actor";
@@ -38,7 +39,7 @@ const input = {
   dealIds: ["deal"],
 };
 const original = {
-  leadLinks: [], contactLinks: [], dealLinks: [], accountLinks: [],
+  leadLinks: [], contactLinks: [], dealLinks: [], retiredAccountLinks: [],
   ...input,
   id: "task-id",
   tenantId,
@@ -89,6 +90,11 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it('resolves Account task lists only through same-tenant Deal associations', () => {
+    expect(taskContextWhere('account', 'account-id', tenantId)).toEqual({
+      dealLinks: { some: { tenantId, deal: { tenantId, accountId: 'account-id' } } },
+    });
+  });
   it('defaults manual creation to To do and the authenticated assignee', async () => {
     db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, role: 'Sales Agent', status: 'ACTIVE', tenant: { status: 'ACTIVE' },
       userRoles: [{ tenantId, role: { tenantId, name: 'Sales Agent', isArchived: false, permissions: [{ tenantId, module: 'tasks', canView: true, canCreate: true }, { tenantId, module: 'deals', canView: true, canViewAll: true }] } }] }));
@@ -106,6 +112,22 @@ describe("Task service authority", () => {
     expect(service.serializeTask(blocked as any)).toMatchObject({ status: 'pending', displayStatus: 'pending' });
     expect(service.serializeTask({ ...blocked, dueDate: new Date('2020-01-01') } as any)).toMatchObject({ status: 'pending', displayStatus: 'overdue' });
     expect(blocked.status).toBe('blocked');
+  });
+  it('does not expose or activate preserved retired Account links', () => {
+    const retiredAccountLinks = [{ taskId: original.id, tenantId, accountId: 'retired-account', position: 2 }];
+    const serialized = service.serializeTask({ ...original, retiredAccountLinks } as any);
+    expect(serialized).toMatchObject({ accountId: null, accountIds: [], accounts: [], account: null, dealIds: [] });
+    expect(serialized).not.toHaveProperty('retiredAccountLinks');
+    expect(retiredAccountLinks).toEqual([{ taskId: original.id, tenantId, accountId: 'retired-account', position: 2 }]);
+  });
+  it('leaves a migrated retired Account snapshot untouched during an ordinary Task edit', async () => {
+    const retiredAccountLinks = [{ taskId: original.id, tenantId, accountId: 'retired-account', position: 2 }];
+    db.task.findFirst.mockResolvedValue({ ...original, retiredAccountLinks });
+    await scoped(() => service.updateTask(original.id, tenantId, actorId, { title: 'Manage legacy Task' }));
+    expect(db.task.update).toHaveBeenCalledWith(expect.objectContaining({ data: { title: 'Manage legacy Task' } }));
+    expect(db.taskDeal.createMany).not.toHaveBeenCalled();
+    expect(db.taskDeal.deleteMany).not.toHaveBeenCalled();
+    expect(retiredAccountLinks).toEqual([{ taskId: original.id, tenantId, accountId: 'retired-account', position: 2 }]);
   });
   it.each(['Sales Agent', 'Sales Representative'])('rejects a %s creator after assignment moves to another user, including direct service calls', async role => {
     db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, role, status: 'ACTIVE', tenant: { status: 'ACTIVE' },
