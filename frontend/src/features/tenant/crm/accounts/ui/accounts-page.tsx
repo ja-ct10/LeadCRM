@@ -361,7 +361,7 @@ export default function AccountsPage(): React.ReactElement {
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
         exportAction={<ExportCsvButton module="accounts" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
-        bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...accountSelectedIds].some(id => !recordAccess.canMutate(accounts.find(record => record.id === id)))} onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
+        bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...accountSelectedIds].some(id => !recordAccess.canMutate(accounts.find(record => record.id === id), 'canArchive'))} onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
         moduleId="accounts"
         title="Accounts"
         description="Manage companies and organizations linked to CRM records."

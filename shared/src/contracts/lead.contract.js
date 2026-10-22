@@ -11,6 +11,7 @@ exports.LeadNameSchema = (0, administration_user_schema_1.cleanText)(100).pipe(z
 exports.LeadPhoneSchema = zod_1.z.union([zod_1.z.literal(''), administration_user_schema_1.AdministrationPhoneSchema]);
 exports.OptionalLeadSourceSchema = zod_1.z.union([zod_1.z.literal(''), record_experience_1.LeadSourceSchema]);
 const fields = {
+    ownerGroupId: zod_1.z.string().uuid().nullable().optional(),
     firstName: exports.LeadNameSchema,
     lastName: exports.LeadNameSchema,
     email: crm_email_1.CrmEmailSchema,
@@ -32,7 +33,7 @@ exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_expe
 exports.ManualCreateLeadSchema = exports.CreateLeadSchema.refine(data => data.status === 'Inquiry', {
     path: ['status'], message: 'Manually created Leads start with Inquiry status.',
 });
-exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial()
+exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial().extend({ expectedUpdatedAt: zod_1.z.string().datetime().optional() })
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 /** New Account details use the same contract as standalone and linked creation. */
 exports.ConvertLeadSchema = zod_1.z.object({

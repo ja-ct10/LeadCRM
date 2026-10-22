@@ -197,7 +197,7 @@ export function AccountsDataGrid({
         navigator.clipboard.writeText(`${window.location.origin}/crm/accounts/${account.id}`);
       },
       canEdit: canEdit && recordAccess.canMutate(account),
-      canArchive: canArchive && recordAccess.canMutate(account),
+      canArchive: canArchive && recordAccess.canMutate(account, 'canArchive'),
     });
   }, [onRowClick, onEdit, onArchive, canEdit, canArchive, recordAccess.canMutate]);
 

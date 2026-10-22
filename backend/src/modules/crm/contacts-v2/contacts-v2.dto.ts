@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CrmStatusSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
 const ContactFields = ContactCreationIdentitySchema.extend({
+  ownerGroupId: z.string().uuid().nullable().optional(),
   customFieldValues: CustomFieldValuesSchema.optional(),
   productInterestOther: recordText(1000).nullable().optional(),
   firstName: recordName(), lastName: recordName(),
@@ -22,5 +23,5 @@ export const CreateClientContactSchema = ContactFields.refine(exclusiveProducts,
 export const ManualCreateClientContactSchema = CreateClientContactSchema.refine(data => data.status === 'Inquiry', {
   path: ['status'], message: 'Manually created Contacts start with Inquiry status.',
 });
-export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().strict()
+export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().extend({ expectedUpdatedAt: z.string().datetime().optional() }).strict()
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });

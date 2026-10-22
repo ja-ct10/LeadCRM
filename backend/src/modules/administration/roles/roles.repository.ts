@@ -148,7 +148,7 @@ export async function archiveRole(id: string, tenantId: string) {
     const role = await tx.roleDefinition.findFirst({ where: { id, tenantId, isArchived: false } });
     if (!role) throw new NotFoundError('Role');
     if (role.isSystemRole) throw new ForbiddenError('System roles cannot be deleted');
-    const count = await tx.userRole.count({ where: { roleId: id, tenantId } });
+    const count = await tx.userRole.count({ where: { roleId: id, tenantId } }) + await tx.tenantGroupMember.count({ where: { crmRoleId: id, tenantId } });
     if (count > 0) throw new ConflictError(`Role has ${count} assigned user(s). Reassign users to another role before deleting.`);
     return tx.roleDefinition.update({ where: { id, tenantId, isArchived: false }, data: { isArchived: true } });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });

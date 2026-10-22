@@ -84,7 +84,7 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     await refresh(b.id, new Date(+now + 32 * 86_400_000));
     expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: b.id } })).toBe(history);
     await scope(() => archiveDeal(a.id, tenantId, 'Fixture', actorId));
-    await scope(() => salesTransaction(tx => assertCustomerStatusEdit(tx, tenantId, { leadId }, { status: 'Cold', manualCancellation: false }, 'Hot'))).then(() => { throw Error('Expected derived-status rejection'); }, error => expect(error.message).toContain('calculated'));
+    await expect(scope(() => salesTransaction(tx => assertCustomerStatusEdit(tx, tenantId, { leadId }, { status: 'Cold', manualCancellation: false }, 'Hot')))).resolves.toBeUndefined();
   });
   it('records verified outreach as Contacted/Warm and restores cooled Qualified engagement on its own reply', async () => {
     const a = await deal(), b = await deal();
@@ -194,7 +194,7 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     const b = await deal(); await prisma.contactDeal.create({ data: { tenantId, contactId: contact.id, dealId: b.id } });
     await refresh(b.id);
     expect((await customer()).status).toBe('CANCELLED');
-    await expect(scope(() => updateContact(contact.id, tenantId, { status: 'Hot' }, actorId))).rejects.toThrow('calculated');
+    await expect(scope(() => updateContact(contact.id, tenantId, { status: 'Hot' }, actorId))).rejects.toThrow('Reopen this customer to Inquiry');
     await scope(() => updateContact(contact.id, tenantId, { status: 'Inquiry' }, actorId));
     expect(await customer()).toMatchObject({ status: 'INQUIRY', manualCancellation: false });
     expect((await read(b.id)).stageId).toBe(leadStage);
@@ -256,7 +256,7 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     await scope(() => updateContact(contact.id, tenantId, { status: 'Closed Deal', notes: 'Historical sale retained' }, actorId));
     expect(await prisma.contact.findFirstOrThrow({ where: { tenantId, id: contact.id } })).toMatchObject({ status: 'CLOSED_DEAL', customerSince: contact.customerSince });
   });
-  it('backfills only provable history without replaying activities or workflows', async () => {
+  it('backfills provable history with one Activity per actual transition and no Workflow replay', async () => {
     const a = await deal(), b = await deal();
     const sent = await prisma.mailboxMessage.create({ data: { tenantId, accountId, providerMessageId: randomUUID(), threadId: randomUUID(), direction: 'outbound',
       from: 'staff@camxian.com', recipients: [(await person()).email!], subject: 'Historical send', body: '', snippet: '', labels: ['SENT'], sentAt: ago(40),
@@ -281,7 +281,10 @@ describe.skipIf(!disposable)('Deal engagement on disposable PostgreSQL', () => {
     }));
     expect((await read(a.id)).engagementStatus).toBe('Warm');
     expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: inbound.id } })).dealAttribution).toMatchObject({ kind: 'reply' });
-    expect(await prisma.activity.count({ where: { tenantId } })).toBe(activities);
+    expect(await prisma.activity.count({ where: { tenantId } })).toBe(activities + 3);
+    expect(await prisma.activity.count({ where: { tenantId, dealId: a.id, type: 'stage_change' } })).toBe(2);
+    await scope(() => salesTransaction(tx => refreshDealClassification(tx, tenantId, a.id, actorId, [], now, false)));
+    expect(await prisma.activity.count({ where: { tenantId } })).toBe(activities + 3);
     expect(await prisma.workflowTriggerRecord.count({ where: { tenantId } })).toBe(events);
     const unrelated = await reply(a.id, 0, false);
     await prisma.mailboxMessage.update({ where: { id: unrelated.id }, data: { from: 'unlinked@example.test', threadId: sent.threadId, rfcInReplyTo: sent.rfcMessageId } });

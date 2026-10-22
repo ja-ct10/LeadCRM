@@ -435,3 +435,23 @@ it.skipIf(!nativeConcurrency)('coordinates assignment with a concurrent account 
   } finally { beforeHeadWrite = undefined; release(); }
   expect(await headRows(id)).toEqual([]); expect(await memberCount(id)).toBe(2);
 });
+
+it.skipIf(!disposable)('configures a membership CRM role without granting through Head status and protects owned Groups', async () => {
+  const groupId = (await request('', 'POST', { name: 'CRM ownership fixture' })).body.data.id;
+  await request('/' + groupId + '/members', 'POST', { userId });
+  const role = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Group-only CRM editor', permissions: { create: { module: 'contacts', canView: true, canViewAll: true, canEdit: true } } } }));
+  const path = '/' + groupId + '/members/' + userId;
+  const updated = await request(path, 'PATCH', { crmRoleId: role.id });
+  expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+  expect(updated.body.data.members.find((row: { userId: string }) => row.userId === userId)).toMatchObject({ crmRoleId: role.id, isHead: false });
+  expect((await request(path, 'PATCH', { crmRoleId: role.id }, deniedToken)).status).toBe(403);
+  expect((await request(path, 'PATCH', { crmRoleId: randomUUID() })).status).toBe(400);
+  const foreignTenantId = (await prisma.user.findUniqueOrThrow({ where: { id: foreignUserId } })).tenantId;
+  const foreignRole = await tenantContext.run({ tenantId: foreignTenantId }, () => prisma.roleDefinition.create({ data: { tenantId: foreignTenantId, name: 'Foreign CRM role' } }));
+  expect((await request(path, 'PATCH', { crmRoleId: foreignRole.id })).status).toBe(400);
+  expect((await request(path, 'PATCH', { crmRoleId: null })).status).toBe(200);
+  await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'Group', lastName: 'Owned', ownerGroupId: groupId } }));
+  await request(path, 'DELETE');
+  expect((await request('/' + groupId, 'DELETE')).status).toBe(409);
+  expect(await scoped(() => prisma.tenantGroup.findFirst({ where: { id: groupId } }))).toBeTruthy();
+});

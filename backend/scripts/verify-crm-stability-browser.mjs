@@ -35,6 +35,8 @@ try {
   const taskRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Stability task staff', permissions: { create: { module: 'tasks', canView: true } } } });
   const assignee = await prisma.user.create({ data: { tenantId, firstName: 'Task', lastName: 'Staff', email: `${randomUUID()}@camxian.com`, role: taskRole.name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: taskRole.id } } } });
   const token = (await issueAuthSession(admin)).token;
+  let browserToken = token;
+  let dealOptionReads = 0;
   const statuses = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled'];
   const people = [];
   for (const module of ['leads', 'contacts']) for (const status of statuses) {
@@ -53,6 +55,7 @@ try {
     { tenantId, pipelineId: pipeline.id, name: 'Cancelled', order: 3, isLost: true },
   ] });
   const deal = await prisma.deal.create({ data: { tenantId, title: 'Stability Opportunity', pipelineId: pipeline.id, stageId: stage.id, assignedUserId: admin.id, ownerId: admin.id, productInterestId: product.id, productInterestIds: [product.id], productsNormalized: true, value: 15000 } });
+  const additionalDeal = await prisma.deal.create({ data: { tenantId, title: 'Additional Task Opportunity', pipelineId: pipeline.id, stageId: stage.id, assignedUserId: admin.id, ownerId: admin.id, productInterestId: product.id, productInterestIds: [product.id], productsNormalized: true, value: 15000 } });
   await prisma.leadDeal.create({ data: { tenantId, leadId: people[0].id, dealId: deal.id, addedById: admin.id } });
   api = app.listen(0, '127.0.0.1');
   await new Promise(done => api.once('listening', done));
@@ -88,7 +91,8 @@ try {
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace('/api/proxy', ''), local = apiBase + path + url.search;
-    const headers = { ...request.headers(), authorization: `Bearer ${token}` };
+    const headers = { ...request.headers(), authorization: `Bearer ${browserToken}` };
+    if (request.method() === 'GET' && path === '/operations/tasks/options' && url.searchParams.get('kind') === 'deal') dealOptionReads++;
     if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: local, headers });
     if (holdTaskReads && request.method() === 'GET' && path.startsWith('/operations/tasks')) await new Promise(done => heldReads.push(done));
     if (rejectTaskSave && request.method() === 'PUT' && path === `/operations/tasks/${task.id}`) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Recoverable fixture error' }) });
@@ -158,7 +162,38 @@ try {
   await page.getByRole('button', { name: 'Close record', exact: true }).click();
   await action('Add a task');
   await page.getByRole('heading', { name: 'Create task', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  const taskTitle = page.getByRole('textbox', { name: /^Title/ });
+  await taskTitle.fill('Stable new Task draft');
+  await page.getByRole('button', { name: /Associate.*Deal/i }).click();
+  const selector = page.getByRole('dialog', { name: 'Select deal', exact: true });
+  const choice = selector.getByRole('checkbox', { name: additionalDeal.title, exact: true });
+  await choice.waitFor();
+  await choice.evaluate(element => { window.__dealOptionNode = element; window.__taskFormNode = element.closest('form'); });
+  const loadedReads = dealOptionReads;
+  await choice.check(); await choice.uncheck(); await choice.check();
+  assert.equal(await selector.getByRole('checkbox', { name: deal.title, exact: true }).isChecked(), true, 'The originating Deal stays linked.');
+  assert.equal(await choice.evaluate(element => element === window.__dealOptionNode && element.closest('form') === window.__taskFormNode), true);
+  assert.equal(dealOptionReads, loadedReads, 'Selecting a loaded Deal must not fetch its options again.');
+  const synchronized = page.waitForResponse(response => response.url().includes('/crm/deals') && response.request().method() === 'GET');
+  await revision('create-selector-sync'); await synchronized;
+  assert.equal(await choice.evaluate(element => element === window.__dealOptionNode && element.isConnected), true);
+  assert.equal(await selector.getByText('Loading…', { exact: true }).count(), 0);
+  assert.equal(await taskTitle.inputValue(), 'Stable new Task draft');
+  assert.equal(dealOptionReads, loadedReads, 'Unrelated synchronization must retain the loaded Deal options.');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /Assigned Agent/ }).click();
+  const agents = page.getByRole('dialog', { name: 'Select owner', exact: true });
+  await agents.getByRole('checkbox', { name: 'Task Staff', exact: true }).check();
+  await agents.getByRole('button', { name: 'Done', exact: true }).click();
+  const createdTaskResponse = page.waitForResponse(response => response.url().includes('/operations/tasks') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  const createdTask = await createdTaskResponse;
+  assert.equal(createdTask.status(), 201);
+  const createdTaskId = (await createdTask.json()).data.id;
+  assert.equal(await prisma.task.count({ where: { tenantId, title: 'Stable new Task draft' } }), 1);
+  assert.deepEqual((await prisma.taskDeal.findMany({ where: { tenantId, taskId: createdTaskId } })).map(link => link.dealId).sort(), [deal.id, additionalDeal.id].sort());
+  await page.getByRole('heading', { name: 'Create task', exact: true }).waitFor({ state: 'hidden' });
+  checks.push('Create Task Deal selection retains form and option identity without extra reads, preserves its draft during synchronization, and saves both the selected and originating Deal links once.');
   await action('Add a note');
   await page.getByRole('textbox', { name: 'Note', exact: true }).fill('Persistent menu note');
   const noteResponse = page.waitForResponse(response => response.url().endsWith('/api/proxy/crm/activities') && response.request().method() === 'POST');
@@ -202,6 +237,31 @@ try {
     }
   }
   checks.push('Lead, Contact and Account field drafts survive revisions and save; permitted status changes persist through the shared profile header.');
+
+  const salesRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Browser Sales Agent', crmAssignmentRestricted: true,
+    permissions: { create: ['leads', 'contacts', 'deals'].map(module => ({ module, canView: true, canViewAll: true, canEdit: true })) } } });
+  const sales = await prisma.user.create({ data: { tenantId, role: salesRole.name, firstName: 'Browser', lastName: 'Agent', email: `${randomUUID()}@camxian.com`, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: salesRole.id } } } });
+  const assigned = await prisma.contact.create({ data: { tenantId, firstName: 'Assigned', lastName: 'Customer', assignedUserId: sales.id } });
+  await prisma.contactDeal.create({ data: { tenantId, contactId: assigned.id, dealId: deal.id } });
+  browserToken = (await issueAuthSession(sales)).token;
+  await context.addCookies([{ name: 'leadcrm_token', value: browserToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  await page.goto(`${base}/crm/contacts/${assigned.id}`);
+  await page.getByRole('button', { name: 'Inquiry', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Hot', exact: true }).click();
+  await page.getByRole('button', { name: 'Hot', exact: true }).waitFor();
+  assert.equal((await prisma.contact.findUniqueOrThrow({ where: { id: assigned.id } })).status, 'HOT');
+  await page.reload();
+  await page.getByRole('button', { name: 'Hot', exact: true }).waitFor();
+  const history = await prisma.activity.findMany({ where: { tenantId, contactId: assigned.id, type: 'stage_change' } });
+  assert.equal(history.length, 1); assert.equal(history[0].createdById, sales.id);
+  assert.equal(history[0].metadata.previousStatus, 'Inquiry'); assert.equal(history[0].metadata.newStatus, 'Hot');
+  await page.goto(`${base}/crm/contacts/${people[6].id}`);
+  await page.getByRole('heading', { name: 'StabilityInquiry contacts', exact: true }).waitFor();
+  const forbiddenStatusControls = page.getByRole('button', { name: 'Inquiry', exact: true });
+  assert.equal(await forbiddenStatusControls.count(), 0, 'Another agent’s customer must be read-only: ' + JSON.stringify(await forbiddenStatusControls.evaluateAll(elements => elements.map(element => element.outerHTML))));
+  browserToken = token;
+  await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  checks.push('An assigned Sales Agent can click and save a linked customer’s engagement, reopen the persisted result, and produce exactly one attributed Activity; another agent’s customer stays read-only.');
 
   const accents = ['blue', 'teal', 'green', 'orange', 'red', 'purple', 'indigo'];
   const themes = [['Classic', 'light'], ['Light', 'light'], ['Dark', 'dark'], ['System', 'light'], ['System', 'dark']];

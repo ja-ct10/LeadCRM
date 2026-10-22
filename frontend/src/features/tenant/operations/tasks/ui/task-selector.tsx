@@ -184,15 +184,15 @@ export function TaskSelector(props: TaskSelectorProps) {
     search,
     retry,
     leadKey,
-    accountId, category, productInterestId, page, products,
+    accountId, category, productInterestId, page, USE_MOCK_DATA ? products : null,
     tenant?.id,
     user?.id,
     user?.role, groupAccess, assignGrant,
     selfAssignmentOnly,
-    users,
-    contacts,
-    deals,
-    organizations,
+    USE_MOCK_DATA ? users : null,
+    USE_MOCK_DATA ? contacts : null,
+    USE_MOCK_DATA ? deals : null,
+    USE_MOCK_DATA ? organizations : null,
   ]);
   const labelFor = (id: string) =>
     selectedLabels.find((option) => option.id === id)?.label ||

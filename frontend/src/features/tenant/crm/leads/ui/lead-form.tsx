@@ -1,4 +1,5 @@
 'use client';
+import { useCrmOwnerGroup } from '@/shared/components/crm/crm-owner-group';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { applyCrmFieldErrors } from '@/shared/utils/crm-mutation-error';
@@ -73,7 +74,7 @@ interface AddLeadFormProps {
 }
 
 export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('leads');
   const actionAllowed = useHasPermission(initialData ? 'leads.edit' : 'leads.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('leads', initialData?.id);
@@ -86,6 +87,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const requestId = useRef<string | undefined>(undefined);
   const saving = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  const ownerGroup = useCrmOwnerGroup('leads', initialData, isSaving);
+  const statusVersion = useRef(initialData);
+  useEffect(() => { statusVersion.current = initialData; }, [initialData?.id]);
   const { products: productRecords, categories, error: productError, loading: productsLoading } = useProductInterests();
 
   const {
@@ -204,6 +208,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     // Build payload matching backend CreateContactSchema field names exactly.
     // No phantom fields — adapter handles any remaining mapping.
     const payload: Partial<Lead> = {
+      ...ownerGroup.payload,
       customFieldValues: customFields.payload(),
       ...(!isEdit ? { requestId: requestId.current } : {}),
       firstName: data.firstName,
@@ -211,7 +216,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       email: data.email || undefined,
       phone: fullPhone,
       ...organization.payload(),
-      status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
+      status: isEdit && data.status === normalizeCrmStatus(statusVersion.current?.status) ? undefined : data.status || 'Inquiry',
+      ...(isEdit && data.status !== normalizeCrmStatus(statusVersion.current?.status) ? { expectedUpdatedAt: statusVersion.current?.updatedAt } : {}),
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
       assignedUserId: selfAssigned ? recordAccess.policy?.userId : data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
@@ -239,6 +245,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
+        {ownerGroup.field}
         <ConfiguredFormLayout form={customFields} module="leads">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
@@ -307,14 +314,14 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             <FieldWrap fieldKey="status" htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
               {!initialData ? <input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
                 <select
-                  {...register('status')} disabled={!!initialData?.statusManagedByDeals}
+                  {...register('status')}
                   id={`${fieldId}-status`}
                   aria-invalid={!!errors.status}
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}
                   className={selectCls}
                 >
                   {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value} disabled={opt.value !== normalizeCrmStatus(initialData.status) && (initialData.statusEditOptions ? !initialData.statusEditOptions.includes(opt.value) : normalizeCrmStatus(initialData.status) === 'Cancelled' ? opt.value !== 'Inquiry' : normalizeCrmStatus(initialData.status) === 'Closed Deal' ? opt.value !== 'Cancelled' : opt.value === 'Closed Deal')}>{opt.label}</option>
                   ))}
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
@@ -369,7 +376,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                     name={field.name}
                     onBlur={field.onBlur}
                     onChange={field.onChange}
-                    users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
+                    ownerGroupId={ownerGroup.value} users={recordAccess.policy?.assignmentRestricted && !(initialData && recordAccess.canReassignRecord?.(initialData)) ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !(recordAccess.canReassignRecord?.(initialData) ?? recordAccess.canReassign))}
                     placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
                     className={selectCls}
                     invalid={!!errors.assignedUserId}

@@ -4,6 +4,7 @@ export interface UserDTO {
   securityLockedAt?: string | null;
   assignableAgent?: boolean;
   assignableModules?: string[];
+  assignableGroupModules?: Record<string, string[]>;
   id: string;
   tenantId: string;
   firstName: string;
@@ -47,6 +48,7 @@ export const userAdapter = {
     securityLockedAt: dto.securityLockedAt,
     assignableAgent: dto.assignableAgent,
     assignableModules: dto.assignableModules,
+    assignableGroupModules: dto.assignableGroupModules,
     createdAt: dto.createdAt,
     isArchived: dto.status === 'INACTIVE',
     firstName: dto.firstName,

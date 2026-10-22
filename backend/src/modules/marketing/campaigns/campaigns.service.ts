@@ -1,3 +1,4 @@
+import { crmActor } from '../../crm/access/crm-record-access.service';
 import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
@@ -490,7 +491,7 @@ export async function dispatchDueCampaigns(now = new Date()) {
       await assertCampaignSender(row.tenantId, row.scheduledById);
       const approved = CampaignScheduleConfigSchema.parse(row.scheduleConfig);
       const definition = AudiencePreviewSchema.parse({ source: approved.source, matchMode: approved.matchMode, conditions: approved.conditions });
-      const prepared = await prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, updatedAt: row.updatedAt, definition }, row.scheduledById);
+      const prepared = await crmActor.run({ tenantId: row.tenantId, userId: row.scheduledById, readRecords: true }, () => prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor!, scheduledById: row.scheduledById!, updatedAt: row.updatedAt, definition }, row.scheduledById!));
       dispatched++;
       void trackSubmission(row.id, row.tenantId, row.scheduledById, prepared).catch(() => console.error('[Campaigns] Scheduled submission interrupted; review persisted recipient outcomes.'));
     } catch (error) {

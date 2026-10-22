@@ -5,6 +5,7 @@ import { consolidateAccountAddress } from './account-address';
 
 
 const CompanyFieldsSchema = z.object({
+  ownerGroupId: z.string().uuid().nullable().optional(),
   customFieldValues: CustomFieldValuesSchema.optional(),
   name:           recordName(255),
   industry:       recordText().optional(),

@@ -15,6 +15,8 @@ export type CompanySize = '1-10' | '11-50' | '51-200' | '200+';
  * Maps to the Prisma `Account` model in the backend.
  */
 export interface Company {
+  ownerGroupId?: string | null;
+  statusEditOptions?: string[];
   id: string;
   tenantId: string;
   name: string;

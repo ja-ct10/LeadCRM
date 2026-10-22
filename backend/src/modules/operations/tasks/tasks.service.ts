@@ -20,7 +20,7 @@ import {
 import * as repo from "./tasks.repository";
 import { hydrateTaskRecords } from './tasks.context';
 import { recordTaskHistory, taskState } from './tasks.history';
-import { crmActor, resolveCrmActor, authorizedWorkflowScope, taskAssigneeInScope, crmReadWhere } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, authorizedWorkflowScope, taskAssigneeInScope, crmReadWhere, mayReadCrmModule } from '../../crm/access/crm-record-access.service';
 import { assertEligibleAssignedAgent, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { hasModulePermission } from '@leadcrm/shared';
 import { tenantContext } from "../../../core/tenant/tenant-context";
@@ -446,7 +446,7 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
   if (dto.assignedUserId !== undefined && dto.assignedUserId !== (before?.assignedUserId ?? userId)) permitted('canAssign');
   if (dto.status === 'completed' && before?.status !== 'completed') permitted('canComplete');
   if (dto.dealId !== undefined || dto.dealIds !== undefined) {
-    if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'deals', 'canView')) throw new AppError('Access denied', 403);
+    if (!await mayReadCrmModule(client, tenantId, 'deals')) throw new AppError('Access denied', 403);
     const ids = taskAssociationIds(dto, 'deal');
     const previous = before?.dealLinks.map(row => row.dealId) ?? [];
     // Removing a Deal is an association mutation too; recheck both sides.

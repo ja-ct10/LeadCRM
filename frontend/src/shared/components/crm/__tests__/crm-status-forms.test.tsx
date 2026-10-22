@@ -1,6 +1,6 @@
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, ownerGroups: [], policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -55,7 +55,7 @@ it.each(CRM_STATUSES)('keeps manual Lead Inquiry when status %s is injected and 
   expect(toBackendUpdateContact({ status, productInterest: ids })).toEqual({ status, productInterest: ids });
 });
 
-it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async status => {
+it.each(CRM_STATUSES)('creates Inquiry and displays canonical %s without resubmitting unchanged engagement', async status => {
   const created = render(<ContactFormSheet isOpen onClose={() => {}} onSave={data => { void contactsV2Api.create({ ...data, requestId: '72d1f071-a18d-4722-9ed9-c7c63084c230' }); }} />);
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
@@ -69,7 +69,8 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
   render(<ContactFormSheet isOpen initialData={{ id: 'contact', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Contact', email: 'contact@example.test', status: status.toUpperCase() }} onClose={() => {}} onSave={data => { void contactsV2Api.update('contact', data); }} />);
   expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(status);
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
-  await waitFor(() => expect(transport.put).toHaveBeenCalledWith('/crm/contacts/contact', expect.objectContaining({ status })));
+  await waitFor(() => expect(transport.put).toHaveBeenCalledWith('/crm/contacts/contact', expect.any(Object)));
+  expect(transport.put.mock.calls.at(-1)?.[1]).not.toHaveProperty('status');
 });
 
 it.each([
@@ -108,14 +109,31 @@ it('retains all statuses while enabling only reopening for a manually cancelled 
   await waitFor(() => expect(change).toHaveBeenCalledExactlyOnceWith('Inquiry'));
 });
 
-it.each(['lead', 'contact'] as const)('saves other %s fields while the calculated status is read-only', async kind => {
+it.each(['lead', 'contact'] as const)('edits a linked %s engagement while preserving other fields', async kind => {
   const save = vi.fn();
   const initialData = { id: 'person', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Person', email: 'person@example.test', status: 'Hot', statusManagedByDeals: true };
   render(kind === 'lead'
     ? <LeadFormSheet isOpen initialData={initialData} onClose={() => {}} onSave={save} />
     : <ContactFormSheet isOpen initialData={initialData} onClose={() => {}} onSave={save} />);
-  expect((screen.getByLabelText('Status') as HTMLSelectElement).disabled).toBe(true);
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'Warm' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Updated' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ lastName: 'Updated', status: 'Hot' })));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ lastName: 'Updated', status: 'Warm' })));
+});
+
+it.each(['lead', 'contact'] as const)('keeps a %s status draft and its original version during background updates', async kind => {
+  const save = vi.fn().mockRejectedValue(new Error('Recoverable status conflict'));
+  const initialData = { id: 'person', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', updatedAt: '2026-10-01T00:00:00.000Z', firstName: 'Testing', lastName: 'Person', email: 'person@example.test', status: 'Hot', statusManagedByDeals: true };
+  const view = (record: typeof initialData) => kind === 'lead'
+    ? <LeadFormSheet isOpen initialData={record} onClose={() => {}} onSave={save} />
+    : <ContactFormSheet isOpen initialData={record} onClose={() => {}} onSave={save} />;
+  const mounted = render(view(initialData));
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'Warm' } });
+  fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Unsaved name' } });
+  mounted.rerender(view({ ...initialData, status: 'Cold', updatedAt: '2026-10-02T00:00:00.000Z' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ status: 'Warm', expectedUpdatedAt: initialData.updatedAt, lastName: 'Unsaved name' })));
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('Warm');
+  expect((screen.getByLabelText(/Last Name/) as HTMLInputElement).value).toBe('Unsaved name');
 });

@@ -106,7 +106,7 @@ export function ContactsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: ContactsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('contacts');
   const router = useRouter();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
@@ -216,7 +216,7 @@ export function ContactsDataGrid({
         navigator.clipboard.writeText(`${window.location.origin}/crm/contacts/${contact.id}`);
       },
       canEdit: canEdit && recordAccess.canMutate(contact),
-      canArchive: canArchive && recordAccess.canMutate(contact),
+      canArchive: canArchive && recordAccess.canMutate(contact, 'canArchive'),
     });
   }, [onRowClick, onEdit, onArchive, canEdit, canArchive, recordAccess.canMutate, router]);
 

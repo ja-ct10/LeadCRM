@@ -133,7 +133,7 @@ export function LeadsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: LeadsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('leads');
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const router = useRouter();
@@ -287,7 +287,7 @@ export function LeadsDataGrid({
         navigator.clipboard.writeText(`${window.location.origin}/crm/leads/${lead.id}`);
       },
       canEdit: canEdit && recordAccess.canMutate(lead),
-      canArchive: canArchive && recordAccess.canMutate(lead),
+      canArchive: canArchive && recordAccess.canMutate(lead, 'canArchive'),
     });
 
     // Add Merge action (if user can edit)

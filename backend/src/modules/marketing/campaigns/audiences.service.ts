@@ -1,3 +1,4 @@
+import { crmActor } from '../../crm/access/crm-record-access.service';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { AudienceSourceSchema, AudiencePreviewSchema, AudiencePreviewRequestSchema, CreateAudienceSchema, CRM_STATUSES, LeadCreatedFilterSchema, leadCreatedBounds, type AudienceInput, type AudienceBreakdown, type AudiencePreviewResult, type EmailVariables, campaignFields, campaignFieldsForSource, campaignConditionField, campaignConditionError, FieldLayoutSchema, type CrmFieldCatalogEntry, type AudienceCondition } from '@leadcrm/shared';
@@ -302,7 +303,12 @@ async function visitBatches<T extends { id: string }>(read: (cursor?: string) =>
   }
 }
 
-export async function resolveAudience(tenantId: string, input: unknown, db: Prisma.TransactionClient = prisma, channel: 'EMAIL' | 'SMS' = 'EMAIL', page?: { page: number; limit: number }, requiredVariables?: RequiredCampaignVariables) {
+/** Campaign POST/PATCH requests need the same record scope as read-only previews. */
+export function resolveAudience(...args: Parameters<typeof resolveScopedAudience>) {
+  const actor = crmActor.getStore();
+  return actor ? crmActor.run({ ...actor, readRecords: true }, () => resolveScopedAudience(...args)) : resolveScopedAudience(...args);
+}
+async function resolveScopedAudience(tenantId: string, input: unknown, db: Prisma.TransactionClient = prisma, channel: 'EMAIL' | 'SMS' = 'EMAIL', page?: { page: number; limit: number }, requiredVariables?: RequiredCampaignVariables) {
   const dto = AudiencePreviewSchema.parse(input), scope = campaignScope(tenantId);
   const canReadAccount = await mayReadContactAccount(db, tenantId);
   const fields = await validateAudienceReferences(tenantId, dto, db);
@@ -310,18 +316,23 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   const companyKey = 'companyName';
   const companies = dto.conditions.some(condition => campaignConditionField(condition.field, fields)?.technicalKey === companyKey) ? await companyValues(tenantId, dto.source, db) : undefined;
   const staff = new Set<string>(), suppressed = new Map<string, string>();
-  const batch = (cursor?: string) => ({ take: 250, orderBy: { id: 'asc' as const }, where: { ...scope, ...(cursor ? { id: { gt: cursor } } : {}) } });
-  if (channel === 'EMAIL') {
-    await visitBatches(cursor => db.user.findMany({ ...batch(cursor), select: { id: true, email: true } }), u => { staff.add(u.email.trim().toLowerCase()); });
-    await visitBatches(cursor => db.emailDeliveryLog.findMany({ ...batch(cursor), where: { ...batch(cursor).where, OR: [{ status: { in: ['hard_bounce', 'blocked', 'spam', 'invalid_email', 'unsubscribed'] } }, { EmailEvent: { some: { eventType: { in: ['hard_bounce', 'blocked', 'spam', 'invalid_email', 'unsubscribe'] } } } }] }, select: { id: true, toEmail: true, status: true } }), log => { suppressed.set(log.toEmail.trim().toLowerCase(), log.status === 'unsubscribed' ? 'UNSUBSCRIBED' : 'BLOCKED'); });
-  }
-  await visitBatches(cursor => db.contact.findMany({ ...batch(cursor), where: { ...batch(cursor).where, doNotContact: true }, select: { id: true, email: true, phone: true } }), c => {
-    if (channel === 'SMS' && c.phone) { try { suppressed.set(normalizeSmsPhone(c.phone), 'DO_NOT_CONTACT'); } catch { /* Invalid numbers cannot be sent. */ } }
-    else if (c.email) suppressed.set(c.email.trim().toLowerCase(), 'UNSUBSCRIBED');
-  });
-  if (channel === 'EMAIL') await visitBatches(cursor => db.campaignContact.findMany({ ...batch(cursor), where: { ...batch(cursor).where, unsubscribed: true }, select: { id: true, email: true, lead: { select: { email: true } }, contact: { select: { email: true } } } }), c => {
-    for (const email of [c.email, c.lead?.email, c.contact?.email]) if (email) suppressed.set(email.trim().toLowerCase(), 'UNSUBSCRIBED');
-  });
+  // Consent and delivery suppression remain tenant-authoritative, including hidden duplicates.
+  const readSuppression = async () => {
+    const batch = (cursor?: string) => ({ take: 250, orderBy: { id: 'asc' as const }, where: { ...scope, ...(cursor ? { id: { gt: cursor } } : {}) } });
+    if (channel === 'EMAIL') {
+      await visitBatches(cursor => db.user.findMany({ ...batch(cursor), select: { id: true, email: true } }), u => { staff.add(u.email.trim().toLowerCase()); });
+      await visitBatches(cursor => db.emailDeliveryLog.findMany({ ...batch(cursor), where: { ...batch(cursor).where, OR: [{ status: { in: ['hard_bounce', 'blocked', 'spam', 'invalid_email', 'unsubscribed'] } }, { EmailEvent: { some: { eventType: { in: ['hard_bounce', 'blocked', 'spam', 'invalid_email', 'unsubscribe'] } } } }] }, select: { id: true, toEmail: true, status: true } }), log => { suppressed.set(log.toEmail.trim().toLowerCase(), log.status === 'unsubscribed' ? 'UNSUBSCRIBED' : 'BLOCKED'); });
+    }
+    await visitBatches(cursor => db.contact.findMany({ ...batch(cursor), where: { ...batch(cursor).where, doNotContact: true }, select: { id: true, email: true, phone: true } }), c => {
+      if (channel === 'SMS' && c.phone) { try { suppressed.set(normalizeSmsPhone(c.phone), 'DO_NOT_CONTACT'); } catch { /* Invalid numbers cannot be sent. */ } }
+      else if (c.email) suppressed.set(c.email.trim().toLowerCase(), 'UNSUBSCRIBED');
+    });
+    if (channel === 'EMAIL') await visitBatches(cursor => db.campaignContact.findMany({ ...batch(cursor), where: { ...batch(cursor).where, unsubscribed: true }, select: { id: true, email: true, lead: { select: { email: true } }, contact: { select: { email: true } } } }), c => {
+      for (const email of [c.email, c.lead?.email, c.contact?.email]) if (email) suppressed.set(email.trim().toLowerCase(), 'UNSUBSCRIBED');
+    });
+  };
+  const actor = crmActor.getStore();
+  await (actor ? crmActor.run({ ...actor, readRecords: false }, readSuppression) : readSuppression());
   const rawAllowlist = process.env.BREVO_SANDBOX_EMAILS?.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   const allowlist = process.env.NODE_ENV !== 'production' && rawAllowlist?.length ? new Set(rawAllowlist) : null;
   const breakdown = emptyBreakdown(), seen = new Set<string>(), records: ResolvedRecipient[] = [];
