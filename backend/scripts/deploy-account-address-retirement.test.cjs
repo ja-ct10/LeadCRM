@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { readFileSync, readdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { createHash } = require('node:crypto');
-const { expansion, retirement, dependencyGuard, accountDeployment, verifyAccountsRelease, assertCutoverApproval } = require('./deploy-account-address-retirement.cjs');
+const { expansion, retirement, dependencyGuard, accountDeployment, verifyAccountsRelease, assertCutoverApproval, preservationSnapshot } = require('./deploy-account-address-retirement.cjs');
 const { deploymentPlan } = require('./deploy-crm-imports.cjs');
 const directory = join(__dirname, '../prisma/migrations');
 const names = readdirSync(directory).filter(name => /^\d+_/.test(name));
@@ -44,6 +44,17 @@ test('read-only dependency guard contains no consolidation or column drops', () 
   assert.match(dependencyGuard, /ACTIVE_AUDIENCE_REQUIRES_REPAIR/);
   assert.match(dependencyGuard, /SCHEDULED_CAMPAIGN_REQUIRES_REPAIR/);
   assert.doesNotMatch(dependencyGuard, /\b(UPDATE|DELETE|ALTER|DROP|INSERT|CREATE)\b/i);
+});
+
+test('address verification remains read-only after TaskAccount and AccountProductInterest are physically retired', async () => {
+  const queries=[];
+  const snapshot=await preservationSnapshot({$queryRawUnsafe:async sql=>{
+    queries.push(sql);
+    return sql.includes('to_regclass')?[{present:false}]:[{count:0,preserved:'empty',digest:'empty'}];
+  }},false);
+  assert.deepEqual(Object.keys(snapshot.relationships),['Lead','Contact','Deal']);
+  assert.ok(!queries.some(sql=>/FROM public\."(?:TaskAccount|AccountProductInterest)"/.test(sql)));
+  assert.ok(queries.every(sql=>/^SELECT/.test(sql)));
 });
 
 const commit = 'a'.repeat(40);

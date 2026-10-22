@@ -9,7 +9,6 @@ export async function findCampaignReport(id: string, tenantId: string) {
       campaignContacts: { where: { tenantId }, orderBy: { id: 'asc' }, include: {
         lead: { select: { tenantId: true, firstName: true, lastName: true } },
         contact: { select: { tenantId: true, firstName: true, lastName: true } },
-        smsLinks: { where: { tenantId }, select: { url: true, clickedAt: true, lastClickedAt: true, clickCount: true } },
         smsWebhookReceipts: { where: { tenantId, status: { not: null } }, orderBy: { createdAt: 'desc' }, take: 10, select: { status: true, eventAt: true, createdAt: true } },
       } },
       emailDeliveryLogs: { where: { tenantId }, select: {

@@ -172,9 +172,10 @@ try {
   const saved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/operations/tasks'));
   await page.getByRole('button', { name: 'Create task', exact: true }).last().click();
   assert.equal((await saved).status(), 201);
-  const task = await prisma.task.findFirstOrThrow({ where: { tenantId, title: 'Browser-created canonical Task' }, include: { dealLinks: true, leadLinks: true, contactLinks: true, accountLinks: true } });
+  const task = await prisma.task.findFirstOrThrow({ where: { tenantId, title: 'Browser-created canonical Task' }, include: { dealLinks: true, leadLinks: true, contactLinks: true } });
   assert.deepEqual(new Set(task.dealLinks.map(row => row.dealId)), new Set(deals.map(row => row.id)));
-  assert.equal(task.leadLinks.length + task.contactLinks.length + task.accountLinks.length, 0);
+  assert.equal(task.leadLinks.length + task.contactLinks.length, 0);
+  assert.deepEqual(task.retiredAccountLinks, []);
   checks.push('Standalone Tasks: required Deal validation and canonical multi-Deal creation persistence');
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors }, null, 2));
