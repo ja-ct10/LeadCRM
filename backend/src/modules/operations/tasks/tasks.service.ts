@@ -66,17 +66,13 @@ function storedLinks(task: repo.TaskRow): TaskAssociations {
         ...(task.dealLinks ?? []).map((row) => row.dealId),
       ]),
     ],
-    accountIds: [
-      ...new Set([
-        ...(task.accountLinks ?? []).map((row) => row.accountId),
-      ]),
-    ],
+    accountIds: [],
   };
 }
 function splitLinks<T extends TaskLinkInput>(dto: T) {
   const { leadIds, contactIds, dealIds, accountIds, leadId, contactId, dealId, accountId, ...data } = dto;
   const links: TaskAssociations = {};
-  for (const kind of TASK_LINK_KINDS) {
+  for (const kind of TASK_LINK_KINDS.filter(kind => kind !== 'account')) {
     if (dto[`${kind}Ids`] !== undefined || dto[`${kind}Id`] !== undefined) {
       const ids = taskAssociationIds(dto, kind);
       links[`${kind}Ids`] = ids;
@@ -88,7 +84,6 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
   const lead = task.leadLinks[0]?.lead ?? null;
   const contact = task.contactLinks[0]?.contact ?? null;
   const deal = task.dealLinks[0]?.deal ?? null;
-  const account = task.accountLinks[0]?.account ?? null;
   const person = (value: typeof task.assignedUser | null) =>
     value?.tenantId === task.tenantId
       ? { id: value.id, firstName: value.firstName, lastName: value.lastName }
@@ -117,7 +112,7 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     leadId: lead?.id ?? null,
     contactId: contact?.id ?? null,
     dealId: deal?.id ?? null,
-    accountId: account?.id ?? null,
+    accountId: null,
     leads: [...new Map((task.leadLinks ?? []).map(row => row.lead)
       .flatMap(row => linkedPerson(row) ?? []).map(row => [row.id, row])).values()],
     contacts: [...new Map((task.contactLinks ?? []).map(row => row.contact)
@@ -128,13 +123,8 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
           row.tenantId === task.tenantId,
       )
       .map(({ id, title }) => [id, { id, title }] as const)).values()],
-    accounts: (task.accountLinks ?? [])
-      .filter(
-        (row) =>
-          row.account.tenantId === task.tenantId,
-      )
-      .map(({ account: { id, name } }) => ({ id, name })),
-    account: account?.tenantId === task.tenantId ? { id: account.id, name: account.name } : null,
+    accounts: [],
+    account: null,
     assignedUser: person(task.assignedUser),
     createdBy: person(task.createdBy),
     assignedByUser: person(task.assignedBy),

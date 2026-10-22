@@ -123,8 +123,8 @@ async function preservationSnapshot(tx, split) {
   const [addresses] = await tx.$queryRawUnsafe(projection);
   const relationships = {};
   for (const table of ['AccountProductInterest', 'TaskAccount', 'Lead', 'Contact', 'Deal']) {
-    if (table === 'AccountProductInterest') {
-      const [linkTable] = await tx.$queryRawUnsafe(`SELECT to_regclass('public."AccountProductInterest"') IS NOT NULL AS present`);
+    if (table === 'AccountProductInterest' || table === 'TaskAccount') {
+      const [linkTable] = await tx.$queryRawUnsafe(`SELECT to_regclass('public."${table}"') IS NOT NULL AS present`);
       if (!linkTable.present) continue;
     }
     // Identifiers come exclusively from this fixed allowlist.

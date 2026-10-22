@@ -41,14 +41,6 @@ export const taskInclude = {
       },
     },
   },
-  accountLinks: {
-    orderBy: [{ position: "asc" }, { accountId: "asc" }],
-    include: {
-      account: {
-        select: { id: true, name: true, tenantId: true },
-      },
-    },
-  },
   assignedUser: { select: person },
   createdBy: { select: person },
   assignedBy: { select: person },
@@ -57,10 +49,10 @@ export const taskInclude = {
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
 /** One batch per source kind; never infer connections from names or company text. */
-export async function findTaskRecordContext(tenantId: string, ids: Required<TaskAssociations>, client: TaskClient = prisma) {
+export async function findTaskRecordContext(tenantId: string, ids: Required<Omit<TaskAssociations, 'accountIds'>>, client: TaskClient = prisma) {
   const account = { id: true, name: true, tenantId: true } as const;
   const deal = { id: true, title: true, tenantId: true } as const;
-  const [leads, contacts, deals, accounts] = await Promise.all([
+  const [leads, contacts, deals] = await Promise.all([
     ids.leadIds.length ? client.lead.findMany({
       where: { tenantId, id: { in: ids.leadIds } },
       select: { ...person, account: { select: account }, convertedContact: { select: person },
@@ -78,11 +70,8 @@ export async function findTaskRecordContext(tenantId: string, ids: Required<Task
         leadDeals: { where: { tenantId }, select: { lead: { select: { ...person, contactId: true, convertedAt: true } } } },
         contactDeals: { where: { tenantId }, select: { contact: { select: person } } } },
     }) : [],
-    ids.accountIds.length ? client.account.findMany({
-      where: { tenantId, id: { in: ids.accountIds } }, select: account,
-    }) : [],
   ]);
-  return { leads, contacts, deals, accounts };
+  return { leads, contacts, deals };
 }
 
 export async function withTaskTransaction<T>(
@@ -377,15 +366,8 @@ export async function findFilteredDealOptions(tenantId: string, query: import('z
   }, { isolationLevel: 'RepeatableRead' });
 }
 
-export function findTaskAccounts(tenantId: string, ids: string[]) {
-  return prisma.account.findMany({
-    where: { tenantId, id: { in: ids } },
-    select: { id: true, name: true },
-  });
-}
-
 export function taskAssociationWhere(
-  kind: TaskLinkKind,
+  kind: Exclude<TaskLinkKind, 'account'>,
   id: string,
   tenantId: string,
 ): Prisma.TaskWhereInput {
@@ -398,11 +380,11 @@ export function taskContextWhere(
   id: string,
   tenantId: string,
 ): Prisma.TaskWhereInput {
+  if (kind === 'account') return { dealLinks: { some: { tenantId, deal: { tenantId, accountId: id } } } };
   const direct = taskAssociationWhere(kind, id, tenantId);
   if (kind === 'deal') return direct;
   const related: Prisma.DealWhereInput = kind === 'lead'
     ? { tenantId, leadDeals: { some: { tenantId, leadId: id } } }
-    : kind === 'account' ? { tenantId, accountId: id }
     : { tenantId, OR: [
       { contactDeals: { some: { tenantId, contactId: id } } },
       { leadDeals: { some: { tenantId, lead: { tenantId, contactId: id, convertedAt: { not: null } } } } },
@@ -414,7 +396,7 @@ export function taskContextWhere(
 }
 export async function replaceTaskLinks(
   task: { id: string; tenantId: string },
-  links: TaskAssociations,
+  links: Omit<TaskAssociations, 'accountIds'>,
   client: TaskClient,
 ) {
   const where = {
@@ -450,17 +432,6 @@ export async function replaceTaskLinks(
         data: links.dealIds.map((dealId, position) => ({
           ...where,
           dealId,
-          position,
-        })),
-      });
-  }
-  if (links.accountIds !== undefined) {
-    await client.taskAccount.deleteMany({ where });
-    if (links.accountIds.length)
-      await client.taskAccount.createMany({
-        data: links.accountIds.map((accountId, position) => ({
-          ...where,
-          accountId,
           position,
         })),
       });
@@ -542,7 +513,7 @@ async function relatedOptionFilters(
 /** Called only from an already-authorized CRM merge transaction. */
 export async function reassignTaskLinks(
   client: TaskClient,
-  kind: TaskLinkKind,
+  kind: Exclude<TaskLinkKind, 'account'>,
   primaryId: string,
   secondaryId: string,
   tenantId: string,
@@ -556,7 +527,6 @@ export async function reassignTaskLinks(
       lead: task.leadLinks.map((row) => row.leadId),
       contact: task.contactLinks.map((row) => row.contactId),
       deal: task.dealLinks.map((row) => row.dealId),
-      account: task.accountLinks.map((row) => row.accountId),
     };
     const ids = [
       ...new Set(

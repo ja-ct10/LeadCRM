@@ -56,7 +56,11 @@
     "db:accounts:fields:retire": "node scripts/deploy-account-fields-retirement.cjs --retire",
     "db:accounts:notes:status": "node scripts/deploy-account-notes-retirement.cjs --status",
     "db:accounts:notes:verify": "node scripts/deploy-account-notes-retirement.cjs --verify",
-    "db:accounts:notes:retire": "node scripts/deploy-account-notes-retirement.cjs --retire"
+    "db:accounts:notes:retire": "node scripts/deploy-account-notes-retirement.cjs --retire",
+    "test:retired-relations": "node scripts/test-retired-relationships.mjs",
+    "db:retired-relations:status": "node scripts/deploy-retired-relationships.cjs --status",
+    "db:retired-relations:verify": "node scripts/deploy-retired-relationships.cjs --verify",
+    "db:retired-relations:retire": "node scripts/deploy-retired-relationships.cjs --retire"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

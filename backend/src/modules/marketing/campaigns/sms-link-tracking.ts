@@ -1,58 +1,50 @@
-import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { campaignLinkDestination, mapCampaignTextLinks, smsCampaignTrackingUrl, SMS_LINK_TOKEN_PATTERN } from '@leadcrm/shared';
+import { campaignLinkDestination, SMS_LINK_TOKEN_PATTERN } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
-import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
-import { recalculateCampaignDelivery } from './campaign-delivery-status';
 
-export function smsTrackingOrigin(): string {
-  try {
-    const value = process.env.APP_URL?.trim() || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : '');
-    const url = new URL(smsCampaignTrackingUrl(value, 'x'.repeat(24)));
-    if (process.env.NODE_ENV === 'production' && (url.protocol !== 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new Error();
-    return url.origin;
-  } catch { throw new AppError('Configure APP_URL as the public website origin before sending SMS links.', 503); }
+export interface SmsLinkHistory {
+  id: string;
+  url: string;
+  clickedAt: Date | null;
+  lastClickedAt: Date | null;
+  clickCount: number;
 }
 
-export function prepareSmsLinks(text: string, origin?: string) {
-  const links = new Map<string, { id: string; url: string }>();
-  const message = mapCampaignTextLinks(text, url => {
-    const link = links.get(url) ?? { id: randomBytes(18).toString('base64url'), url };
-    links.set(url, link);
-    return smsCampaignTrackingUrl(origin ?? smsTrackingOrigin(), link.id);
+function historyDate(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  // PostgreSQL timestamp(3) JSON has no zone; the preserved values are UTC.
+  const timestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value) ? value + 'Z' : value;
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+/** The retirement migration freezes these receipts; new SMS never creates them. */
+export function readSmsLinkHistory(value: unknown): SmsLinkHistory[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const link = entry as Record<string, unknown>;
+    if (typeof link.id !== 'string' || !SMS_LINK_TOKEN_PATTERN.test(link.id)
+      || typeof link.url !== 'string' || !campaignLinkDestination(link.url)
+      || typeof link.clickCount !== 'number' || !Number.isSafeInteger(link.clickCount) || link.clickCount < 0) return [];
+    return [{ id: link.id, url: link.url, clickedAt: historyDate(link.clickedAt), lastClickedAt: historyDate(link.lastClickedAt), clickCount: link.clickCount }];
   });
-  return { message, links: [...links.values()] };
 }
 
-// Known preview/scanner requests must not be reported as recipient engagement.
-// Unidentified automation cannot reliably be distinguished from a browser.
-export function isSmsLinkPreview(method: string, headers: { userAgent?: string; purpose?: string; secPurpose?: string }) {
-  return method !== 'GET' || /prefetch|preview/i.test(`${headers.purpose ?? ''} ${headers.secPurpose ?? ''}`)
-    || /bot|crawler|spider|preview|facebookexternalhit|facebookcatalog|WhatsApp|SkypeUriPreview|Google-Safety|SafeLinks|Microsoft Office|curl\/|wget\//i.test(headers.userAgent ?? '');
-}
-
-export async function visitSmsLink(token: string, recordClick: boolean): Promise<string> {
+export async function visitSmsLink(token: string): Promise<string> {
   if (!SMS_LINK_TOKEN_PATTERN.test(token)) throw new AppError('SMS link not found.', 404);
-  // Public discovery resolves one opaque token; all subsequent reads/writes enter its tenant.
-  const link = await prisma.smsCampaignLink.findUnique({ where: { id: token }, select: { tenantId: true, campaignContactId: true, url: true, campaignContact: { select: { campaignId: true } } } });
-  if (!link || !campaignLinkDestination(link.url)) throw new AppError('SMS link not found.', 404);
-  if (!recordClick) return link.url;
-  await tenantContext.run({ tenantId: link.tenantId }, () => prisma.$transaction(async tx => {
-    const campaign = await tx.campaign.update({ where: { id: link.campaignContact.campaignId, tenantId: link.tenantId }, data: { engagement: { increment: 0 } } });
-    const row = await tx.campaignContact.findUniqueOrThrow({ where: { id: link.campaignContactId, tenantId: link.tenantId } });
-    if (campaign.type !== 'SMS' || campaign.smsTrackingVersion !== 1 || campaign.isArchived || !campaign.submissionStartedAt || !row.submissionAttemptedAt || row.status === 'excluded'
-      || (!row.submittedAt && !['submitting', 'sent', 'delivered', 'unknown'].includes(row.status) && row.failureReason !== 'PROVIDER_SUBMISSION_UNCONFIRMED')) return;
-    const now = new Date();
-    const current = await tx.smsCampaignLink.findUniqueOrThrow({ where: { id: token, tenantId: link.tenantId } });
-    await tx.smsCampaignLink.update({ where: { id: token, tenantId: link.tenantId }, data: { clickedAt: current.clickedAt ?? now, lastClickedAt: now, clickCount: { increment: 1 } } });
-    if (!row.clickedAt) {
-      await tx.campaignContact.update({ where: { id: row.id, tenantId: link.tenantId }, data: { clickedAt: now } });
-      await recalculateCampaignDelivery(tx, campaign.id, link.tenantId, true);
-    }
-  }));
-  return link.url;
+  // Public discovery uses indexed JSON containment on immutable receipts. Fail
+  // closed if corrupted history ever assigns one opaque token to two recipients.
+  const matches = await prisma.campaignContact.findMany({
+    where: { smsLinkHistory: { array_contains: [{ id: token }] } },
+    select: { smsLinkHistory: true }, take: 2,
+  });
+  if (matches.length !== 1) throw new AppError('SMS link not found.', 404);
+  const links = readSmsLinkHistory(matches[0].smsLinkHistory).filter(link => link.id === token);
+  if (links.length !== 1) throw new AppError('SMS link not found.', 404);
+  return links[0].url;
 }
 
 export const smsLinkRouter = Router();
@@ -60,7 +52,6 @@ smsLinkRouter.all('/:token', rateLimit({ windowMs: 60000, limit: 300, standardHe
   res.set({ 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' });
   try {
     if (!['GET', 'HEAD'].includes(req.method)) { res.set('Allow', 'GET, HEAD').status(405).end(); return; }
-    const preview = isSmsLinkPreview(req.method, { userAgent: req.get('User-Agent'), purpose: req.get('Purpose'), secPurpose: req.get('Sec-Purpose') });
-    res.redirect(302, await visitSmsLink(String(req.params.token), !preview));
+    res.redirect(302, await visitSmsLink(String(req.params.token)));
   } catch (error) { next(error); }
 });

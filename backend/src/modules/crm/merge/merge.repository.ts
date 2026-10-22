@@ -1,4 +1,4 @@
-import {taskAssociationWhere, reassignTaskLinks} from "../../operations/tasks/tasks.repository";
+import {taskAssociationWhere, taskContextWhere, reassignTaskLinks} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import type { Prisma } from '@prisma/client';
 import type { RelationshipCounts } from './merge.types';
@@ -39,7 +39,7 @@ export async function countAccountRelationships(id: string, tenantId: string): P
     prisma.lead.count({ where: { accountId: id, tenantId } }),
     // Contacts link to Account via Contact.accountId (ADR-001 canonical path).
     prisma.contact.count({ where: { accountId: id, tenantId, isArchived: false } }),
-    prisma.task.count({where:{tenantId,...taskAssociationWhere("account",id,tenantId)}}),
+    prisma.task.count({where:{tenantId,...taskContextWhere("account",id,tenantId)}}),
   ]);
   return { activities, tasks, deals, leads, contacts };
 }
@@ -208,7 +208,9 @@ export async function reassignAccountRelationships(
   secondaryId: string,
   tenantId: string,
 ): Promise<RelationshipCounts> {
-  const tasks = await reassignTaskLinks(tx,"account",primaryId,secondaryId,tenantId);
+  // Account Task context follows the Deals reassigned below; retired snapshots
+  // and event-time history retain their original Account identity.
+  const tasks = await tx.task.count({ where: { tenantId, ...taskContextWhere('account', secondaryId, tenantId) } });
   // Leads
   const leads = await tx.lead.updateMany({
     where: { accountId: secondaryId, tenantId },
@@ -237,7 +239,7 @@ export async function reassignAccountRelationships(
 
   return {
     activities: activities.count,
-    tasks: tasks.count,
+    tasks,
     deals: deals.count,
     leads: leads.count,
     contacts: contacts.count,

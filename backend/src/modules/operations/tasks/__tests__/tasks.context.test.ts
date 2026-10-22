@@ -7,22 +7,22 @@ const task: TaskRecord = { id: 'task', tenantId: 'tenant', title: 'Workflow foll
 const person = (id: string, tenantId = 'tenant') => ({ id, tenantId, firstName: id, lastName: 'Person' });
 const account = { id: 'account', tenantId: 'tenant', name: 'Acme' };
 
-it('shows Deal workflow CRM connections, deduplicates junction/legacy records, and preserves explicit associations', () => {
-  const result = withTaskContext(task, { leads: [], contacts: [], accounts: [account], deals: [{ id: 'deal', tenantId: 'tenant', title: 'Expansion', organization: account, lead: person('lead'), contact: person('contact'), leadDeals: [{ lead: person('lead') }], contactDeals: [{ contact: person('contact') }] }] });
+it('derives the Account through Deals and clears retired direct Account response fields', () => {
+  const result = withTaskContext(task, { leads: [], contacts: [], deals: [{ id: 'deal', tenantId: 'tenant', title: 'Expansion', organization: account, leadDeals: [{ lead: { ...person('lead'), contactId: null, convertedAt: null } }], contactDeals: [{ contact: person('contact') }] }] });
   expect(result.relatedRecords).toEqual([
+    { kind: 'account', id: 'account', label: 'Acme', via: 'Deal: Expansion' },
     { kind: 'lead', id: 'lead', label: 'lead Person', via: 'Deal: Expansion' },
     { kind: 'contact', id: 'contact', label: 'contact Person', via: 'Deal: Expansion' },
   ]);
   expect(result.dealIds).toEqual(['deal']);
   expect(result.leadIds).toBeUndefined();
-  expect(result.account).toEqual({ id: 'account', name: 'Acme' });
-  expect(result.accounts).toEqual([result.account]);
+  expect(result).toMatchObject({ accountId: null, accountIds: [], account: null, accounts: [] });
 });
 
 it('keeps foreign-tenant and unrelated source records out of the response', () => {
-  const result = withTaskContext(task, { leads: [], contacts: [], accounts: [{ ...account, tenantId: 'foreign' }], deals: [
-    { id: 'deal', tenantId: 'tenant', title: 'Expansion', organization: { ...account, id: 'foreign', tenantId: 'foreign' }, lead: person('foreign', 'foreign'), contact: null, leadDeals: [], contactDeals: [] },
-    { id: 'unrelated', tenantId: 'tenant', title: 'Other', organization: null, lead: person('other'), contact: null, leadDeals: [], contactDeals: [] },
+  const result = withTaskContext(task, { leads: [], contacts: [], deals: [
+    { id: 'deal', tenantId: 'tenant', title: 'Expansion', organization: { ...account, id: 'foreign', tenantId: 'foreign' }, leadDeals: [], contactDeals: [] },
+    { id: 'unrelated', tenantId: 'tenant', title: 'Other', organization: null, leadDeals: [], contactDeals: [] },
   ] });
   expect(result.relatedRecords).toEqual([]);
   expect(result.accounts).toEqual([]);
@@ -32,8 +32,13 @@ it('keeps foreign-tenant and unrelated source records out of the response', () =
 it('includes the connected Account, converted Contact, and all Deals for a Lead task', () => {
   const deal = { id: 'deal', tenantId: 'tenant', title: 'Expansion' };
   const result = withTaskContext({ ...task, dealIds: [], accountIds: [], accountId: null, leadIds: ['lead'] }, {
-    leads: [{ ...person('lead'), account, convertedContact: person('contact'), deals: [deal], leadDeals: [{ deal }] }], contacts: [], deals: [], accounts: [],
+    leads: [{ ...person('lead'), account, convertedContact: person('contact'), leadDeals: [{ deal }] }], contacts: [], deals: [],
   });
   expect(result.relatedRecords?.map(row => row.kind)).toEqual(['contact', 'account', 'deal']);
   expect(result.contactIds).toBeUndefined();
+});
+
+it('does not turn a retired Account-only association into current CRM context', () => {
+  const result = withTaskContext({ ...task, dealIds: [] }, { leads: [], contacts: [], deals: [] });
+  expect(result).toMatchObject({ accountId: null, accountIds: [], account: null, accounts: [], relatedRecords: [], dealIds: [] });
 });
