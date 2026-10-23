@@ -14,6 +14,7 @@ import notificationsRoutes from './notifications.routes';
 import preferencesRoutes from '../../modules/preferences/preferences.routes';
 import tablePreferencesRoutes from '../../modules/preferences/table-preferences.routes';
 import { publicFormsRouter } from './public-forms.routes';
+import { crmRetirementMaintenance } from '../../core/maintenance/crm-retirement-maintenance';
 
 const router = Router();
 router.use('/webhooks/textbee', textbeeWebhookRouter);
@@ -26,7 +27,8 @@ router.get('/health', (_req, res) => {
     status:    'ok',
     commit:    process.env.SOURCE_COMMIT ?? process.env.RENDER_GIT_COMMIT ?? 'unknown',
     env:       process.env.NODE_ENV ?? 'development',
-    capabilities: ['canonical-crm-relations-v1', 'lead-form-contract-v1', 'contact-retirement-contract-v1', 'accounts-full-address-contract-v1', 'accounts-field-retirement-v1', 'accounts-activity-notes-v1', 'retired-relationships-v1', 'accounts-columns-retirement-v1'],
+    capabilities: ['canonical-crm-relations-v1', 'lead-form-contract-v1', 'contact-retirement-contract-v1', 'accounts-full-address-contract-v1', 'accounts-field-retirement-v1', 'accounts-activity-notes-v1', 'retired-relationships-v1', 'accounts-columns-retirement-v1', 'crm-columns-retirement-v1'],
+    maintenance: { active: crmRetirementMaintenance.active, ...crmRetirementMaintenance.status() },
   });
 });
 

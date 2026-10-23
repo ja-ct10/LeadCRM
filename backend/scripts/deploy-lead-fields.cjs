@@ -9,7 +9,7 @@ const fail = code => { throw Object.assign(new Error(code), { code }); };
 async function verifyLeadRelease({ api, commit, token }, request = fetch) {
   if (!api || !/^[a-f0-9]{40}$/.test(commit || '') || !token) fail('LEAD_RELEASE_CONFIGURATION_REQUIRED');
   const url = new URL(api);
-  if (url.protocol !== 'https:' || url.username || url.password) fail('HTTPS_API_REQUIRED');
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1','localhost'].includes(url.hostname)) || url.username || url.password) fail('HTTPS_API_REQUIRED');
   const get = async path => {
     const response = await request(api.replace(/\/$/, '') + path, { headers: { Authorization: `Bearer ${token}`, Cookie: `leadcrm_token=${token}`, 'Cache-Control': 'no-cache' }, redirect: 'error', signal: AbortSignal.timeout(20000) });
     if (!response.ok) fail('LEAD_API_CHECK_FAILED');

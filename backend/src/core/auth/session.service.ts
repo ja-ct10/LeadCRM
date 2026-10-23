@@ -4,6 +4,7 @@ import { AppError } from '../../shared/errors/app-error';
 import prisma from '../../config/database.config';
 import type { Prisma } from '@prisma/client';
 import { SESSION_IDLE_MS, SESSION_IDLE_MESSAGE } from '@leadcrm/shared';
+import { crmRetirementMaintenance } from '../maintenance/crm-retirement-maintenance';
 
 /**
  * Hash a JWT token for safe storage.
@@ -64,12 +65,13 @@ export async function validateSession(token: string, activityAt?: Date, explicit
 
   const cutoff = new Date(now.getTime() - SESSION_IDLE_MS);
   if (session.lastActiveAt <= cutoff) {
+    if (crmRetirementMaintenance.active) throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
     const revoked = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, lastActiveAt: { lte: cutoff } }, data: { revokedAt: now } });
     // A concurrent valid activity update won; validate that newer state.
     if (!revoked.count) return validateSession(token, activityAt, explicitActivity);
     throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
   }
-  if (activityAt && activityAt > session.lastActiveAt && (explicitActivity || +activityAt - +session.lastActiveAt >= 60000)) {
+  if (!crmRetirementMaintenance.active && activityAt && activityAt > session.lastActiveAt && (explicitActivity || +activityAt - +session.lastActiveAt >= 60000)) {
     const at = new Date(Math.min(activityAt.getTime(), now.getTime()));
     // Conditional writes cannot resurrect revoked/expired sessions or move activity backwards.
     const updated = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, expiresAt: { gt: now }, lastActiveAt: { gt: cutoff, lt: at } }, data: { lastActiveAt: at } });

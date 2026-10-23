@@ -9,6 +9,7 @@
   },
   "include": [
     "src/integrations/gmail/mailbox.integration.test.ts",
+    "src/core/maintenance/*.test.ts",
     "src/modules/crm/imports/imports.integration.test.ts",
     "src/modules/crm/companies/account-retirement*.test.ts"
   ],

@@ -10,16 +10,16 @@ export async function purgeExpiredImportUploads(now = new Date()) {
 }
 
 export function startImportCleanupScheduler() {
-  let running = false;
+  let pending: Promise<void> | undefined;
+  let stopping = false;
   const purge = async () => {
-    if (running) return;
-    running = true;
+    if (stopping || pending) return;
     try { await purgeExpiredImportUploads(); }
     catch { console.error('[crm-import-cleanup] Cleanup failed; retrying at the next interval.'); }
-    finally { running = false; }
   };
-  void purge();
-  const timer = setInterval(() => { void purge(); }, 60 * 60 * 1000);
+  const tick = () => { if (!stopping && !pending) pending = purge().finally(() => { pending = undefined; }); };
+  tick();
+  const timer = setInterval(tick, 60 * 60 * 1000);
   timer.unref();
-  return () => clearInterval(timer);
+  return async () => { stopping = true; clearInterval(timer); await pending; };
 }

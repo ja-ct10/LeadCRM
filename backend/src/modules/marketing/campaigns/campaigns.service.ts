@@ -447,6 +447,10 @@ export async function drainCampaignSubmissions() {
   do { await Promise.allSettled([...activePreparations, ...activeSubmissions]); }
   while (activePreparations.size || activeSubmissions.size);
 }
+export function resumeCampaignSubmissions() {
+  if (activePreparations.size || activeSubmissions.size) throw new Error('CAMPAIGN_DRAIN_INCOMPLETE');
+  acceptingSubmissions = true;
+}
 // Service-level completion is useful to workers/tests; HTTP uses queueCampaign below.
 export async function sendCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
   await assertCampaignSender(tenantId, userId);
