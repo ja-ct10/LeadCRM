@@ -25,6 +25,10 @@ const fail = (code, details) => { throw Object.assign(new Error(code), { code, d
 const quote = value => '"' + value.replaceAll('"','""') + '"';
 const literal = value => value == null ? 'NULL' : "'" + value.replaceAll("'","''") + "'";
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function intrinsicRetiredNotNull(constraint) {
+  return constraint.type === 'n' && constraint.local === true && constraint.inherited === 0
+    && constraint.columns?.length === 1 && fields[constraint.table]?.includes(constraint.columns[0]);
+}
 async function passiveFetch(url, options, fetcher = fetch) {
   for (let attempt=0;;attempt++) {
     const response = await fetcher(url,options);
@@ -91,7 +95,10 @@ async function snapshot(db) {
 async function schemaSnapshot(db) {
   const columns = (await db.$queryRawUnsafe(`SELECT table_schema,table_name,column_name,data_type,udt_name,is_nullable,column_default,identity_generation,is_generated,generation_expression
     FROM information_schema.columns WHERE table_schema IN ('public','crm_history') ORDER BY table_schema,table_name,column_name`)).filter(row => row.table_schema !== 'public' || !fields[row.table_name]?.includes(row.column_name));
-  const constraints = await db.$queryRawUnsafe(`SELECT n.nspname AS schema,c.relname AS table,k.conname AS name,pg_get_constraintdef(k.oid) AS definition FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','crm_history') ORDER BY 1,2,3`);
+  const constraints = (await db.$queryRawUnsafe(`SELECT n.nspname AS schema,c.relname AS table,k.conname AS name,k.contype::text AS type,k.conislocal AS local,k.coninhcount::int AS inherited,
+    ARRAY(SELECT a.attname::text FROM unnest(k.conkey) key JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=key ORDER BY a.attnum) AS columns,
+    pg_get_constraintdef(k.oid) AS definition FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','crm_history') ORDER BY 1,2,3`))
+    .filter(row => row.schema !== 'public' || !intrinsicRetiredNotNull(row));
   const triggers = await db.$queryRawUnsafe(`SELECT n.nspname AS schema,c.relname AS table,t.tgname AS name,t.tgenabled AS enabled,pg_get_triggerdef(t.oid) AS definition FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname IN ('public','crm_history') AND NOT t.tgisinternal AND NOT (n.nspname='public' AND ((c.relname='Lead' AND t.tgname='crm_preserve_retired_lead_fields') OR (c.relname='Account' AND t.tgname='preserve_account_note_write'))) ORDER BY 1,2,3`);
   const functions = await db.$queryRawUnsafe(`SELECT n.nspname AS schema,p.proname AS name,pg_get_function_identity_arguments(p.oid) AS args,pg_get_functiondef(p.oid) AS definition,pg_get_userbyid(p.proowner) AS owner,
@@ -184,14 +191,20 @@ async function audit(db) {
     if (hits.length) blockers.push({ kind: 'Campaign', id: c.id, fields: hits });
   }
   const dependencies = await db.$queryRawUnsafe(`SELECT c.relname AS table,a.attname AS column,pg_describe_object(d.classid,d.objid,d.objsubid) AS dependency,
-    t.tgname AS trigger,p.proname AS function,pn.nspname AS function_schema
+    t.tgname AS trigger,p.proname AS function,pn.nspname AS function_schema,
+    k.contype::text AS constraint_type,k.conislocal AS constraint_local,k.coninhcount::int AS constraint_inherited,
+    CASE WHEN k.conrelid=c.oid AND k.conkey=ARRAY[a.attnum]::smallint[] AND a.attnotnull THEN ARRAY[a.attname::text] ELSE ARRAY[]::text[] END AS constraint_columns
     FROM pg_depend d JOIN pg_class c ON c.oid=d.refobjid JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=d.refobjsubid
     LEFT JOIN pg_trigger t ON d.classid='pg_trigger'::regclass AND t.oid=d.objid LEFT JOIN pg_proc p ON p.oid=t.tgfoid LEFT JOIN pg_namespace pn ON pn.oid=p.pronamespace
+    LEFT JOIN pg_constraint k ON d.classid='pg_constraint'::regclass AND k.oid=d.objid
     WHERE n.nspname='public' AND d.classid<>'pg_attrdef'::regclass AND NOT a.attisdropped`);
   for (const d of dependencies) {
     const migrationOwned = d.table === 'Lead' && fields.Lead.includes(d.column) && d.trigger === 'crm_preserve_retired_lead_fields' && d.function === 'crm_preserve_retired_lead_fields' && d.function_schema === 'public'
       || d.table === 'Account' && d.column === 'internalNotes' && d.trigger === 'preserve_account_note_write' && d.function === 'preserve_account_note_write' && d.function_schema === 'crm_history';
-    if (fields[d.table]?.includes(d.column) && !migrationOwned) blockers.push({ kind: 'DatabaseDependency', ...d });
+    // PostgreSQL 18 also catalogs column NOT NULL attributes in pg_constraint.
+    // Only the same local, uninherited, single retired column is intrinsic.
+    const intrinsic = intrinsicRetiredNotNull({ table:d.table,type:d.constraint_type,local:d.constraint_local,inherited:d.constraint_inherited,columns:d.constraint_columns });
+    if (fields[d.table]?.includes(d.column) && !migrationOwned && !intrinsic) blockers.push({ kind: 'DatabaseDependency', ...d });
   }
   // The immutable Account migration invokes a reconciler which also changes old
   // layouts/workflow state. Require that every such mutation is already a no-op.
@@ -376,7 +389,7 @@ async function run(db, mode, env = process.env, dependencies = {}) {
     finally { await lockDb.$disconnect(); }
   }
 }
-module.exports = { run, plan, structure, snapshot, schemaSnapshot, compareSnapshot, audit, references, retiredField, preserveContacts, verifyArchives, retiredValues, verifyRelease, passiveFetch, writeFence, deadline, retirements, fields, digest };
+module.exports = { run, plan, structure, snapshot, schemaSnapshot, compareSnapshot, audit, references, retiredField, preserveContacts, verifyArchives, retiredValues, verifyRelease, passiveFetch, writeFence, deadline, retirements, fields, digest, intrinsicRetiredNotNull };
 if (require.main === module) {
   require('dotenv').config({quiet:true});
   const { PrismaClient } = require('@prisma/client');
