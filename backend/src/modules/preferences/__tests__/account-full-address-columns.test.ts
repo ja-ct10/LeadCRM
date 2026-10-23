@@ -31,8 +31,14 @@ it('prefers an existing Full Address preference and leaves other modules untouch
   expect(normalizeModuleColumns('accounts', columns)).toEqual([columns[1]]);
   expect(normalizeModuleColumns('contacts', columns)).toBe(columns);
   expect(ACCOUNTS_TABLE_SORT_FIELDS).toContain('address');
-  for (const field of ['activeProductIds', 'internalNotes', 'city', 'province', 'country']) {
+  for (const field of ['activeProductIds', 'internalNotes', 'tags', 'city', 'province', 'country']) {
     expect(ACCOUNTS_TABLE_COLUMNS.some(column => column.id === field)).toBe(false);
     expect(ACCOUNTS_TABLE_SORT_FIELDS).not.toContain(field);
   }
+});
+
+it('normalizes native tags without dropping a custom field or another module column', () => {
+  const columns = [{ id: 'tags', visible: true, order: 0 }, { id: 'custom-tag-context', visible: true, order: 1 }];
+  expect(normalizeModuleColumns('accounts', columns)).toEqual([columns[1]]);
+  expect(normalizeModuleColumns('deals', columns)).toEqual(columns);
 });

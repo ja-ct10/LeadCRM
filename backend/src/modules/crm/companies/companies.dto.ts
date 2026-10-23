@@ -11,7 +11,6 @@ const CompanyFieldsSchema = z.object({
   industry:       recordText().optional(),
   size:           z.enum(COMPANY_SIZE_OPTIONS).optional(),
   website:        z.string().url().optional().or(z.literal('')),
-  tags:           z.array(recordText(200)).max(100).default([]),
   address:        recordText().optional(),
   city:           recordText().optional(),
   province:       recordText().optional(),
@@ -21,7 +20,7 @@ const CompanyFieldsSchema = z.object({
 
 const rejectRetired = z.unknown().superRefine((value, context) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-  for (const field of RETIRED_ACCOUNT_FIELDS) if (Object.prototype.hasOwnProperty.call(value, field)) context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Account assignment, product fields and internal notes are retired.' });
+  for (const field of RETIRED_ACCOUNT_FIELDS) if (Object.prototype.hasOwnProperty.call(value, field)) context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'This Account field is retired.' });
 });
 
 // Accept legacy split-address input, but persist only the consolidated address.

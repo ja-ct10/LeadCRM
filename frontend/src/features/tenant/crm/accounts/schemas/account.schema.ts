@@ -9,7 +9,6 @@ export { COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
 
 export const CreateAccountSchema = AccountFieldsSchema.extend({
   size: AccountFieldsSchema.shape.size.or(z.literal('')),
-  tags: z.array(z.string()).default([]),
   notes: z.string().optional(),
 });
 

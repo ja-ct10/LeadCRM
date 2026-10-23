@@ -35,7 +35,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     productsNormalized: true, productLinks: { create: { productInterestId: productId, position: 0 } }, ...extra,
   } });
   const account = (extra: Partial<Prisma.AccountUncheckedCreateInput> = {}) => prisma.account.create({ data: {
-    tenantId, name: `Existing ${randomUUID()}`,  industry: 'Technology', address: 'Makati', notes: 'Preserve this Account', tags: ['existing'],
+    tenantId, name: `Existing ${randomUUID()}`,  industry: 'Technology', address: 'Makati', notes: 'Preserve this Account',
       ...extra,
   } });
   const contact = (accountId: string | null, extra: Partial<Prisma.ContactUncheckedCreateInput> = {}) => prisma.contact.create({ data: {

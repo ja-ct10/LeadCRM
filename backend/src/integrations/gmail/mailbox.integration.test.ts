@@ -307,7 +307,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await prisma.rolePermission.createMany({ data: ['leads', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true })) });
     await prisma.userRole.create({ data: { tenantId, userId: agent.id, roleId: role.id } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
-    const accountRecord = await prisma.account.create({ data: { tenantId, name: 'Batch account', tags: [] } });
+    const accountRecord = await prisma.account.create({ data: { tenantId, name: 'Batch account' } });
     const products = await Promise.all([25000, 15000].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Batch product ${index} ${randomUUID()}`, dealValue: value } })));
     await prisma.lead.update({ where: { id: c.lead.id }, data: { assignedUserId: agent.id, accountId: accountRecord.id } });
     const dto = { idempotencyKey: randomUUID(), title: 'Installation', pipelineId, stageId: stages.Lead,

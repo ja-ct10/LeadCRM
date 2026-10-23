@@ -9,13 +9,14 @@ import { CreateLeadSchema, NewAccountSchema } from '@leadcrm/shared';
 import { CreateClientContactSchema } from '../contacts-v2/contacts-v2.dto';
 import { crmActor } from '../access/crm-record-access.service';
 import * as merges from '../merge/merge.service';
+import { CreateCompanySchema } from './companies.dto';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_crm_polish_test(?:_\d+)?$/.test(url.pathname);
 describe.skipIf(!disposable)('Atomic organization creation over authenticated HTTP', () => {
   let tenantId: string, adminId: string, adminToken: string, staffToken: string, server: Server, base: string, roleId: string, productId: string;
   const scope = <T>(run: () => T) => tenantContext.run({ tenantId }, run);
-  const person = () => ({ firstName: 'Person', lastName: 'Polish', email: `${randomUUID()}@example.test`, status: 'Warm', requestId: randomUUID() });
+  const person = () => ({ firstName: 'Person', lastName: 'Polish', email: `${randomUUID()}@example.test`, status: 'Inquiry', requestId: randomUUID() });
   const company = () => ({ requestId: randomUUID(), name: `Company ${randomUUID()}`, industry: 'Technology', size: '11-50', website: 'https://company.test', address: '42 Main Street\nMakati, Philippines' });
   async function call(path: string, method: string, body: unknown, token = adminToken) {
     const response = await fetch(base + path, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -28,7 +29,7 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     adminId = admin.id;
     productId = (await scope(() => prisma.productInterest.create({ data: { tenantId, name: 'Polish Product', dealValue: 2500 } }))).id;
     const role = await scope(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Person intake' } })); roleId = role.id;
-    await scope(() => prisma.rolePermission.createMany({ data: ['leads', 'contacts'].map(module => ({ tenantId, roleId, module, canView: true, canCreate: true, canEdit: true })) }));
+    await scope(() => prisma.rolePermission.createMany({ data: ['leads', 'contacts'].map(module => ({ tenantId, roleId, module, canView: true, canViewAll: true, canCreate: true, canEdit: true })) }));
     const staff = await prisma.user.create({ data: { tenantId, firstName: 'Test', lastName: 'Staff', role: role.name, email: `${randomUUID()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId } } } });
     staffToken = (await issueAuthSession(staff)).token;
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
@@ -44,6 +45,44 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     expect(NewAccountSchema.safeParse({ ...newAccount, address: 'Bad\u0000address' }).success).toBe(false);
     expect(CreateLeadSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
     expect(CreateClientContactSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
+  });
+
+  it('runs Account CRUD, export and Activity with both retired columns physically absent', async () => {
+    const columns = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='Account' AND column_name IN ('tags','internalNotes')`);
+    expect(columns).toEqual([]);
+    const created = await call('/crm/accounts', 'POST', company());
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = created.body.data.id;
+    for (const field of ['tags', 'internalNotes']) {
+      expect(created.body.data).not.toHaveProperty(field);
+      expect((await call(`/crm/accounts/${id}`, 'PUT', { [field]: [] })).status).toBe(400);
+    }
+    const edited = await call(`/crm/accounts/${id}`, 'PUT', { website: 'https://repaired.test', address: 'Retained company address' });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect((await call(`/crm/accounts/${id}`, 'GET', undefined)).body.data.website).toBe('https://repaired.test');
+    const listed = await call('/crm/accounts?limit=100', 'GET', undefined);
+    expect(listed.status).toBe(200);
+    expect(listed.body.data.find((row: { id: string }) => row.id === id)).toBeDefined();
+    const exported = await fetch(base + '/crm/accounts/export', { headers: { Authorization: `Bearer ${adminToken}` } });
+    expect(exported.status).toBe(200);
+    const csv = await exported.text();
+    expect(csv.split('\n')[0]).not.toMatch(/Tags|Internal Notes/);
+    expect(csv).toContain('https://repaired.test');
+    const note = await call('/crm/activities', 'POST', { type: 'note', title: 'New authored note', description: 'Surviving Activity note', accountId: id });
+    expect(note.status, JSON.stringify(note.body)).toBe(201);
+    expect(await scope(() => prisma.activity.findFirst({ where: { tenantId, accountId: id, description: 'Surviving Activity note' } }))).toMatchObject({ createdById: adminId });
+  });
+
+  it('replays existing empty-tags receipt hashes without creating a second Account', async () => {
+    const input = company();
+    const { requestId, ...dto } = CreateCompanySchema.parse(input);
+    const requestHash = createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(dto).sort(([a], [b]) => a.localeCompare(b))))).digest('hex');
+    const account = await scope(() => prisma.account.create({ data: { ...dto, tenantId } }));
+    await scope(() => prisma.accountCreationReceipt.create({ data: { tenantId, requestId: requestId!, actorId: adminId, requestHash, accountId: account.id } }));
+    const replay = await call('/crm/accounts', 'POST', input);
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    expect(replay.body.data.id).toBe(account.id);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: input.name } }))).toBe(1);
   });
 
   it('replays standalone Account creation without duplicate records, receipts or audit entries', async () => {
@@ -116,7 +155,7 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     expect(untouched.body.data.map((row: { id: string }) => row.id)).toEqual([empty.id]);
     expect((await call(`/crm/accounts/${linked.id}`, 'GET', undefined)).body.data).toMatchObject({ dealCount: 105, dealValue: 1050 });
 
-    await scope(() => prisma.rolePermission.create({ data: { tenantId, roleId, module: 'accounts', canView: true } }));
+    await scope(() => prisma.rolePermission.create({ data: { tenantId, roleId, module: 'accounts', canView: true, canViewAll: true } }));
     const restricted = await call(query, 'GET', undefined, staffToken);
     expect(restricted.status).toBe(200);
     expect(restricted.body.data[0]).not.toHaveProperty('dealCount');
@@ -235,6 +274,7 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     const params = { tenantId, entityType: 'account' as const, primaryId: primary.id, secondaryId: secondary.id };
     const preview = await scope(() => merges.preview(params));
     expect(preview.fieldComparisons.map(field => field.field)).not.toContain('notes');
+    expect(preview.fieldComparisons.map(field => field.field)).not.toContain('tags');
     expect((await call('/crm/activities', 'POST', { type: 'note', title: 'Forged import', accountId: primary.id, metadata: { legacyAccountNote: 'v1' } })).status).toBe(403);
     await crmActor.run({ tenantId, userId: adminId }, () => scope(() => merges.execute({ ...params, userId: adminId, fieldResolutions: {} })));
     const notes = await scope(() => prisma.activity.findMany({ where: { tenantId, accountId: primary.id, type: 'note' } }));

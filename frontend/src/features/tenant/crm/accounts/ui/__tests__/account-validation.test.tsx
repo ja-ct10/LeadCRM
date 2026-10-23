@@ -32,7 +32,7 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
   for (const label of ['City', 'Province', 'Country']) expect(screen.queryByLabelText(label)).toBeNull();
   for (const field of ['assignedUserId', 'productInterests', 'activeProducts', 'taxId', 'customerType', 'customerSince']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
-  for (const field of ['notes', 'internalNotes', 'activeProducts']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
+  for (const field of ['notes', 'internalNotes', 'activeProducts', 'tags']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
 });
 
 it('awaits backend confirmation, retains failed input and exposes field errors for correction', async () => {

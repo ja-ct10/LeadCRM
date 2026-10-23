@@ -30,9 +30,8 @@ function canonical(value: unknown): unknown {
 /** Standalone, linked and conversion creation share validation, transaction and audit rules. */
 export async function createCompanyResult(tenantId: string, userId: string, input: CreateCompanyDto) {
   const { requestId, ...dto } = CreateCompanySchema.parse(input);
-  // Linked receipts written before standalone creation shared this policy omitted empty tags.
-  const { tags, ...fields } = dto;
-  const requestHash = createHash('sha256').update(JSON.stringify(canonical(tags?.length ? dto : fields))).digest('hex');
+  // Existing receipts already omitted empty native tags from their canonical payload.
+  const requestHash = createHash('sha256').update(JSON.stringify(canonical(dto))).digest('hex');
   return salesTransaction(async tx => {
     if (requestId) {
       const receipt = await tx.accountCreationReceipt.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });

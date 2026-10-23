@@ -24,6 +24,7 @@ const accountAddressRetirement = '20261202000000_retire_account_address_columns'
 const accountFieldPreservation = '20261207000000_account_field_preservation';
 const accountFieldRetirement = '20261208000000_retire_account_fields';
 const accountNotesRetirement = '20261210000000_retire_account_internal_notes';
+const accountColumnsRetirement = '20261227000000_retire_account_notes_and_tags';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const retiredRelationships = '20261226000000_retire_unused_relationship_tables';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
@@ -65,7 +66,7 @@ function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
   // CRM column retirement retains its separate verification gate. Other reviewed
   // transitions below can require a coordinated application release.
-  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement, accountNotesRetirement, retiredRelationships].filter(name => localNames.includes(name)
+  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement, accountNotesRetirement, retiredRelationships, accountColumnsRetirement].filter(name => localNames.includes(name)
     && !records.some(row => row.migration_name === name && finished(row)));
   if (target !== relationshipExpansion) return { through: target, exclude: deferred };
   const independent = [
@@ -168,6 +169,7 @@ function deploymentPlan(records, localNames) {
     '20261224000000_crm_group_status',
     // Coordinated feature retirement: snapshot and freeze old Task/SMS writers.
     '20261225000000_preserve_retired_relationships', retiredRelationships,
+    accountColumnsRetirement,
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

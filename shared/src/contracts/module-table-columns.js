@@ -11,8 +11,7 @@ exports.ACCOUNTS_TABLE_COLUMNS = [
     { id: 'size', label: 'Company Size', required: false, defaultVisible: true, defaultOrder: 2, group: 'Account Info', priority: 'medium' },
     { id: 'address', label: 'Company Address', required: false, defaultVisible: true, defaultOrder: 3, group: 'Location', priority: 'low' },
     { id: 'website', label: 'Website', required: false, defaultVisible: false, defaultOrder: 4, group: 'Account Info', priority: 'low' },
-    { id: 'tags', label: 'Tags', required: false, defaultVisible: false, defaultOrder: 5, group: 'Account Info', priority: 'low' },
-    { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 6, group: 'System', priority: 'low' },
+    { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 5, group: 'System', priority: 'low' },
 ];
 exports.ACCOUNTS_TABLE_SORT_FIELDS = ['name', 'industry', 'size', 'address', 'createdAt'];
 exports.CONTACTS_TABLE_COLUMNS = [
@@ -48,7 +47,7 @@ function normalizeModuleColumns(module, columns) {
         return columns.filter(column => column.id !== 'industry');
     if (module === 'accounts') {
         const legacyAddressIds = ['city', 'province', 'country'];
-        const removedIds = ['assignedUserId', 'assignedUser', 'productInterestIds', 'productInterests', 'productInterest', 'activeProductIds', 'activeProducts', 'internalNotes', ...legacyAddressIds];
+        const removedIds = ['assignedUserId', 'assignedUser', 'productInterestIds', 'productInterests', 'productInterest', 'activeProductIds', 'activeProducts', 'internalNotes', 'tags', ...legacyAddressIds];
         const replacement = columns.some(column => column.id === 'address') ? undefined
             : [...columns].sort((a, b) => a.order - b.order).find(column => legacyAddressIds.includes(column.id));
         return columns.flatMap(column => column === replacement ? [{ ...column, id: 'address' }]
