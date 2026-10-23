@@ -199,12 +199,13 @@ async function recoverRetirement(db) {
   console.log(JSON.stringify({ recovered: retirement, historical: counts.map(row => ({ module: row.module, jobs: Number(row.jobs), results: Number(row.results) })) }));
 }
 
-function runPrisma(args) {
-  const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), ...args], { cwd: resolve(__dirname, '..'), env: process.env, stdio: 'inherit', windowsHide: true });
+function runPrisma(args, options = {}) {
+  const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), ...args], { cwd: resolve(__dirname, '..'), env: options.env || process.env, stdio: 'inherit', windowsHide: true, ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}) });
+  if (result.error?.code === 'ETIMEDOUT') fail('PRISMA_ROLLOUT_TIMED_OUT');
   if (result.status !== 0) fail('PRISMA_ROLLOUT_FAILED');
 }
 
-function migrate(through, exclude = []) {
+function migrate(through, exclude = [], options = {}) {
   // Prisma has no deploy-to-version option. A temporary copy of the exact checked-in
   // history lets phase 1 stop before retirement without altering migration checksums.
   const parent = realpathSync(tmpdir()), stage = mkdtempSync(join(parent, 'leadcrm-import-migrations-'));
@@ -215,7 +216,7 @@ function migrate(through, exclude = []) {
     for (const name of readdirSync(join(root, 'migrations'))) {
       if (/^\d+_/.test(name) && name <= through && !exclude.includes(name)) cpSync(join(root, 'migrations', name), join(stage, 'migrations', name), { recursive: true });
     }
-    runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')]);
+    runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')], options);
   } finally {
     const target = realpathSync(stage);
     if (!target.startsWith(parent + sep) || !target.slice(parent.length + 1).startsWith('leadcrm-import-migrations-')) throw new Error('Unsafe temporary cleanup path');
