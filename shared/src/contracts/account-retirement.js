@@ -5,10 +5,10 @@ exports.accountAdditionalGroupId = accountAdditionalGroupId;
 exports.isRetiredAccountField = isRetiredAccountField;
 exports.retiredAccountWorkflowReferences = retiredAccountWorkflowReferences;
 exports.upgradeAccountFieldLayout = upgradeAccountFieldLayout;
-exports.RETIRED_ACCOUNT_FIELDS = ['assignedUserId', 'assignedUser', 'productInterest', 'productInterests', 'productInterestId', 'productInterestIds', 'activeProducts', 'activeProductIds', 'productInterestOther', 'productsNormalized', 'productLinks', 'internalNotes'];
+exports.RETIRED_ACCOUNT_FIELDS = ['assignedUserId', 'assignedUser', 'productInterest', 'productInterests', 'productInterestId', 'productInterestIds', 'activeProducts', 'activeProductIds', 'productInterestOther', 'productsNormalized', 'productLinks', 'internalNotes', 'tags'];
 exports.ACCOUNT_ADDITIONAL_GROUP_ID = 'accounts:additional-information';
 exports.ACCOUNT_RETIRED_GROUP_IDS = ['accounts:section:2', 'accounts:section:3', 'accounts:section:4'];
-exports.ACCOUNT_RETIREMENT_REASON = 'Account assignment, product fields and internal notes are retired. Repair the referenced fields before activating this workflow.';
+exports.ACCOUNT_RETIREMENT_REASON = 'Account assignment, product fields, internal notes and tags are retired. Repair the referenced fields before activating this workflow.';
 function accountAdditionalGroupId(groups) {
     return groups.find(group => group.id === exports.ACCOUNT_ADDITIONAL_GROUP_ID)?.id
         ?? [...groups].filter(group => !exports.ACCOUNT_RETIRED_GROUP_IDS.includes(group.id) && group.label.trim().toLowerCase() === 'additional information').sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))[0]?.id

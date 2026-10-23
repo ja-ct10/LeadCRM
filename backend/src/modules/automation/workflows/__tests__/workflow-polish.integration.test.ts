@@ -44,7 +44,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     taskOwner = await prisma.user.create({ data: { tenantId, role: 'Task staff', email: `task-${randomUUID()}@camxian.com`, firstName: 'Task', lastName: 'Staff',
       userRoles: { create: { roleId: taskRole.id } } } });
     await scope(async () => {
-      account = await prisma.account.create({ data: { tenantId, name: 'Workflow account',  tags: [],   } });
+      account = await prisma.account.create({ data: { tenantId, name: 'Workflow account',     } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Lead', lastName: 'Test', email: 'lead@example.test', phone: '+639171234567', assignedUserId: actor.id, productInterest: [] } });
       contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: 'contact@example.test', phone: '+639181234567', accountId: account.id, assignedUserId: actor.id, productInterests: [] } });
       others = await prisma.productInterest.create({ data: { tenantId, name: 'Others', dealValue: 0 } });

@@ -35,7 +35,7 @@ async function call(path: string, method = 'GET', cookie = adminCookie, body?: u
 async function create(module: Module, tenant = tenantId) {
   if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
   if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', productInterests: [] } });
-  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [],   } });
+  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account',    } });
 }
 
 beforeAll(async () => {

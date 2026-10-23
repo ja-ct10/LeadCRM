@@ -149,12 +149,6 @@ export function AccountsDataGrid({
 
     website: (_value: unknown, row: Account) => renderLink(row.website ?? null),
 
-    tags: (_value: unknown, row: Account) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.tags && row.tags.length > 0 ? row.tags.join(', ') : '—'}
-      </p>
-    ),
-
     createdAt: (_value: unknown, row: Account) => renderDate(row.createdAt),
   }), [viewMode]);
 
@@ -174,7 +168,6 @@ export function AccountsDataGrid({
       size: 140,
       address: 280,
       website: 180,
-      tags: 160,
       createdAt: 140,
     },
   });

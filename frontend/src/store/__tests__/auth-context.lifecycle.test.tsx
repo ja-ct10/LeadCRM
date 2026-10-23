@@ -305,12 +305,13 @@ it('exposes Retry if canonical setup resynchronization fails', async () => {
 it.each(['grants', 'setup error'])('ignores late %s across onboarding transitions', async outcome => {
   mocks.me.mockResolvedValue({ data: { user } });
   show();
-  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  await waitFor(() => expect(auth.userCan('dashboard', 'canView')).toBe(true));
   let resolve!: (value: unknown) => void;
   let reject!: (error: unknown) => void;
   mocks.permissions.mockReturnValueOnce(new Promise((done, fail) => { resolve = done; reject = fail; }));
   let oldRequest!: Promise<void>;
   act(() => { oldRequest = auth.refreshPermissions(); });
+  expect(mocks.permissions).toHaveBeenCalledTimes(2);
   act(() => auth.applyAuthUser({ ...user, onboardingCompletedAt: null } as never, user.id));
   expect(auth.isPermissionsLoaded).toBe(false);
   mocks.permissions.mockResolvedValue({ data: {} });

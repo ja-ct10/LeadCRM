@@ -398,7 +398,6 @@ model Account {
   size             String? // "1-10" | "11-50" | "51-200" | "200+"
   website          String?
   notes            String?   @db.Text
-  tags             String[] @default([])
   address          String?
   isArchived       Boolean   @default(false)
   deletedAt        DateTime?
