@@ -55,3 +55,10 @@ test('retries only passive reconnect reads and never a mutation', async () => {
 test('refuses an operator view filtered by row-level security', async () => {
   await assert.rejects(operator.audit({$queryRawUnsafe:async()=>[{schema:'public',table:'Contact'}]}),/OPERATOR_RLS_SCOPE_REQUIRES_REVIEW/);
 });
+test('recognizes only intrinsic PostgreSQL 18 NOT NULL attributes of retired columns', () => {
+  const intrinsic={table:'Contact',type:'n',local:true,inherited:0,columns:['score']};
+  assert.equal(operator.intrinsicRetiredNotNull(intrinsic),true);
+  assert.equal(operator.intrinsicRetiredNotNull({...intrinsic,columns:['customerType']}),true);
+  for(const unsafe of [{type:'c'},{type:'f'},{local:false},{inherited:1},{columns:['notes']},{columns:['score','id']},{table:'Lead'}])
+    assert.ok(!operator.intrinsicRetiredNotNull({...intrinsic,...unsafe}));
+});

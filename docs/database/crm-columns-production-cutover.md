@@ -27,7 +27,15 @@ Lead, Deal and custom fields with similar names. It checks active Workflow
 selectors, changed-field conditions, inline and referenced template tokens,
 active audience conditions, executable Campaigns and database dependencies.
 Existing preservation triggers are the only explicitly migration-owned trigger
-exceptions. Inactive definitions remain historical data. Account reconciliation
+exceptions. Inactive definitions remain historical data. The dependency audit
+also recognizes [PostgreSQL 18's cataloged NOT NULL attributes](https://www.postgresql.org/docs/18/catalog-pg-constraint.html)
+only when they are local, uninherited constraints on one approved retired
+column. These attributes leave with that column, just like its default. Other
+constraints, surviving-column NOT NULL attributes, and inherited constraints
+continue to block retirement. Retained-schema comparisons exclude only those
+intrinsic retired-column attributes.
+
+Account reconciliation
 must be a no-op for Workflow state, saved layouts and custom-field definitions;
 the operator refuses to pause or rewrite them to permit a drop.
 
