@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { cookies } from 'next/headers';
 import { League_Spartan, Poppins } from 'next/font/google';
 import '../src/index.css';
 import { AppProviders } from '../src/shared/providers/app-providers';
@@ -35,7 +36,8 @@ export const viewport: Viewport = {
   themeColor: '#07142A',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const initialHasSessionCookie = Boolean((await cookies()).get('leadcrm_token')?.value);
   return (
     <html lang="en" suppressHydrationWarning className={`${leagueSpartan.variable} ${poppins.variable}`}>
       <head>
@@ -54,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }} />
       </head>
       <body className={poppins.className} suppressHydrationWarning>
-        <AppProviders>
+        <AppProviders initialHasSessionCookie={initialHasSessionCookie}>
           <ThemeProvider>
             <PwaInstallProvider>
               {children}

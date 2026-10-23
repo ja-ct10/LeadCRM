@@ -23,3 +23,19 @@ it.each([
 ])('preserves the module context for %s', (path, module) => {
   expect(resolveModulePath(path)).toBe(module);
 });
+
+it.each([
+  '/crm/deals', '/crm/deals?tab=my', '/crm/deals/record-id?tab=my#activity',
+  '/crm/pipeline', '/crm/pipeline?tab=my',
+])('uses the canonical Deals module for %s', path => {
+  expect(resolveModulePath(path)).toBe('deals');
+});
+
+it.each(['leads', 'contacts', 'accounts'])('ignores query and hash suffixes for %s', module => {
+  expect(resolveModulePath(`/crm/${module}?tab=my#activity`)).toBe(module);
+  expect(resolveModulePath(`/crm/${module}/record-id?tab=my`)).toBe(module);
+});
+
+it.each(['/crm/deals-unrelated?tab=my', '/crm/pipeline-other', '/crm/dealership'])('does not match Deals for %s', path => {
+  expect(resolveModulePath(path)).toBe('dashboard');
+});
