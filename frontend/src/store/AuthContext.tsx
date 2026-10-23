@@ -105,7 +105,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Compare effective grants, rather than object order or absent false flags.
 const permissionIdentity = (value: ResolvedPermissions) => JSON.stringify(Object.keys(value).sort().map(module => [module, Object.entries(value[module] ?? {}).filter(([, granted]) => granted === true).map(([action]) => action).sort()]).filter(([, actions]) => actions.length));
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, initialHasSessionCookie }: {
+  children: ReactNode;
+  initialHasSessionCookie?: boolean;
+}) {
   const [user, setUser]       = useState<User | null>(null);
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -198,7 +201,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    void restoreSession();
+    // The server can rule out a cookie session at startup. Explicit restores
+    // still validate with the backend because this initial hint can go stale.
+    if (!USE_MOCK_AUTH && initialHasSessionCookie === false) {
+      setIsPermissionsLoaded(true);
+      setIsLoading(false);
+    } else {
+      void restoreSession();
+    }
     return () => { requestGeneration.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -21,9 +21,12 @@ function AppearanceToaster() {
 }
 
 /** AuthContext restores the server-backed HttpOnly session. */
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({ children, initialHasSessionCookie }: {
+  children: React.ReactNode;
+  initialHasSessionCookie?: boolean;
+}) {
   return (
-    <AuthProvider>
+    <AuthProvider initialHasSessionCookie={initialHasSessionCookie}>
       <DataProvider>
         <DealActionsProvider>{children}</DealActionsProvider>
         <AppearanceToaster />

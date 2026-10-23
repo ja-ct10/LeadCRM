@@ -14,7 +14,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/crm/accounts':                 'accounts',
   '/crm/accounts/import':          'accounts',
   '/crm/deals':                    'deals',
-  '/crm/pipeline':                 'pipeline',
+  '/crm/pipeline':                 'deals',
   '/automation/workflows':         'workflows',
   '/campaigns':                    'campaigns',
   '/marketing/forms':              'forms',
@@ -64,6 +64,7 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
 };
 
 export function resolveModulePath(pathname: string): string {
+  pathname = pathname.split(/[?#]/, 1)[0];
   if (PATHNAME_TO_PATH[pathname]) return PATHNAME_TO_PATH[pathname];
   const parent = Object.keys(PATHNAME_TO_PATH)
     .sort((a, b) => b.length - a.length)

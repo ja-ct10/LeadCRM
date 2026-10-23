@@ -179,6 +179,18 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
     );
   }
 
+  it('restores development mock state despite an absent real-cookie hint', async () => {
+    meApiMock.mockClear();
+    localStorage.setItem('leadcrm_user', JSON.stringify({ id: 'mock-user', role: 'Sales', tenantId: 'mock-tenant', mustChangePassword: true }));
+    localStorage.setItem('leadcrm_tenant', JSON.stringify({ id: 'mock-tenant', name: 'Mock workspace' }));
+    const Probe = ContextProbe(useAuth);
+    render(<AuthProvider initialHasSessionCookie={false}><Probe /></AuthProvider>);
+    await waitFor(() => expect(captured?.isLoading).toBe(false));
+    expect(captured?.user?.id).toBe('mock-user');
+    expect(captured?.tenant?.id).toBe('mock-tenant');
+    expect(meApiMock).not.toHaveBeenCalled();
+  });
+
   it('mock-mode logout clears local state without calling the backend', async () => {
     renderProvider();
     await waitFor(() => expect(captured?.isLoading).toBe(false));

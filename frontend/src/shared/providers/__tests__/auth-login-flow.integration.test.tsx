@@ -195,6 +195,28 @@ describe('Feature: auth-login-blank-screen-fix, Integration — credentials logi
     );
   }
 
+  it.each(['/dashboard', '/crm/deals'])('redirects anonymous %s without a startup session request', async pathname => {
+    currentPathname = pathname;
+    const Probe = makeProbe(auth.useAuth);
+    const { AuthProvider } = auth;
+    const { AuthGuard } = guard;
+    render(<AuthProvider initialHasSessionCookie={false}><Probe /><AuthGuard>Protected content</AuthGuard></AuthProvider>);
+    await waitFor(() => expect(redirectTargets()).toContain('/login'));
+    expect(screen.queryByText('Protected content')).toBeNull();
+    expect(captured?.authError).toBeNull();
+    expect(meApiMock).not.toHaveBeenCalled();
+  });
+
+  it('renders public login normally when the server confirms no cookie session', async () => {
+    currentPathname = '/login';
+    const { AuthProvider } = auth;
+    const { AuthGuard } = guard;
+    render(<AuthProvider initialHasSessionCookie={false}><AuthGuard allowAnonymous>Login form</AuthGuard></AuthProvider>);
+    await screen.findByText('Login form');
+    expect(redirectTargets()).toEqual([]);
+    expect(meApiMock).not.toHaveBeenCalled();
+  });
+
   it.each(['login', 'restore'])('routes an expired returning user to change-password after %s', async mode => {
     const expired = { ...VERIFIED_ONBOARDED_USER, mustChangePassword: true };
     if (mode === 'restore') meApiMock.mockResolvedValue(authResponse(expired));
