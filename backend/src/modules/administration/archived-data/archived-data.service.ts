@@ -21,7 +21,7 @@ async function applyAssignmentRestorePolicy(actor: Actor, rows: ArchivedRecord[]
   await Promise.all(Object.entries(models).map(async ([type, model]) => {
     const ids = rows.filter(row => row.type === type && row.canRestore).map(row => row.id);
     if (!ids.length) return;
-    const records = await (model as typeof prisma.lead).findMany({ where: { tenantId: actor.tenantId, id: { in: ids }, }, select: { id: true, tenantId: true, ownerGroupId: true, ...(type === 'Account' ? {} : { assignedUserId: true }), ...(['Lead', 'Contact'].includes(type) ? { status: true } : {}) } });
+    const records = await (model as typeof prisma.lead).findMany({ where: { tenantId: actor.tenantId, id: { in: ids }, }, select: { id: true, tenantId: true, ...(type === 'Account' ? {} : { assignedUserId: true }), ...(['Lead', 'Contact'].includes(type) ? { status: true } : {}) } });
     for (const record of records) if (hasCrmRecordAssignmentAccess(policy, record, ({ Lead: 'leads', Contact: 'contacts', Account: 'accounts', Deal: 'deals' } as const)[type as 'Lead'], 'canView')) assigned.add(`${type}:${record.id}`);
   }));
   return rows.map(row => row.type in models ? { ...row, canRestore: row.canRestore && assigned.has(`${row.type}:${row.id}`) } : row);

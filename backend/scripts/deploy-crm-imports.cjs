@@ -170,6 +170,8 @@ function deploymentPlan(records, localNames) {
     // Coordinated feature retirement: snapshot and freeze old Task/SMS writers.
     '20261225000000_preserve_retired_relationships', retiredRelationships,
     accountColumnsRetirement,
+    // Removes obsolete CRM Group references without changing stored values or employee roles.
+    '20261227000000_retire_crm_group_ownership',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

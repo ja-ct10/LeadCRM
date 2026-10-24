@@ -1,4 +1,4 @@
-# Manual customer status and Group access
+# Manual customer status and employee Groups
 
 ## Status behavior
 
@@ -16,13 +16,11 @@ Optional `expectedUpdatedAt` protects customer status edits. A stale write retur
 
 Existing serializable sales transactions, row locks, conflict retries and durable Workflow events remain authoritative. Workflow execution rechecks its activating user's current record scope; scheduled Campaign audience resolution runs under its scheduling user's current scope. Membership and permission revisions reuse the existing authorization stream.
 
-## Group access
+## Customer access and employee Groups
 
-Leads, Contacts, Accounts and Deals gain nullable tenant-scoped `ownerGroupId`. Existing records are left unassigned. Client Admin can transfer or clear ownership from the existing profile Details editor. Creation forms expose explicitly authorized Group choices; automatic children and conversions inherit their authoritative source ownership.
+Customer records use employee role permissions, CRM view scopes and Assigned Agent. Accounts use tenant-scoped module permissions. Customer forms and responses have no Owning Group, and customer writes containing `ownerGroupId`, including null, return HTTP 400. Former Group-only grants do not authorize navigation, reads, edits, reports or agent assignment.
 
-Group memberships gain nullable `crmRoleId`, selected from existing active custom roles through Group management. Head designation is independent: membership or Head status alone grants no CRM action. A record/action must be authorized by a valid global grant or a complete matching Group grant. Visibility and editing grants from unrelated Groups are never pooled. Client Admin retains tenant-wide access; existing global own-record settings and Task Group access remain intact.
-
-Scoped reads cover CRM lists, search, counts, profiles, relationship projections, exports, bulk operations, reporting/archive queries, Campaign audiences and Workflow targets. Backend mutation checks independently lock and authorize the current record. Group ownership and membership-role references block unsafe Group deletion or role archival.
+Settings → Team Management retains employee memberships, standard roles and Group Heads. Workflow assignment pools and existing Task team scope continue using those memberships. The separate membership CRM-role setting and PATCH endpoint are removed; historical customer ownership and membership CRM-role references no longer block Group or Role management.
 
 ## Task selector and UI synchronization
 
@@ -32,13 +30,13 @@ The earlier CRM stability implementation on main supplies soft content invalidat
 
 ## Release and rollback
 
-Apply the additive `20261224000000_crm_group_status` migration through the existing reviewed deployment guard before starting this application version. It adds nullable fields, indexes and tenant-scoped foreign keys; it does not rewrite existing records, change enums or remove tables. Individual Group/role references are protected while whole-tenant cascade behavior is preserved.
+Apply `20261227000000_retire_crm_group_ownership` with old APIs and workers stopped, then generate Prisma and release matching clients. Keep the original `20261224000000_crm_group_status` migration unchanged: its status checkpoints remain active. The forward migration removes obsolete Group/Role foreign keys and indexes and retains scalar values as ignored, private legacy metadata.
 
-Reverting application code can leave the additive fields in place. Do not remove ownership/checkpoint data or drop columns as an automatic rollback; preserve a verified backup and assess the stored assignments first. Unrelated TaskAccount/SMS retirement changes belong to a separate change set.
+Preserve a verified backup before rollout. A code rollback to Group ownership would require an explicit compatibility and access review; do not automatically restore obsolete grants or delete preserved historical values.
 
 ## Verification
 
-Local acceptance results:
+Historical manual-status acceptance results (before the subsequent customer Group retirement):
 
 - Frontend: 2,931 passing tests in 227 files. The full run passed 2,600 tests; two Windows workers timed out during startup. Both affected files then passed all 331 tests in a serial recovery run.
 - Backend: 1,374 passing tests in 161 files, with one Windows symlink-privilege skip. Linux CI must cover that platform-specific case.
@@ -59,7 +57,7 @@ Final workspace lint/type checks and production builds passed for all three work
 | Transactional transition Activity | [Engagement service](../backend/src/modules/crm/engagement.service.ts), [Lead writes](../backend/src/modules/crm/contacts/contacts.repository.ts), [Contact writes](../backend/src/modules/crm/contacts-v2/contacts-v2.repository.ts) |
 | Record/action authorization and scoped projections | [Shared policy](../shared/src/contracts/crm-record-access.ts), [backend access service](../backend/src/modules/crm/access/crm-record-access.service.ts), [frontend hook](../frontend/src/shared/hooks/use-crm-record-access.ts) |
 | Related Account and Deal response visibility | [Account access](../backend/src/modules/crm/contacts-v2/contact-account-access.ts), [Deal presentation](../backend/src/modules/crm/deals/deal-presentation.ts) |
-| Group CRM-role configuration | [Group management UI](../frontend/src/features/tenant/settings/ui/team-management-groups.tsx), [Group repository](../backend/src/modules/administration/groups/groups.repository.ts) |
+| Employee Group management | [Group management UI](../frontend/src/features/tenant/settings/ui/team-management-groups.tsx), [Group repository](../backend/src/modules/administration/groups/groups.repository.ts) |
 | Workflow and scheduled Campaign authority | [Workflow engine](../backend/src/modules/automation/workflows/workflow.engine.ts), [Campaign service](../backend/src/modules/marketing/campaigns/campaigns.service.ts), [audience resolution](../backend/src/modules/marketing/campaigns/audiences.service.ts) |
 | Stable Task relationship selection | [Task selector](../frontend/src/features/tenant/operations/tasks/ui/task-selector.tsx) |
-| Additive database rollout | [Schema](../backend/prisma/schema.prisma), [migration](../backend/prisma/migrations/20261224000000_crm_group_status/migration.sql), [existing deployment guard](../backend/scripts/deploy-crm-imports.cjs) |
+| Preserving database rollout | [Schema](../backend/prisma/schema.prisma), [forward migration](../backend/prisma/migrations/20261227000000_retire_crm_group_ownership/migration.sql), [existing deployment guard](../backend/scripts/deploy-crm-imports.cjs) |

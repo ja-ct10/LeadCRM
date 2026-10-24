@@ -40,11 +40,12 @@ it('resolves scoped custom grants and denies missing or removed grants', async (
   expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
 });
 
-it('accepts a scoped CRM capability at the route guard without granting unrelated actions', async () => {
+it('does not authorize obsolete group-only CRM grants', async () => {
   const next = vi.fn();
   vi.mocked(resolveCrmActor).mockResolvedValue({ groupGrants: [{ groupId: 'one', permissions: { contacts: { canView: true, canEdit: true } } }] } as never);
   await authorize('contacts.edit')(request('Staff') as never, {} as never, next);
-  expect(next).toHaveBeenLastCalledWith();
+  expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
+  expect(resolveCrmActor).not.toHaveBeenCalled();
   await authorize('contacts.archive')(request('Staff') as never, {} as never, next);
   expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
   await authorize('deals.edit')(request('Staff') as never, {} as never, next);

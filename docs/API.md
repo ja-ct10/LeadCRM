@@ -762,6 +762,21 @@ Permission keys come from the shared module/action catalog. Middleware uses `aut
 
 Frontend permission guards improve the user flow; server checks enforce it. Groups choose assignment pools and do not grant permissions. Access revisions refresh current authorization across open views. Workspace status fails closed unless it is `ACTIVE` or the compatibility `SANDBOX` status.
 
+Customer Group ownership is retired. Lead, Contact, Account and Deal create/update
+requests reject `ownerGroupId`, including `null`, with HTTP 400. Customer responses
+omit that field; `/crm/record-access` omits `groupGrants`, and employee eligibility
+responses omit `assignableGroupModules`. Access and assignment use current employee
+roles and Assigned Agent, with Accounts retaining tenant-scoped module access.
+`PATCH /administration/groups/:id/members/:userId` for a membership CRM role is
+removed (HTTP 404). Employee memberships, Group Heads and workflow Group pools
+remain supported in Team Management; Group responses omit `crmRoleId`.
+
+Apply `20261227000000_retire_crm_group_ownership` with old APIs/workers stopped,
+then regenerate Prisma and release matching clients. Legacy ownership/role values
+remain private ignored metadata; the migration does not rewrite customer records,
+employee memberships, assigned roles, permissions or status history. Old clients
+must reload before submitting customer forms.
+
 ## Current rollout additions
 
 The [retired relationship rollout](retired-relationships.md) removes TaskAccount and SmsCampaignLink through a preserving expansion and separate guarded retirement. Current Account task context derives from associated Deals. Task responses retain compatible direct Account fields as `accountId: null`, `account: null`, `accountIds: []`, and `accounts: []`; private `retiredAccountLinks` is never serialized. Existing TaskLead/TaskContact reads and historical Activity/AuditLog events remain available.

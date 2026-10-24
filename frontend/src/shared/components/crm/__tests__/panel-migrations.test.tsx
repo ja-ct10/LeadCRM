@@ -1,4 +1,4 @@
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.canMutate, canReassign: true, ownerGroups: [], policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: mocks.role === 'Client Admin' } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.canMutate, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: mocks.role === 'Client Admin' } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -614,20 +614,18 @@ it('shows unavailable customer status without falling back to Deal engagement or
   expect(mocks.move).not.toHaveBeenCalled();
 });
 
-it.each(['leads', 'contacts'] as const)('shows all six %s statuses and permits linked engagement while protecting sale evidence', async module => {
+it.each(['leads', 'contacts'] as const)('shows all six %s statuses and respects server-authorized transitions without sending denied writes', async module => {
   const original = mocks.get.getMockImplementation()!;
-  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], statusManagedByDeals: true } } : original(path));
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], statusEditOptions: ['Cancelled'], statusEditRestrictions: { Hot: 'This transition is unavailable.' } } } : original(path));
   render(<CrmRecordView module={module} id="one" />);
   fireEvent.click(await screen.findByRole('button', { name: 'Warm' }));
   for (const name of ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']) {
     const option = screen.getByRole('menuitem', { name });
-    expect(option.getAttribute('aria-disabled')).toBe(name === 'Closed Deal' ? 'true' : 'false');
+    expect(option.getAttribute('aria-disabled')).toBe(name === 'Cancelled' ? 'false' : 'true');
   }
-  expect(screen.getByText(/Manual engagement changes retain existing sales and automation rules/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Deal' }));
-  expect(mocks.put).not.toHaveBeenCalled();
+  expect(screen.getByRole('menuitem', { name: 'Hot' }).title).toBe('This transition is unavailable.');
   fireEvent.click(screen.getByRole('menuitem', { name: 'Hot' }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/' + module + '/one', { status: 'Hot' }));
+  expect(mocks.put).not.toHaveBeenCalled();
 });
 
 it('edits the primary Contact from Deal Details without writing Deal engagement or pipeline stage', async () => {
@@ -933,4 +931,16 @@ it.each(['leads', 'contacts'] as const)('%s shows the existing unlinked Account 
   const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
   expect(organization.getByText('No Account linked yet.')).toBeTruthy();
   await organization.findByText(`No deals attached to this ${module === 'leads' ? 'lead' : 'contact'}.`);
+});
+
+it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('omits employee Group ownership from $module $surface details, including legacy data', async ({ module, surface }) => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one`
+    ? { data: { ...records[module], ownerGroupId: 'historical-employee-group' } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.queryByText('Owning Group')).toBeNull();
+  expect(screen.queryByLabelText('Owning Group')).toBeNull();
+  expect(screen.queryByText('historical-employee-group')).toBeNull();
 });

@@ -28,6 +28,8 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   fireEvent.change(address, { target: { value: '123 Main Street\nMakati City, Metro Manila, Philippines' } });
   fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(screen.queryByLabelText('Owning Group')).toBeNull();
+  expect(save.mock.calls[0][0]).not.toHaveProperty('ownerGroupId');
   expect(save.mock.calls[0][0]).toMatchObject({ name: 'New Account', address: '123 Main Street\nMakati City, Metro Manila, Philippines' });
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
   for (const label of ['City', 'Province', 'Country']) expect(screen.queryByLabelText(label)).toBeNull();

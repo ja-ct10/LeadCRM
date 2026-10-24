@@ -99,7 +99,7 @@ export async function bulkReassign(
         return false;
       }
       await assertCrmRecordMutation(tx, 'deals', dealId, 'edit', { assignedUserId: dto.assignedUserId });
-      if (crmActor.getStore()) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['deals'], deal.ownerGroupId);
+      if (crmActor.getStore()) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['deals']);
       const previousAssignee = deal.assignedUserId;
       if (previousAssignee === dto.assignedUserId) {
         return true;

@@ -94,8 +94,8 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
     // Shared Account creation must join even callers using a raw Prisma transaction.
     accountId = matches[0]?.id ?? (await salesContext.run(tx, () => events.newAccount
-      ? createLinkedAccount(tx, tenantId, events.newAccount, actorId, lead.ownerGroupId)
-      : createCompany(tenantId, actorId, { name, ownerGroupId: lead.ownerGroupId }))).id;
+      ? createLinkedAccount(tx, tenantId, events.newAccount, actorId)
+      : createCompany(tenantId, actorId, { name }))).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId && deals.some(deal => deal.accountId && deal.accountId !== accountId)) throw conflict();
@@ -106,7 +106,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   if (completedSale && !firstWon) throw new ConflictError('Confirmed Won evidence is required before conversion.');
   const aggregate = aggregateDealEngagement(deals.filter(deal => !deal.deletedAt).map(deal => ({ ...deal, pipelineArchived: deal.pipeline.isArchived, isWon: deal.stage.isWon, isLost: deal.stage.isLost, confirmedWon: !!deal.wonConfirmedAt })));
   const status = (lead.manualCancellation ? 'CANCELLED' : (aggregate ?? normalizeCrmStatus(lead.status)).toUpperCase().replace(' ', '_')) as ContactStatus;
-  if (!contact) contact = await tx.contact.create({ data: { tenantId, ownerGroupId: lead.ownerGroupId, firstName: lead.firstName, lastName: lead.lastName,
+  if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, companyName: lead.companyName, companyFromAccount: lead.companyFromAccount, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED_DEAL' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',

@@ -7,8 +7,6 @@ import { GroupNameSchema, type TenantGroupMember } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import type { User } from '@/store/types';
 import { groupsApi, type TenantGroup } from '@/shared/services/groups.api';
-import { rolesApi } from '@/shared/services/roles.api';
-import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { Button, CreateButton } from '@/shared/components/ui/button';
 import { Card } from '@/shared/components/ui/card';
@@ -39,8 +37,6 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const { user, userCan } = useAuth();
   const canManage = userCan('groups', 'canEdit'), canCreate = userCan('groups', 'canCreate'), canDelete = userCan('groups', 'canDelete');
   const canManageMembers = user?.role?.trim().toLowerCase() === 'client admin';
-  const roleChoices = useCachedPage({ module: 'roles', params: { purpose: 'group-crm-role' }, disabled: !canManageMembers || USE_MOCK_DATA,
-    revalidateOnInvalidation: true, fetchFn: async () => (await rolesApi.list()).data });
   const [groups, setGroups] = useState<TenantGroup[]>([]);
   const [search, setSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
@@ -194,14 +190,6 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     { id: 'name', header: `${members.length} Member${members.length === 1 ? '' : 's'}`, accessor: member => memberName(member.user), width: 250,
       cell: (_, member) => <div className="flex min-w-0 items-center gap-2"><div className="min-w-0"><AvatarCell name={memberName(member.user)} initials={initials(member.user)} /></div>{member.isHead && <Badge variant="secondary" className="shrink-0 border-primary/20 bg-primary/10 text-primary">Head</Badge>}</div> },
     { id: 'role', header: 'Role', accessor: member => member.user.role, width: 180 },
-    { id: 'crmRole', header: 'CRM role in this Group', accessor: member => member.crmRoleId ?? '', width: 220,
-      cell: (_, member) => canManageMembers ? <select aria-label={`CRM role for ${memberName(member.user)}`} disabled={busy || !roleChoices.data}
-        value={member.crmRoleId ?? ''} className="w-full rounded-md border border-border bg-background p-2 text-xs"
-        onChange={event => { const roleId = event.target.value || null; void mutate(async () => {
-          const updated = (await groupsApi.setMemberRole(active!.id, member.userId, roleId)).data;
-          setGroups(previous => previous.map(group => group.id === updated.id ? updated : group)); toast.success('Group CRM role saved.');
-        }); }}><option value="">No additional Group grant</option>{(roleChoices.data ?? []).filter(role => !role.isSystemRole).map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select>
-        : <span>{roleChoices.data?.find(role => role.id === member.crmRoleId)?.name ?? (member.crmRoleId ? 'Configured role' : 'No additional Group grant')}</span> },
     { id: 'email', header: 'Email', accessor: member => member.user.email, width: 260 },
     ...(canManageMembers ? [{ id: 'actions', header: 'Actions', accessor: () => '', width: 80,
       cell: (_: unknown, member: TenantGroupMember) => <Button variant="ghost" size="icon" disabled={busy} aria-label={`Remove ${memberName(member.user)}`} title="Remove member" onClick={() => requestRemove(member)}><X size={14} /></Button> }] : []),

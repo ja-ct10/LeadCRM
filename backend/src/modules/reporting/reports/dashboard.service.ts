@@ -20,7 +20,7 @@ export async function dashboardAccess(identity: AuthenticatedUser) {
   const leadScope = crmPolicyReadWhere(policy, 'leads');
   const taskScope = taskReadWhere(policy);
   const leaderboard = can('deals') && (admin || user.groupMemberships.some(({ group }) => group.tenantId === identity.tenantId && ['top management', 'head of sales'].includes(group.name.trim().toLowerCase())));
-  return { admin, deals: can('deals') || !!policy.groupGrants?.some(grant => grant.permissions.deals?.canView), leads: can('leads') || !!policy.groupGrants?.some(grant => grant.permissions.leads?.canView), tasks: can('tasks'), leaderboard, dealScope, leadScope, taskScope, policy };
+  return { admin, deals: can('deals'), leads: can('leads'), tasks: can('tasks'), leaderboard, dealScope, leadScope, taskScope, policy };
 }
 
 export function verifyDashboardStages(stages: DashboardStage[]) {

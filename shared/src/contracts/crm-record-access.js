@@ -17,13 +17,12 @@ function hasCrmRecordAssignmentAccess(policy, record, module, action = 'canEdit'
         return true;
     if (!policy.permissions || !module)
         return module === 'accounts' || !policy.assignmentRestricted || record.assignedUserId === policy.userId;
-    return [{ permissions: policy.permissions, assignmentRestricted: policy.assignmentRestricted, groupId: undefined }, ...(policy.groupGrants ?? [])]
-        .some(grant => (!grant.groupId || grant.groupId === record.ownerGroupId) && (0, permission_modules_1.hasModulePermission)(grant.permissions, module, action) &&
-        permittedCrmScopes(grant.permissions, module).some(scope => scope === 'all' || scope === 'my' && record.assignedUserId === policy.userId ||
+    return (0, permission_modules_1.hasModulePermission)(policy.permissions, module, action) &&
+        permittedCrmScopes(policy.permissions, module).some(scope => scope === 'all' || scope === 'my' && record.assignedUserId === policy.userId ||
             scope === 'active' && ['Inquiry', 'Hot', 'Warm', 'INQUIRY', 'HOT', 'WARM'].includes(String(record.status)) && record.assignedUserId === policy.userId) &&
-        (module === 'accounts' || !grant.assignmentRestricted || record.assignedUserId === policy.userId));
+        (module === 'accounts' || !policy.assignmentRestricted || record.assignedUserId === policy.userId);
 }
-/** Reassignment must be authorized by one unrestricted grant for this record. */
+/** Reassignment requires the employee's unrestricted role grants for this record. */
 function canReassignCrmRecord(policy, record, module) {
     if (!policy)
         return false;
@@ -31,6 +30,5 @@ function canReassignCrmRecord(policy, record, module) {
         return !policy.assignmentRestricted && hasCrmRecordAssignmentAccess(policy, record, module);
     return hasCrmRecordAssignmentAccess({ ...policy,
         permissions: policy.assignmentRestricted ? {} : policy.permissions,
-        groupGrants: policy.groupGrants?.filter(grant => !grant.assignmentRestricted),
     }, record, module);
 }

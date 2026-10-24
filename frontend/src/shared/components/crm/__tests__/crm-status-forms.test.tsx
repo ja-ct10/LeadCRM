@@ -1,6 +1,6 @@
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, ownerGroups: [], policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -51,12 +51,15 @@ it.each(CRM_STATUSES)('keeps manual Lead Inquiry when status %s is injected and 
   fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
   await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
   expect(submitted.mock.calls[0][0]).toMatchObject({ status: 'Inquiry', productInterest: ids });
+  expect(screen.queryByLabelText('Owning Group')).toBeNull();
+  expect(submitted.mock.calls[0][0]).not.toHaveProperty('ownerGroupId');
   expect(CrmStatusSchema.parse(submitted.mock.calls[0][0].status)).toBe('Inquiry');
   expect(toBackendUpdateContact({ status, productInterest: ids })).toEqual({ status, productInterest: ids });
 });
 
 it.each(CRM_STATUSES)('creates Inquiry and displays canonical %s without resubmitting unchanged engagement', async status => {
   const created = render(<ContactFormSheet isOpen onClose={() => {}} onSave={data => { void contactsV2Api.create({ ...data, requestId: '72d1f071-a18d-4722-9ed9-c7c63084c230' }); }} />);
+  expect(screen.queryByLabelText('Owning Group')).toBeNull();
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'contact@example.test' } });

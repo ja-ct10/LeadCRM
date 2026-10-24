@@ -1,5 +1,4 @@
 export interface Account {
-  ownerGroupId?: string | null;
   statusEditOptions?: string[];
   statusEditRestrictions?: Record<string, string>;
   customFieldValues?: import('@leadcrm/shared').ClosingValues;

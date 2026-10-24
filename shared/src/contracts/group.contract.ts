@@ -15,13 +15,11 @@ export type GroupMemberInput = z.infer<typeof GroupMemberSchema>;
 
 export const GroupHeadSchema = z.object({ userId: z.string().uuid('Invalid user ID').nullable() }).strict();
 export type GroupHeadInput = z.infer<typeof GroupHeadSchema>;
-export const GroupMemberRoleSchema = z.object({ crmRoleId: z.string().uuid().nullable() }).strict();
 
 export interface TenantGroupMember {
   id: string;
   userId: string;
   isHead: boolean;
-  crmRoleId?: string | null;
   canBeHead: boolean;
   user: { id: string; firstName: string; lastName: string; email: string; role: string; roleNames: string[]; status: string; avatarUrl: string | null };
 }
