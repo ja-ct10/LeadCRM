@@ -1,6 +1,5 @@
 /** Public Lead list/detail projection. Product IDs are distinct from display names. */
 export type LeadRead = {
-  ownerGroupId?: string | null;
   statusEditOptions?: string[];
   statusEditRestrictions?: Record<string, string>;
   statusManagedByDeals?: boolean;

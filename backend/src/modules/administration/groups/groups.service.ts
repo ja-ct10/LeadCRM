@@ -60,7 +60,7 @@ export async function remove(id: string, tenantId: string, actorId: string) {
   if (existing.systemKey) throw new ConflictError('The default Sales group cannot be deleted.');
 
   const deleted = await repo.deleteEmptyGroup(id, tenantId).catch(rethrowMembershipConflict);
-  if (!deleted.count) throw new ConflictError(existing.members.length ? 'Remove all members from this group before deleting it.' : 'Transfer or clear CRM ownership before deleting this group.');
+  if (!deleted.count) throw new ConflictError(existing.members.length ? 'Remove all members from this group before deleting it.' : 'This group changed while deleting. Refresh and try again.');
   await writeAuditLog({
     tenantId, userId: actorId,
     action: 'group.deleted', entityType: 'TenantGroup', entityId: id,
@@ -100,8 +100,4 @@ export async function setHead(groupId: string, tenantId: string, actorId: string
     rethrowMembershipConflict(error);
   });
   return presentGroup(group);
-}
-
-export async function setMemberRole(groupId: string, userId: string, roleId: string | null, tenantId: string, actorId: string) {
-  return presentGroup(await repo.setMemberCrmRole(groupId, userId, roleId, tenantId, actorId).catch(rethrowMembershipConflict));
 }

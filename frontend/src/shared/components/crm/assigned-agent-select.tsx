@@ -10,7 +10,6 @@ export function AssignedAgentSelect({
   value,
   users,
   modules,
-  ownerGroupId,
   placeholder = 'Unassigned',
   className,
   invalid = false,
@@ -24,7 +23,6 @@ export function AssignedAgentSelect({
   value: string;
   users: readonly User[];
   modules?: readonly string[];
-  ownerGroupId?: string | null;
   placeholder?: string;
   className: string;
   invalid?: boolean;
@@ -34,7 +32,7 @@ export function AssignedAgentSelect({
   onBlur?: () => void;
   onChange: (value: string) => void;
 }): ReactElement {
-  const options = getAssignableAgents(users, modules, ownerGroupId);
+  const options = getAssignableAgents(users, modules);
   const historical = value && !options.some(user => user.id === value) ? users.find(user => user.id === value) : undefined;
   return (
     <div className="relative">

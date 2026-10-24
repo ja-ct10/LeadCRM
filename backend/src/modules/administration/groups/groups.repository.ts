@@ -23,7 +23,6 @@ const groupSelect = (tenantId: string) => ({
       id:     true,
       userId: true,
       isHead: true,
-      crmRoleId: true,
       user: {
         select: {
           id:        true,
@@ -82,7 +81,7 @@ export async function updateGroup(id: string, tenantId: string, name: string) {
 export async function deleteEmptyGroup(id: string, tenantId: string) {
   // The predicate and serializable transaction protect against concurrent additions.
   return prisma.$transaction(tx => tx.tenantGroup.deleteMany({
-    where: { id, tenantId, systemKey: null, members: { none: {} }, leads: { none: {} }, contacts: { none: {} }, accounts: { none: {} }, deals: { none: {} } },
+    where: { id, tenantId, systemKey: null, members: { none: {} } },
   }), { isolationLevel: 'Serializable' });
 }
 
@@ -115,25 +114,6 @@ export async function addGroupMembers(groupId: string, input: GroupMemberInput, 
 
 export async function removeGroupMember(groupId: string, userId: string, tenantId: string) {
   return prisma.tenantGroupMember.deleteMany({ where: { groupId, userId, tenantId } });
-}
-
-export async function setMemberCrmRole(groupId: string, userId: string, crmRoleId: string | null, tenantId: string, actorId: string) {
-  return prisma.$transaction(async tx => {
-    const actor = await tx.user.findFirst({ where: { tenantId, id: actorId, status: 'ACTIVE', role: 'Client Admin' } });
-    if (!actor) throw new ForbiddenError('Only Client Admin can assign Group CRM roles.');
-    await assertPermissions({ userId: actorId, tenantId, role: actor.role }, ['groups.edit'], tx);
-    const member = await tx.tenantGroupMember.findFirst({ where: { tenantId, groupId, userId } });
-    if (!member) throw new NotFoundError('Group member');
-    if (crmRoleId) {
-      await tenantContext.exit(async () => await tx.$queryRaw`SELECT id FROM "RoleDefinition" WHERE id = ${crmRoleId} AND "tenantId" = ${tenantId} FOR SHARE`);
-      const role = await tx.roleDefinition.findFirst({ where: { tenantId, id: crmRoleId, isArchived: false, isSystemRole: false } });
-      if (!role) throw new ValidationError('Select an active custom CRM role in this tenant.');
-    }
-    await tx.tenantGroupMember.update({ where: { id: member.id, tenantId }, data: { crmRoleId } });
-    if (member.crmRoleId !== crmRoleId) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'group.crm_role_changed',
-      entityType: 'TenantGroup', entityId: groupId, changeset: { before: { userId, crmRoleId: member.crmRoleId }, after: { userId, crmRoleId } } } });
-    return tx.tenantGroup.findFirstOrThrow({ where: { tenantId, id: groupId }, select: groupSelect(tenantId) });
-  }, { isolationLevel: 'Serializable' });
 }
 
 export async function setGroupHead(groupId: string, userId: string | null, tenantId: string, actorId: string) {

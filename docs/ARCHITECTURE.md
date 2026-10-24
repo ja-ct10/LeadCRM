@@ -22,6 +22,20 @@ Related relationship, audit, and record writes commit together. Tenant-scoped ID
 
 Accounts use module permissions within the authenticated tenant, without an Assigned Agent predicate. Lead, Contact and Deal assignment restrictions remain enforced. Account product metadata is preserved in operator-only history and retired through a separate guarded cutover; see [Account retirement](accounts-field-retirement.md).
 
+Customer records do not have Group ownership. Leads, Contacts and Deals use the
+employee's assigned roles, authorized view scopes and Assigned Agent; Accounts use
+tenant-scoped role permissions. Employee Groups remain in Settings → Team
+Management for memberships, Group Heads and existing assignment pools. Membership
+and Group Head designation do not grant CRM permissions, and there is no separate
+CRM role per Group. Existing task-team scope remains based on employee membership.
+
+Migration `20261227000000_retire_crm_group_ownership` removes the obsolete Group
+foreign keys and indexes while retaining historical scalar values as ignored
+Prisma fields. Those values are excluded from public responses and cannot affect
+authorization, assignment, or Group/Role deletion. Stop old APIs/workers, apply the
+forward migration, regenerate Prisma and deploy matching frontend/backend code.
+Existing migrations and unrelated status checkpoints remain intact.
+
 ## Canonical data and integration points
 
 | Domain | Canonical relationship or rule |

@@ -1,10 +1,9 @@
-import { CRM_MODULE_KEYS, PERMISSION_ACTIONS, type ResolvedPermissions } from '@leadcrm/shared';
+import { type ResolvedPermissions } from '@leadcrm/shared';
 import * as repo from './roles.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/http-error';
 import type { CreateRoleDto, UpdateRoleDto } from './roles.dto';
 import { Prisma } from '@prisma/client';
-import prisma from '../../../config/database.config';
 
 // Reserved names that cannot be used for custom roles (case-insensitive).
 // Includes legacy role names to prevent re-creation of removed system roles.
@@ -136,15 +135,5 @@ export async function getUserPermissions(
   userId: string,
   tenantId: string,
 ): Promise<ResolvedPermissions> {
-  const permissions = await repo.findUserEffectivePermissions(userId, tenantId);
-  const { resolveCrmActor } = await import('../../crm/access/crm-record-access.service.js');
-  const policy = await resolveCrmActor(prisma, { userId, tenantId });
-  // Coarse navigation capabilities only; record authorization retains grant provenance.
-  for (const grant of policy.groupGrants ?? []) for (const module of CRM_MODULE_KEYS) {
-    const flags = grant.permissions[module];
-    if (!flags) continue;
-    const target = permissions[module] ??= { ...flags };
-    for (const action of PERMISSION_ACTIONS) target[action] = target[action] === true || flags[action] === true;
-  }
-  return permissions;
+  return repo.findUserEffectivePermissions(userId, tenantId);
 }

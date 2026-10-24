@@ -25,15 +25,7 @@ export type AssignmentRequest = {
 };
 async function candidates(client: Prisma.TransactionClient, request: AssignmentRequest) {
   const { tenantId, target, purpose } = request;
-  let ownerGroupId: string | null | undefined;
-  if (purpose === 'crm_owner' && request.entity && request.entityId) {
-    const models = { lead: client.lead, contact: client.contact, account: client.account, deal: client.deal };
-    const record = await (models[request.entity] as typeof client.lead).findFirst({
-      where: { tenantId, id: request.entityId }, select: { ownerGroupId: true },
-    });
-    ownerGroupId = record?.ownerGroupId;
-  }
-  const users = await assignmentCandidates(client, tenantId, purpose, request.entity, ownerGroupId);
+  const users = await assignmentCandidates(client, tenantId, purpose, request.entity);
   if (target.type === 'user' || target.type === 'record_owner') {
     const id = target.type === 'user' ? target.id : request.recordOwnerId;
     if (!id) throw new ValidationError('Assign an agent to the triggering record or choose an explicit assignment target.');

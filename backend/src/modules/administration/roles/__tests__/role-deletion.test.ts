@@ -59,10 +59,9 @@ it('rejects missing, foreign or already deleted roles using the active tenant qu
   expect(state.tx.roleDefinition.update).not.toHaveBeenCalled();
 });
 
-it('blocks role archival while a Group membership still references its CRM role', async () => {
+it('ignores retired Group CRM-role references when archiving an otherwise unassigned role', async () => {
   state.tx.tenantGroupMember.count.mockResolvedValue(1);
-  await expect(archiveRole('role', 'tenant', 'actor')).rejects.toMatchObject({ statusCode: 409 });
-  expect(state.tx.tenantGroupMember.count).toHaveBeenCalledWith({ where: { crmRoleId: 'role', tenantId: 'tenant' } });
-  expect(state.tx.roleDefinition.update).not.toHaveBeenCalled();
-  expect(state.audit).not.toHaveBeenCalled();
+  await archiveRole('role', 'tenant', 'actor');
+  expect(state.tx.tenantGroupMember.count).not.toHaveBeenCalled();
+  expect(state.tx.roleDefinition.update).toHaveBeenCalledOnce();
 });

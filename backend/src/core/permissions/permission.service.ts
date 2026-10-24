@@ -13,11 +13,6 @@ export async function assertPermissions(user: {userId:string;tenantId:string;rol
     const dot = permission.lastIndexOf('.'), module = permission.slice(0, dot), action = permission.slice(dot + 1);
     const flag = PERMISSION_ACTIONS.find(flag => PERMISSION_ACTION_KEYS[flag] === action);
     if (!flag) throw new AppError('Access denied', 403);
-    if (!hasModulePermission(permissions, module, flag)) {
-      if (!['leads', 'contacts', 'accounts', 'deals'].includes(module)) throw new AppError('Access denied', 403);
-      const { resolveCrmActor } = await import('../../modules/crm/access/crm-record-access.service.js');
-      const policy = await resolveCrmActor(db, user);
-      if (!policy.groupGrants?.some(grant => hasModulePermission(grant.permissions, module, flag))) throw new AppError('Access denied', 403);
-    }
+    if (!hasModulePermission(permissions, module, flag)) throw new AppError('Access denied', 403);
   }
 }

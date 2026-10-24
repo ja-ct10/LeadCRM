@@ -25,7 +25,6 @@ export interface User {
   securityLockedAt?: string | null;
   assignableAgent?: boolean;
   assignableModules?: string[];
-  assignableGroupModules?: Record<string, string[]>;
   createdAt?: string;
   id: string;
   tenantId: string;

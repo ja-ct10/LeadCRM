@@ -21,7 +21,7 @@ let beforeHeadWrite: (() => Promise<void>) | undefined;
 const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
 async function request(path: string, method = 'GET', body?: unknown, auth = token) {
   const response = await fetch(base + path, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text() };
 }
 beforeAll(async () => {
   if (!disposable) return;
@@ -436,22 +436,18 @@ it.skipIf(!nativeConcurrency)('coordinates assignment with a concurrent account 
   expect(await headRows(id)).toEqual([]); expect(await memberCount(id)).toBe(2);
 });
 
-it.skipIf(!disposable)('configures a membership CRM role without granting through Head status and protects owned Groups', async () => {
-  const groupId = (await request('', 'POST', { name: 'CRM ownership fixture' })).body.data.id;
+it.skipIf(!disposable)('keeps employee Groups independent of legacy customer ownership', async () => {
+  const groupId = (await request('', 'POST', { name: 'Internal employee group' })).body.data.id;
   await request('/' + groupId + '/members', 'POST', { userId });
-  const role = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Group-only CRM editor', permissions: { create: { module: 'contacts', canView: true, canViewAll: true, canEdit: true } } } }));
   const path = '/' + groupId + '/members/' + userId;
-  const updated = await request(path, 'PATCH', { crmRoleId: role.id });
-  expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-  expect(updated.body.data.members.find((row: { userId: string }) => row.userId === userId)).toMatchObject({ crmRoleId: role.id, isHead: false });
-  expect((await request(path, 'PATCH', { crmRoleId: role.id }, deniedToken)).status).toBe(403);
-  expect((await request(path, 'PATCH', { crmRoleId: randomUUID() })).status).toBe(400);
-  const foreignTenantId = (await prisma.user.findUniqueOrThrow({ where: { id: foreignUserId } })).tenantId;
-  const foreignRole = await tenantContext.run({ tenantId: foreignTenantId }, () => prisma.roleDefinition.create({ data: { tenantId: foreignTenantId, name: 'Foreign CRM role' } }));
-  expect((await request(path, 'PATCH', { crmRoleId: foreignRole.id })).status).toBe(400);
-  expect((await request(path, 'PATCH', { crmRoleId: null })).status).toBe(200);
-  await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'Group', lastName: 'Owned', ownerGroupId: groupId } }));
-  await request(path, 'DELETE');
+  expect((await request(path, 'PATCH', { crmRoleId: randomUUID() })).status).toBe(404);
+  const customer = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'Customer', lastName: 'Historical' } }));
+  await prisma.$executeRaw`UPDATE "Contact" SET "ownerGroupId"=${groupId} WHERE id=${customer.id} AND "tenantId"=${tenantId}`;
+  const groups = await request('');
+  const member = groups.body.data.find((group: { id: string }) => group.id === groupId).members[0];
+  expect(member).not.toHaveProperty('crmRoleId');
   expect((await request('/' + groupId, 'DELETE')).status).toBe(409);
-  expect(await scoped(() => prisma.tenantGroup.findFirst({ where: { id: groupId } }))).toBeTruthy();
+  await request(path, 'DELETE');
+  expect((await request('/' + groupId, 'DELETE')).status).toBe(200);
+  expect(await scoped(() => prisma.contact.findUnique({ where: { id: customer.id } }))).toBeTruthy();
 });

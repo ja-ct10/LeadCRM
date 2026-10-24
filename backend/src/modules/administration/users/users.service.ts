@@ -32,9 +32,7 @@ const SAFE_USER_SELECT = {
 function assignmentEligibility(user: AssignedAgent, tenantId: string) {
   const assignableModules = (['leads', 'contacts', 'deals', 'tasks'] as const).filter(module =>
     hasAssignedAgentAccess(user, tenantId, module === 'tasks' ? TASK_ASSIGNEE_REQUIREMENTS : crmAssignmentRequirements(module)));
-  const assignableGroupModules = Object.fromEntries((user.groupMemberships ?? []).map(member => [member.groupId,
-    (['leads', 'contacts', 'deals'] as const).filter(module => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module), member.groupId))]));
-  return { assignableModules, assignableGroupModules, assignableAgent: ['leads', 'deals'].every(module => assignableModules.includes(module as 'leads' | 'deals')) };
+  return { assignableModules, assignableAgent: ['leads', 'deals'].every(module => assignableModules.includes(module as 'leads' | 'deals')) };
 }
 
 

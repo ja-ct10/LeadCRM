@@ -3,11 +3,11 @@ import type { WorkflowAssignmentPurpose, WorkflowAssignmentTarget, WorkflowAssig
 import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 
 type Client = Prisma.TransactionClient;
-export async function assignmentCandidates(client: Client, tenantId: string, purpose: WorkflowAssignmentPurpose, entity?: WorkflowEntity, ownerGroupId?: string | null) {
+export async function assignmentCandidates(client: Client, tenantId: string, purpose: WorkflowAssignmentPurpose, entity?: WorkflowEntity) {
   if (purpose === 'crm_owner' && entity === 'account') return [];
   if (purpose === 'crm_owner') return eligibleAssignedAgents(client, tenantId, entity
     ? crmAssignmentRequirements(entity === 'lead' ? 'leads' : entity === 'contact' ? 'contacts' : 'deals')
-    : [...crmAssignmentRequirements('leads'), ...crmAssignmentRequirements('deals')], ownerGroupId);
+    : [...crmAssignmentRequirements('leads'), ...crmAssignmentRequirements('deals')]);
   return eligibleAssignedAgents(client, tenantId, TASK_ASSIGNEE_REQUIREMENTS);
 }
 
@@ -25,7 +25,7 @@ export async function assignmentPool(client: Client, tenantId: string, target: E
 export async function assignmentOptions(client: Client, tenantId: string, access = { users: false, roles: false, groups: false }) {
   const [owners, assignees, roles, groups] = await Promise.all([
     eligibleAssignedAgents(client, tenantId, []).then(users => users.filter(user =>
-      (['leads', 'contacts', 'deals'] as const).some(module => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module)) || user.groupMemberships?.some(member => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module), member.groupId))))),
+      (['leads', 'contacts', 'deals'] as const).some(module => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module))))),
     assignmentCandidates(client, tenantId, 'task_assignee'),
     access.roles ? client.roleDefinition.findMany({ where: { tenantId, isArchived: false }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, userRoles: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } }) : [],

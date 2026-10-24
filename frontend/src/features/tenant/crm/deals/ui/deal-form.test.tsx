@@ -22,6 +22,7 @@ it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visi
   fixture.data.fields = [{ id: 'cancellation-reason', name: 'Cancellation Reason', module: 'deals', group: 'Additional Details', type: 'Long Text', required: false, active: true, visibleInForm, visibleInDetails, options: [], description: '', order: 0, version: 1 }];
   render(<DealForm mode={mode} initialData={mode === 'edit' ? { id: 'deal', title: 'History', productInterestId: product.id } : undefined} preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={vi.fn()} onCancel={() => {}} />);
   expect(screen.queryByLabelText('Industry')).toBeNull();
+  expect(screen.queryByLabelText('Owning Group')).toBeNull();
   expect(screen.queryByRole('option', { name: 'Uncategorized' })).toBeNull();
   if (visibleInForm) expect(screen.getByLabelText('Cancellation Reason').tagName).toBe('TEXTAREA');
   else expect(screen.queryByLabelText('Cancellation Reason')).toBeNull();
