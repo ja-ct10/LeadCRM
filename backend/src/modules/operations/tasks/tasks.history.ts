@@ -11,7 +11,7 @@ export function taskState(task: TaskRow) {
     completedAt: task.completedAt?.toISOString() ?? null, completedById: task.completedById,
     isArchived: task.isArchived,
     leadIds: task.leadLinks.map(row => row.leadId), contactIds: task.contactLinks.map(row => row.contactId),
-    accountIds: task.accountLinks.map(row => row.accountId), dealIds: task.dealLinks.map(row => row.dealId),
+    accountIds: [] as string[], dealIds: task.dealLinks.map(row => row.dealId),
   };
 }
 
@@ -36,7 +36,7 @@ export async function recordTaskHistory(client: TaskClient, actorId: string, tas
   }
   if (!events.length) events.push(['updated', 'Updated']);
   const dealIds = [...new Set([...after.dealIds, ...(previous?.dealIds ?? [])])];
-  const context = await findTaskRecordContext(task.tenantId, { dealIds, leadIds: after.leadIds, contactIds: after.contactIds, accountIds: after.accountIds }, client);
+  const context = await findTaskRecordContext(task.tenantId, { dealIds, leadIds: after.leadIds, contactIds: after.contactIds }, client);
   const leads = new Set(after.leadIds), contacts = new Set(after.contactIds), accounts = new Set(after.accountIds);
   for (const deal of context.deals) {
     if (deal.tenantId !== task.tenantId) continue;

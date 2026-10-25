@@ -6,7 +6,7 @@ import { findUserEffectivePermissions } from '../../administration/roles/roles.r
 import { AppError } from '../../../shared/errors/app-error';
 import type { AuthenticatedUser } from '../../../api/middleware/auth.middleware';
 import { staleDealCutoff } from '../../crm/deals/deal-staleness';
-import { resolveCrmActor, crmPolicyReadWhere, taskReadWhere } from '../../crm/access/crm-record-access.service';
+import { resolveCrmActor, crmPolicyReadWhere, crmPolicySqlWhere, taskReadWhere } from '../../crm/access/crm-record-access.service';
 
 export async function dashboardAccess(identity: AuthenticatedUser) {
   const user = await prisma.user.findFirst({ where: { id: identity.userId, tenantId: identity.tenantId, status: 'ACTIVE' }, select: { role: true, groupMemberships: { where: { tenantId: identity.tenantId }, select: { group: { select: { name: true, tenantId: true } } } } } });
@@ -20,7 +20,7 @@ export async function dashboardAccess(identity: AuthenticatedUser) {
   const leadScope = crmPolicyReadWhere(policy, 'leads');
   const taskScope = taskReadWhere(policy);
   const leaderboard = can('deals') && (admin || user.groupMemberships.some(({ group }) => group.tenantId === identity.tenantId && ['top management', 'head of sales'].includes(group.name.trim().toLowerCase())));
-  return { admin, deals: can('deals'), leads: can('leads'), tasks: can('tasks'), leaderboard, dealScope, leadScope, taskScope };
+  return { admin, deals: can('deals'), leads: can('leads'), tasks: can('tasks'), leaderboard, dealScope, leadScope, taskScope, policy };
 }
 
 export function verifyDashboardStages(stages: DashboardStage[]) {
@@ -96,7 +96,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       const utc = (date: Date) => Prisma.sql`(${date.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
       const scope = Prisma.sql`d."tenantId" = ${tenantId} AND d."pipelineId" = ${pipeline.id}
         AND NOT d."isArchived" AND d."deletedAt" IS NULL
-        ${access.dealScope.id ? Prisma.sql`AND false` : access.dealScope.assignedUserId ? Prisma.sql`AND d."assignedUserId" = ${userId}` : Prisma.empty}`;
+        AND ${crmPolicySqlWhere(access.policy, 'deals', 'd')}`;
       const resolved = Prisma.sql`d."closedAt" >= ${utc(period.from)} AND d."closedAt" < ${utc(period.until)}
         AND d."closedAt" >= d."createdAt" AND d."closedAt" <= ${utc(now)}`;
       const validMoney = Prisma.sql`d.currency = ${currency} AND d.value >= 0 AND d.value::text NOT IN ('NaN','Infinity','-Infinity')`;

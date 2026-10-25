@@ -69,6 +69,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   return <form ref={formRef} onSubmit={event => { if (saving.current) event.preventDefault(); else void handleSubmit(onSubmit)(event); }} className="flex h-full min-h-0 flex-col" noValidate>
     <div className={`${panelBodyClass} space-y-6`}>
       {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+
       <ConfiguredFormLayout form={customFields} module="accounts">
         <AccountNativeField fieldKey="name" label="Account Name *" id={`${fieldId}-name`} registration={register('name')} error={errors.name?.message} disabled={isSubmitting} />
         <AccountNativeField fieldKey="industry" label="Industry" id={`${fieldId}-industry`} registration={register('industry')} error={errors.industry?.message} disabled={isSubmitting} />

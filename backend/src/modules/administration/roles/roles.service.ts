@@ -1,4 +1,4 @@
-import type { ResolvedPermissions } from '@leadcrm/shared';
+import { type ResolvedPermissions } from '@leadcrm/shared';
 import * as repo from './roles.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/http-error';
@@ -41,19 +41,15 @@ export async function createRole(tenantId: string, userId: string, dto: CreateRo
 
   let role;
   try {
-    role = await repo.createRole(tenantId, { name: dto.name, description: dto.description }, dto.permissions ?? []);
+    role = await repo.createRole(tenantId, { name: dto.name, description: dto.description }, dto.permissions ?? [],
+      (tx, created) => writeAuditLog({ tenantId, userId, action: 'role.created', entityType: 'RoleDefinition', entityId: created.id,
+        after: { name: dto.name, permissionCount: (dto.permissions ?? []).length } }, tx));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new ConflictError('A role with this name already exists.');
     }
     throw error;
   }
-
-  await writeAuditLog({
-    tenantId, userId,
-    action: 'role.created', entityType: 'RoleDefinition', entityId: role.id,
-    after: { name: dto.name, permissionCount: (dto.permissions ?? []).length },
-  });
 
   return role;
 }
@@ -74,25 +70,21 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
   if (dto.name        !== undefined) metaFields.name        = dto.name;
   if (dto.description !== undefined) metaFields.description = dto.description;
 
-  await repo.updateRoleAndPermissions(id, tenantId, metaFields, dto.permissions);
-
-  await writeAuditLog({
+  await repo.updateRoleAndPermissions(id, tenantId, metaFields, dto.permissions, tx => writeAuditLog({
     tenantId, userId,
     action: 'role.updated', entityType: 'RoleDefinition', entityId: id,
     after: dto as Record<string, unknown>,
-  });
+  }, tx));
 
   return getRoleById(id, tenantId);
 }
 
 export async function archiveRole(id: string, tenantId: string, userId: string) {
-  const role = await repo.archiveRole(id, tenantId);
-
-  await writeAuditLog({
+  await repo.archiveRole(id, tenantId, (tx, role) => writeAuditLog({
     tenantId, userId,
     action: 'role.deleted', entityType: 'RoleDefinition', entityId: id,
     before: { name: role.name, isArchived: false }, after: { name: role.name, isArchived: true },
-  });
+  }, tx));
 }
 
 export async function assignRoleToUser(
@@ -105,26 +97,24 @@ export async function assignRoleToUser(
   if (role.isArchived || role.isSystemRole || isReservedName(role.name)) {
     throw new ForbiddenError('Select an active custom role');
   }
-  const assignment = await repo.assignRoleToUser(targetUserId, roleId, tenantId);
-  await writeAuditLog({
+  const assignment = await repo.assignRoleToUser(targetUserId, roleId, tenantId, tx => writeAuditLog({
     tenantId, userId: actorId,
     action: 'role.assigned', entityType: 'User', entityId: targetUserId,
     after: { roleId },
     severity: 'WARNING',
-  });
+  }, tx));
   return assignment;
 }
 
 export async function removeRoleFromUser(
   targetUserId: string, roleId: string, tenantId: string, actorId: string,
 ): Promise<void> {
-  await repo.removeRoleFromUser(targetUserId, roleId, tenantId);
-  await writeAuditLog({
+  await repo.removeRoleFromUser(targetUserId, roleId, tenantId, tx => writeAuditLog({
     tenantId, userId: actorId,
     action: 'role.removed', entityType: 'User', entityId: targetUserId,
     after: { roleId },
     severity: 'WARNING',
-  });
+  }, tx));
 }
 
 /**

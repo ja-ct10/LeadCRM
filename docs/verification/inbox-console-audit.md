@@ -118,13 +118,13 @@ the already ignored preview output directory.
 
 Evidence:
 
-- [Isolated browser results](../../data/outputs/inbox-deal-conversations-browser/console-isolated/results.json)
-- [Extension-disabled Chrome results](../../data/outputs/inbox-deal-conversations-browser/console-clean-chrome/results.json)
-- [Standalone inspection comparison](../../data/outputs/inbox-deal-conversations-browser/inspection-control.json)
-- [Frontend tests](../../data/outputs/inbox-deal-conversations-browser/frontend-tests.log)
-- [Mailbox/attachment tests](../../data/outputs/inbox-deal-conversations-browser/attachment-tests.log)
-- [Lint/typechecks](../../data/outputs/inbox-deal-conversations-browser/lint.log)
-- [Production build](../../data/outputs/inbox-deal-conversations-browser/frontend-build.log)
+- Isolated browser results (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/console-isolated/results.json`)
+- Extension-disabled Chrome results (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/console-clean-chrome/results.json`)
+- Standalone inspection comparison (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/inspection-control.json`)
+- Frontend tests (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/frontend-tests.log`)
+- Mailbox/attachment tests (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/attachment-tests.log`)
+- Lint/typechecks (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/lint.log`)
+- Production build (historical artifact unavailable in this checkout; path: `../../data/outputs/inbox-deal-conversations-browser/frontend-build.log`)
 
 No deployment, production migration, publication, or live Gmail mutation was
 performed. The remaining acceptance item is attribution and live regression

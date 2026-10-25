@@ -1,5 +1,5 @@
 import { compatibleWorkflow, supportedChangedFields, accountWorkflowRetirementReferences } from './workflow-fields';
-import { runAuthorizedWorkflow } from '../../crm/access/crm-record-access.service';
+import { runAuthorizedWorkflow, assertCrmRecordRead } from '../../crm/access/crm-record-access.service';
 import type { Prisma, Workflow, WorkflowExecutionRun } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { workflowChain as chain, workflowLease } from './workflow-dispatch-context';
@@ -126,7 +126,11 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
           }
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
           if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || context['event.continuationSourceId'] && current.version !== workflow.version)) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
-          const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
+          const freshContext = await runAuthorizedWorkflow(params.tenantId, run.id, async () => {
+            const module = ({ lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' } as const)[trigger.entity];
+            await assertCrmRecordRead(prisma, module, params.entityId);
+            return repo.entityContext(trigger.entity, params.entityId, params.tenantId);
+          }, workflow.activatedById!);
           // A stage follow-up belongs to this entry into the stage. Do not continue after moving away.
           if (status === 'completed' && stageHistoryId) try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }
           catch (error) { if (!isSupersededStageEntry(error)) throw error; status = 'skipped'; errorMessage = error.message; }
@@ -150,7 +154,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
           await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));
-          const result: ActionResult = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index, stepId: step.id, stageHistoryId }))
+          const result: ActionResult = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index, stepId: step.id, stageHistoryId }), workflow.activatedById!)
             : { success: false, error: 'The triggering record is no longer available.' };
           await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : result.skipped ? 'skipped' : 'failed', output: result.output, error: result.error });
           pendingStepId = undefined;

@@ -17,6 +17,7 @@ const groupSelect = (tenantId: string) => ({
   createdAt: true,
   updatedAt: true,
   members: {
+    orderBy: { userId: 'asc' },
     where: { tenantId, user: { tenantId } },
     select: {
       id:     true,

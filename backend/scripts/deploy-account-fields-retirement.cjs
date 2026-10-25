@@ -52,6 +52,7 @@ async function run(db, mode, env=process.env, dependencies={}) {
   const local=readdirSync(resolve(__dirname,'../prisma/migrations')).filter(name=>/^\d+_/.test(name));
   const records=await db.$queryRawUnsafe('SELECT migration_name,finished_at,rolled_back_at,checksum FROM "_prisma_migrations"');
   verifyAppliedHistory(records,local);
+  if(records.some(row=>!row.finished_at&&!row.rolled_back_at))fail('ACCOUNT_FIELDS_FAILED_MIGRATION_REQUIRES_RECOVERY');
   if(!records.some(row=>row.migration_name===preservation&&row.finished_at&&!row.rolled_back_at))fail('ACCOUNT_FIELDS_PRESERVATION_REQUIRED');
   const current=await status(db);
   if(mode==='--verify'||!current.retiredColumns.length&&!current.productLinksPresent)return {commit:sha,...current};
@@ -61,7 +62,9 @@ async function run(db, mode, env=process.env, dependencies={}) {
   await db.$executeRawUnsafe(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${sha}'`);
   try{
     const plan=deploymentPlan(records,local);
-    await (dependencies.migrate??migrate)(plan.through,plan.exclude.filter(name=>name!==retirement));
+    // Approving Account fields must not also apply later expansions or retirements.
+    const exclude=[...new Set([...plan.exclude.filter(name=>name!==retirement),...local.filter(name=>name!==retirement&&!records.some(row=>row.migration_name===name&&row.finished_at&&!row.rolled_back_at))])];
+    await (dependencies.migrate??migrate)(retirement,exclude);
     const after=await status(db);
     if(after.retiredColumns.length||after.productLinksPresent)fail('ACCOUNT_FIELDS_RETIREMENT_POSTCHECK_FAILED');
     return {commit:sha,preservationVerified:true,...after};

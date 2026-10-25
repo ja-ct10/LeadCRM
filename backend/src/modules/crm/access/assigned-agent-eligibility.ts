@@ -23,8 +23,8 @@ export function hasAssignedAgentAccess(user: AssignedAgent, tenantId: string, re
     link.tenantId === tenantId && link.role.tenantId === tenantId && ['client admin', 'guest'].includes(link.role.name?.trim().toLowerCase() ?? ''))) return false;
   const permissions = user.userRoles.filter(link => link.tenantId === tenantId && link.role.tenantId === tenantId && !link.role.isArchived)
     .flatMap(link => link.role.permissions.filter(permission => permission.tenantId === tenantId));
-  return requirements.every(requirement => requirement.permissions.every(flag =>
-    permissions.some(permission => permission.module === requirement.module && permission[flag])));
+  return requirements.every(requirement =>
+    requirement.permissions.every(flag => permissions.some(permission => permission.module === requirement.module && permission[flag])));
 }
 
 export async function eligibleAssignedAgents(db: Client, tenantId: string, requirements: AssignmentRequirements) {

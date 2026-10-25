@@ -16,7 +16,7 @@ import { TaskRecordCreator } from './task-record-creator';
 import { TaskDetails } from './task-details';
 export { TaskSelector, taskInputClass } from './task-selector';
 export type TaskLinks = TaskLinkInput;
-type TaskEditorProps = { task?: TaskRecord; taskId?: string; links?: TaskLinks; readOnly?: boolean; preserveContextLinks?: boolean; onClose: () => void };
+type TaskEditorProps = { task?: TaskRecord; taskId?: string; links?: TaskLinks; initialMode?: 'view' | 'edit'; readOnly?: boolean; preserveContextLinks?: boolean; onClose: () => void };
 
 export function TaskEditor(props: TaskEditorProps) {
   return props.task || props.taskId ? <TaskDetails {...props} /> : <TaskCreateForm {...props} />;

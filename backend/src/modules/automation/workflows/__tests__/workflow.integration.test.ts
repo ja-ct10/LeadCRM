@@ -965,7 +965,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
         for (const step of item.steps) { expect(step).not.toHaveProperty('resolvedInput'); expect(step.output).toBeNull(); }
         expect(JSON.stringify(visible.body)).not.toMatch(/private-(dispatch|resolved|provider|recipient)/);
       }
-      const viewGrant = await prisma.rolePermission.create({ data: { tenantId, roleId: restrictedRole.id, module: 'leads', canView: true } });
+      const viewGrant = await prisma.rolePermission.create({ data: { tenantId, roleId: restrictedRole.id, module: 'leads', canView: true, canViewAll: true } });
       try {
         const visible = await call(`/automation/workflows/${workflow.id}/executions`, 'GET', undefined, viewerToken);
         expect(visible.body.data).toHaveLength(1); expect(visible.body.meta.total).toBe(1);

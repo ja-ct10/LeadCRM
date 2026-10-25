@@ -79,6 +79,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
   }, 60000);
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
 
+
   it.each(Object.keys(delegates).filter(module => module !== 'accounts'))('%s lists, searches, details and custom fields include every eligible assignment', async module => {
     const list = await call(`/${module}?limit=100`); expect(list.status).toBe(200);
     const ids = list.body.data.map((row: any) => row.id);
@@ -442,4 +443,35 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     expect((await call(`/deals/${id}`, admin, 'PUT', { engagementStatus: 'Hot' })).status).toBe(400);
     expect(await prisma.deal.findUniqueOrThrow({ where: { id } })).toEqual(before);
   });
+  it('ignores retired group metadata and preserves role-authorized manual status edits', async () => {
+    const staff = await person('ScopedStaff', false, 'Scoped CRM Staff');
+    await prisma.rolePermission.updateMany({ where: { roleId: staff.roleId }, data: { canView: false, canViewAll: false, canViewMy: false, canViewActive: false } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Retired group editor', permissions: { create: { module: 'contacts', canView: true, canViewAll: true, canEdit: true } } } });
+    const group = await prisma.tenantGroup.create({ data: { tenantId, name: 'Internal employees' } });
+    const member = await prisma.tenantGroupMember.create({ data: { tenantId, groupId: group.id, userId: staff.id, isHead: true } });
+    const customer = await prisma.contact.create({ data: { tenantId, firstName: 'Customer', lastName: 'Historical', email: randomUUID() + '@example.test', assignedUserId: b.id } });
+    await prisma.$executeRaw`UPDATE "TenantGroupMember" SET "crmRoleId"=${role.id} WHERE id=${member.id} AND "tenantId"=${tenantId}`;
+    await prisma.$executeRaw`UPDATE "Contact" SET "ownerGroupId"=${group.id} WHERE id=${customer.id} AND "tenantId"=${tenantId}`;
+    expect((await call('/contacts/' + customer.id, staff)).status).toBe(403);
+    expect((await call('/contacts/' + customer.id, staff, 'PUT', { status: 'Hot' })).status).toBe(403);
+    const policy = await resolveCrmActor(prisma, { userId: staff.id, tenantId });
+    expect(policy).not.toHaveProperty('groupGrants');
+    expect((await eligibleAgents(prisma, tenantId, ['contacts'])).some(user => user.id === staff.id)).toBe(false);
+    await prisma.rolePermission.updateMany({ where: { roleId: staff.roleId, module: 'contacts' }, data: { canView: true, canViewAll: true, canEdit: true } });
+    const detail = await call('/contacts/' + customer.id, staff);
+    expect(detail.status).toBe(200); expect(detail.body.data).not.toHaveProperty('ownerGroupId');
+    const saved = await call('/contacts/' + customer.id, staff, 'PUT', { status: 'Hot', expectedUpdatedAt: customer.updatedAt.toISOString() });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.data.status).toBe('Hot');
+    expect((await call('/contacts/' + customer.id, staff, 'PUT', { notes: 'Unrelated edit' })).body.data.status).toBe('Hot');
+    expect((await call('/contacts/' + customer.id, staff, 'PUT', { status: 'Cold', expectedUpdatedAt: customer.updatedAt.toISOString() })).status).toBe(409);
+    for (const module of Object.keys(delegates)) {
+      const id = records[module].own.id;
+      for (const ownerGroupId of [null, group.id]) {
+        expect((await call('/' + module + '/' + id, admin, 'PUT', { ownerGroupId })).status).toBe(400);
+      }
+      expect((await call('/' + module + '/' + id, admin)).body.data).not.toHaveProperty('ownerGroupId');
+    }
+  }, 60000);
+
 });

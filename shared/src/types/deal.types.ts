@@ -26,6 +26,7 @@ export interface DealStaleness {
  * Maps to the Prisma `Deal` model in the backend.
  */
 export interface Deal {
+  statusEditOptions?: string[];
   /** Calculated by the server from this Deal's verified evidence. */
   engagementStatus?: import('../contracts/record-experience').CrmStatus;
   addressContext?: DealAddressContext;

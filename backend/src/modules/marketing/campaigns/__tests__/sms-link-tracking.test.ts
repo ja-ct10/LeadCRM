@@ -1,41 +1,46 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { campaignTextLinkParts, mapCampaignTextLinks, smsCampaignTrackingUrl } from '@leadcrm/shared';
-import { isSmsLinkPreview, prepareSmsLinks, smsTrackingOrigin } from '../sms-link-tracking';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-afterEach(() => vi.unstubAllEnvs());
-describe('SMS recipient links', () => {
-  it('splits preview links without losing text, punctuation or unresolved variables', () => {
-    const message = 'Hi {{firstName}}, visit (https://example.test/a(b)?x=1&y=2#here). Next https://other.test! Pending https://example.test/{{customFieldValues.slug}}';
-    const parts = campaignTextLinkParts(message);
-    expect(parts.map(part => part.text).join('')).toBe(message);
-    expect(parts.filter(part => part.url).map(part => part.url)).toEqual(['https://example.test/a(b)?x=1&y=2#here', 'https://other.test']);
-    expect(campaignTextLinkParts('')).toEqual([]);
+const store = vi.hoisted(() => ({ findMany: vi.fn() }));
+vi.mock('../../../../config/database.config', () => ({ default: { campaignContact: { findMany: store.findMany } } }));
+import { readSmsLinkHistory, visitSmsLink } from '../sms-link-tracking';
+
+const token = 'a'.repeat(24);
+const history = { id: token, url: 'https://example.test/products?a=1&b=2#section',
+  clickedAt: '2026-10-02T03:12:00.123', lastClickedAt: '2026-10-02T03:13:00.456', clickCount: 4 };
+
+beforeEach(() => store.findMany.mockReset());
+describe('retired SMS link receipts', () => {
+  it('preserves exact destinations, counts and UTC timestamps from PostgreSQL JSON', () => {
+    const [link] = readSmsLinkHistory([history]);
+    expect(link).toEqual({ ...history, clickedAt: new Date('2026-10-02T03:12:00.123Z'), lastClickedAt: new Date('2026-10-02T03:13:00.456Z') });
+    expect(readSmsLinkHistory([{ ...history, clickedAt: '2026-10-02T11:12:00.123+08:00', lastClickedAt: null }])[0].clickedAt?.toISOString()).toBe('2026-10-02T03:12:00.123Z');
   });
-  it('preserves exact destinations, queries, fragments and surrounding punctuation', () => {
-    const prepared = prepareSmsLinks('Visit (https://example.test/a(b)?x=1&y=2#section). Again https://example.test/a(b)?x=1&y=2#section!', 'https://crm.example.test');
-    expect(prepared.links).toHaveLength(1);
-    expect(prepared.links[0].url).toBe('https://example.test/a(b)?x=1&y=2#section');
-    const url = smsCampaignTrackingUrl('https://crm.example.test', prepared.links[0].id);
-    expect(prepared.message).toBe(`Visit (${url}). Again ${url}!`);
-    expect(prepareSmsLinks('https://example.test/a(b)?x=1&y=2#section', 'https://crm.example.test').links[0].id).not.toBe(prepared.links[0].id);
+
+  it('ignores malformed receipts and unsafe or credential-bearing destinations', () => {
+    for (const value of [null, {}, 'text', [null, [], {}, { ...history, id: 'bad' }, { ...history, url: 'javascript:alert(1)' },
+      { ...history, url: 'https://user:password@example.test/' }, { ...history, clickCount: -1 }, { ...history, clickCount: 1.5 }]]) {
+      expect(readSmsLinkHistory(value)).toEqual([]);
+    }
+    expect(readSmsLinkHistory([{ ...history, clickedAt: 'invalid', lastClickedAt: null }])[0]).toMatchObject({ clickedAt: null, lastClickedAt: null });
   });
-  it('does not transform unsafe schemes or credential-bearing destinations', () => {
-    expect(mapCampaignTextLinks('javascript:alert(1) https://user:pass@example.test/ mailto:a@example.test', () => 'changed')).not.toContain('changed');
+
+  it('resolves an existing opaque token using bounded JSON containment and makes no writes', async () => {
+    store.findMany.mockResolvedValue([{ smsLinkHistory: [history] }]);
+    await expect(visitSmsLink(token)).resolves.toBe(history.url);
+    expect(store.findMany).toHaveBeenCalledExactlyOnceWith({ where: { smsLinkHistory: { array_contains: [{ id: token }] } },
+      select: { smsLinkHistory: true }, take: 2 });
+    // The mock has no mutation delegates: every redirect is read-only.
+    expect(readSmsLinkHistory([history])[0].clickCount).toBe(4);
   });
-  it.each(['https://example.test/path', 'https://user:pass@example.test', 'https://example.test/?key=1', 'ftp://example.test'])('rejects invalid tracking origin %s', origin => {
-    expect(() => prepareSmsLinks('https://example.test/', origin)).toThrow();
-  });
-  it('requires a public HTTPS website origin in production without blocking link-free SMS', () => {
-    vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('APP_URL', 'http://localhost:3000');
-    expect(() => smsTrackingOrigin()).toThrow('Configure APP_URL');
-    expect(prepareSmsLinks('A plain SMS')).toMatchObject({ message: 'A plain SMS', links: [] });
-    vi.stubEnv('APP_URL', 'https://crm.example.test'); expect(smsTrackingOrigin()).toBe('https://crm.example.test');
-  });
-  it.each([
-    ['HEAD', {}], ['GET', { purpose: 'prefetch' }], ['GET', { secPurpose: 'prefetch;prerender' }],
-    ['GET', { userAgent: 'WhatsApp/2.0' }], ['GET', { userAgent: 'facebookexternalhit/1.1' }], ['GET', { userAgent: 'Googlebot' }],
-  ])('ignores known preview request %s %j', (method, headers) => expect(isSmsLinkPreview(method, headers)).toBe(true));
-  it('accepts an ordinary browser visit without claiming it proves SMS delivery', () => {
-    expect(isSmsLinkPreview('GET', { userAgent: 'Mozilla/5.0 (Android) Chrome/130' })).toBe(false);
+
+  it('rejects malformed, missing, duplicated and unsafe tokens without guessing a destination', async () => {
+    await expect(visitSmsLink('invalid')).rejects.toMatchObject({ statusCode: 404 });
+    expect(store.findMany).not.toHaveBeenCalled();
+    for (const matches of [[], [{ smsLinkHistory: [history] }, { smsLinkHistory: [history] }],
+      [{ smsLinkHistory: [history, history] }], [{ smsLinkHistory: [{ ...history, id: 'b'.repeat(24) }] }],
+      [{ smsLinkHistory: [{ ...history, url: 'https://user:pass@example.test' }] }]]) {
+      store.findMany.mockResolvedValue(matches);
+      await expect(visitSmsLink(token)).rejects.toMatchObject({ statusCode: 404 });
+    }
   });
 });

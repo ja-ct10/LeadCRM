@@ -20,6 +20,7 @@ const CompanyFieldsSchema = z.object({
 
 const rejectRetired = z.unknown().superRefine((value, context) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  if (Object.prototype.hasOwnProperty.call(value, 'ownerGroupId')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['ownerGroupId'], message: 'Customer records do not have an owning Group.' });
   for (const field of RETIRED_ACCOUNT_FIELDS) if (Object.prototype.hasOwnProperty.call(value, field)) context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Account assignment, product fields and internal notes are retired.' });
 });
 

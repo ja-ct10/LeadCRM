@@ -138,7 +138,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   useReadRecordNotifications(labels[module], id,
     !USE_MOCK_DATA && !!record && !recordQuery.isInitialLoad && !recordQuery.isRefreshing && !recordQuery.error);
   const canEdit = hasEditPermission && recordAccess.canMutate(record);
-  const canArchive = hasArchivePermission && recordAccess.canMutate(record) && !USE_MOCK_DATA;
+  const canArchive = hasArchivePermission && recordAccess.canMutate(record, 'canArchive') && !USE_MOCK_DATA;
   useEffect(() => {
     const focus = (event: Event) => {
       if (module !== 'deals' || (event as CustomEvent<string>).detail !== id) return;
@@ -235,10 +235,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
   const saveCustomerStatus = async (status: string) => {
     if (saving || !canEditCustomer) return;
-    if (module !== 'deals') { await save({ status }); return; }
+    if (module !== 'deals') { await save({ status, ...(record?.updatedAt ? { expectedUpdatedAt: record.updatedAt } : {}) }); return; }
     setSaving(true);
     try {
-      const response = await apiClient.put<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status });
+      const response = await apiClient.put<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status, ...(customerRecord?.updatedAt ? { expectedUpdatedAt: customerRecord.updatedAt } : {}) });
       customerQuery.setData(response.data);
       await recordQuery.refetchSilently();
       toast.success('Customer status updated');
@@ -459,7 +459,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               <TooltipContent>{personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
             </Tooltip></TooltipProvider>}
             {module !== 'accounts' && <CustomerStatusMenu status={text(customerRecord?.status)} managed={!!customerRecord?.statusManagedByDeals} manuallyCancelled={!!customerRecord?.manualCancellation}
-              canEdit={canEditCustomer} busy={saving} label={module === 'deals' ? 'Customer Status' : undefined} onChange={saveCustomerStatus} />}
+              restrictions={customerRecord?.statusEditRestrictions as Record<string, string> | undefined} options={Array.isArray(customerRecord?.statusEditOptions) ? customerRecord.statusEditOptions as string[] : undefined} canEdit={canEditCustomer} busy={saving} label={module === 'deals' ? 'Customer Status' : undefined} onChange={saveCustomerStatus} />}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </>}
         />
@@ -507,7 +507,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
                   displayValue: dealCustomerAddressMessage(addressContext),
                   renderValue: () => <span className="block whitespace-pre-wrap break-words">{dealCustomerAddressMessage(addressContext)}<span className="block text-xs text-muted-foreground">{addressContext.options.find(option => option.type === addressContext.source?.type && option.id === addressContext.source?.id)?.label}</span></span>,
                   renderEditor: ({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) => <select aria-label="Customer Address" className="w-full min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs" value={value} disabled={disabled} onChange={event => onChange(event.target.value)}><option value="">Automatic / choose later</option>{value && !addressContext.options.some(option => dealAddressKey(option) === value) && <option value={value}>Selected address unavailable</option>}{addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}</select>,
-                }] : []), { ...row, label: field.label, alwaysVisible: field.technicalKey === 'address', apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
+                }] : []), { ...row, label: field.label, alwaysVisible: field.technicalKey === 'address', apiField: row.apiField === 'assignedUserId' && !(recordAccess.canReassignRecord?.(record) ?? recordAccess.canReassign) ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
               {hasRelationships && isPerson && <>
                 {relationshipContent}

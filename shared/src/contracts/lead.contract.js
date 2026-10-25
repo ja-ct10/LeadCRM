@@ -32,7 +32,7 @@ exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_expe
 exports.ManualCreateLeadSchema = exports.CreateLeadSchema.refine(data => data.status === 'Inquiry', {
     path: ['status'], message: 'Manually created Leads start with Inquiry status.',
 });
-exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial()
+exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial().extend({ expectedUpdatedAt: zod_1.z.string().datetime().optional() })
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 /** New Account details use the same contract as standalone and linked creation. */
 exports.ConvertLeadSchema = zod_1.z.object({

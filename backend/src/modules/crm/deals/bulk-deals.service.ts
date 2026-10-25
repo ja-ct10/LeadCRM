@@ -80,7 +80,6 @@ export async function bulkReassign(
   dto: BulkReassignDto,
 ): Promise<BulkOperationResult> {
   await authorizeBatch(dto.dealIds, 'edit', { assignedUserId: dto.assignedUserId });
-  if (crmActor.getStore()) await validateSalesOwner(prisma, tenantId, dto.assignedUserId, ['deals']);
   // Verify target user belongs to tenant
   const targetUser = await prisma.user.findFirst({
     where: { id: dto.assignedUserId, tenantId },

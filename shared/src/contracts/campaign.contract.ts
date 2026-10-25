@@ -45,6 +45,7 @@ export interface CampaignEmailSettings {
 export interface CampaignSmsSettings {
   organizationName: string | null;
   organizationEmail: string | null;
+  /** Retained for compatible clients; new SMS links are sent unchanged. */
   trackingOrigin?: string | null;
 }
 

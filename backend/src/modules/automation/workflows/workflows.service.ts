@@ -31,6 +31,8 @@ import { resolveTaskDeals, workflowTaskAssociationSummary } from '../actions/act
 import { prepareWorkflowEmailInput } from '../actions/action-email';
 import { prepareWorkflowSmsInput } from '../actions/action-sms';
 import { workflowActionPolicyIssues } from '@leadcrm/shared';
+import { WORKFLOW_MODULES } from '@leadcrm/shared';
+import { crmActor, assertCrmRecordRead } from '../../crm/access/crm-record-access.service';
 
 function sanitizeDraft(draft: WorkflowDraft, previousConditions?: unknown): WorkflowDraft {
   const previous = WorkflowConditionSchema.safeParse(previousConditions);
@@ -163,12 +165,18 @@ export async function getWorkflowExecutionPage(id: string, tenantId: string, pag
 }
 export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string, stageHistoryId?: string, useDraft = false): Promise<WorkflowTestResult> {
   requireScope(tenantId);
+  const actor = crmActor.getStore();
+  if ((actor && !actor.readRecords) || (!actor && userId)) {
+    return crmActor.run({ ...(actor ?? { tenantId, userId: userId! }), readRecords: true, readPolicy: undefined },
+      () => testWorkflow(id, tenantId, entityId, userId, stageHistoryId, useDraft));
+  }
   const existing = await getWorkflowById(id, tenantId);
   const draft = parseDraft(useDraft && existing.draftDefinition ? existing.draftDefinition : { name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: false });
   const trigger = findTrigger(draft.trigger);
   if (!trigger) throw new ValidationError('Choose a supported trigger.');
   if (userId) await assertWorkflowPermissions(draft, tenantId, userId);
+  await assertCrmRecordRead(prisma, WORKFLOW_MODULES[trigger.entity], entityId);
   const context = await repo.entityContext(trigger.entity, entityId, tenantId);
   if (!context) throw new NotFoundError('Sample record');
   let triggerReason: string | undefined;

@@ -1,4 +1,6 @@
 export interface Account {
+  statusEditOptions?: string[];
+  statusEditRestrictions?: Record<string, string>;
   customFieldValues?: import('@leadcrm/shared').ClosingValues;
   id: string;
   tenantId: string;

@@ -3,7 +3,7 @@ import type { ArchiveType } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
-import { crmActor, resolveCrmActor, taskReadWhere } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, taskReadWhere, crmPolicySqlWhere, type CrmModule } from '../../crm/access/crm-record-access.service';
 
 // Only fixed server-owned table/column expressions enter the SQL. Search, tenant,
 // type and pagination values are parameters; clients cannot select a delegate.
@@ -26,12 +26,14 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
   if (tenantContext.getStore()?.tenantId !== tenantId) throw new AppError('Workspace context required', 403);
   if (!types.length) return [];
   const actor = crmActor.getStore();
-  const taskScope = actor && types.includes('Task') ? taskReadWhere(await (actor.readPolicy ??= resolveCrmActor(prisma, actor))) : undefined;
+  const policy = actor ? await (actor.readPolicy ??= resolveCrmActor(prisma, actor)) : undefined;
+  const taskScope = policy && types.includes('Task') ? taskReadWhere(policy) : undefined;
   const taskAssignees = typeof taskScope?.assignedUserId === 'string' ? [taskScope.assignedUserId]
     : taskScope?.assignedUserId && typeof taskScope.assignedUserId === 'object' ? taskScope.assignedUserId.in as string[] : undefined;
   const terms = query.search?.trim().split(/\s+/).filter(Boolean) ?? [];
   const sources = types.map(type => {
     const definition = definitions[type];
+    const crmModule = ({ Lead: 'leads', Contact: 'contacts', Account: 'accounts', Deal: 'deals' } as Partial<Record<ArchiveType, CrmModule>>)[type];
     const search = terms.map(term => Prisma.sql`(${Prisma.join(definition.search.map(field =>
       Prisma.sql`${Prisma.raw(`r."${field}"`)} ILIKE ${`%${term.replace(/[\\%_]/g, '\\$&')}%`}`), ' OR ')})`);
     const archiveCondition = type === 'User' ? Prisma.sql`r."status" = 'INACTIVE'` : type === 'Product' ? Prisma.sql`r."active" = false` : Prisma.sql`r."isArchived" = true`;
@@ -48,6 +50,7 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
           ${definition.deletedAt ? Prisma.sql`AND r."deletedAt" IS NULL` : Prisma.empty}
         ORDER BY a."createdAt" DESC, a."id" ASC LIMIT 1) history ON true`}
       WHERE r."tenantId" = ${tenantId} AND ${archiveCondition}
+        ${policy && crmModule ? Prisma.sql`AND ${crmPolicySqlWhere(policy, crmModule, 'r')}` : Prisma.empty}
         ${type === 'Task' && taskAssignees ? taskAssignees.length
           ? Prisma.sql`AND r."assignedUserId" IN (${Prisma.join(taskAssignees)})` : Prisma.sql`AND false` : Prisma.empty}
         ${search.length ? Prisma.sql`AND ${Prisma.join(search, ' AND ')}` : Prisma.empty}`;

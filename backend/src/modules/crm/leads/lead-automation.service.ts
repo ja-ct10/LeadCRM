@@ -151,7 +151,7 @@ export async function resolveFormSalesAgent(tx: Tx, tenantId: string) {
 }
 
 export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string, assignment: 'default' | 'public-form' = 'default') {
-  await assertCrmCreateAssignment(tx, input.tenantId, input.assignedUserId);
+  await assertCrmCreateAssignment(tx, input.tenantId, input.assignedUserId, 'leads');
   const scope = crmScope(input.tenantId);
   if (input.creationKey) {
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
@@ -165,10 +165,10 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     : await tx.productInterest.findMany({ where: { tenantId: scope.tenantId, active: true, name: { in: (input.productInterest ?? []) as string[] } } });
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
-  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, manualCancellation: input.status === 'Cancelled', status: input.status ?? 'Inquiry' } });
+  const lead = await runCrmAutomaticCreation(tx, 'leads', null, () => tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, manualCancellation: input.status === 'Cancelled', status: input.status ?? 'Inquiry' } }));
   const agent = assignment === 'public-form'
     ? await resolveFormSalesAgent(tx, scope.tenantId)
-    : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
+    : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId, ['leads', 'deals']);
   if (agent) {
     const score = (await weightedLeadScores(tx, scope.tenantId, [agent.id])).get(agent.id) ?? 0;
     await withAssignmentReason(tx, 'record_creation', () => tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } }));

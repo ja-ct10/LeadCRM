@@ -22,6 +22,20 @@ Related relationship, audit, and record writes commit together. Tenant-scoped ID
 
 Accounts use module permissions within the authenticated tenant, without an Assigned Agent predicate. Lead, Contact and Deal assignment restrictions remain enforced. Account product metadata is preserved in operator-only history and retired through a separate guarded cutover; see [Account retirement](accounts-field-retirement.md).
 
+Customer records do not have Group ownership. Leads, Contacts and Deals use the
+employee's assigned roles, authorized view scopes and Assigned Agent; Accounts use
+tenant-scoped role permissions. Employee Groups remain in Settings → Team
+Management for memberships, Group Heads and existing assignment pools. Membership
+and Group Head designation do not grant CRM permissions, and there is no separate
+CRM role per Group. Existing task-team scope remains based on employee membership.
+
+Migration `20261227000000_retire_crm_group_ownership` removes the obsolete Group
+foreign keys and indexes while retaining historical scalar values as ignored
+Prisma fields. Those values are excluded from public responses and cannot affect
+authorization, assignment, or Group/Role deletion. Stop old APIs/workers, apply the
+forward migration, regenerate Prisma and deploy matching frontend/backend code.
+Existing migrations and unrelated status checkpoints remain intact.
+
 ## Canonical data and integration points
 
 | Domain | Canonical relationship or rule |
@@ -30,11 +44,11 @@ Accounts use module permissions within the authenticated tenant, without an Assi
 | Roles | `RoleDefinition`, `UserRole`, and `RolePermission`; metadata and permission replacement save in one transaction |
 | Customer records | Leads, Contacts, Accounts and their relationships share tenant validation, imports, file history, and CRM activity |
 | Deals | Canonical `accountId`; ordered Lead/Contact associations; current Product price snapshots at creation; governed stage changes |
-| Tasks | New writes require ordered TaskDeal associations; CRM participants derive through Deals. Legacy junctions remain readable. Immutable creator and event-time Activity/AuditLog history commit with mutations; Lead/Contact/Account panels are read-only. Shared Manila dates and deactivation transfers remain supported. See [Task verification](tasks-deal-only-implementation.md). |
+| Tasks | New writes require ordered TaskDeal associations; CRM participants derive through Deals. Legacy TaskLead/TaskContact remain readable. Retired direct Account links are private immutable snapshots. Immutable creator and event-time Activity/AuditLog history commit with mutations; Lead/Contact/Account panels are read-only. Shared Manila dates and deactivation transfers remain supported. See [Task verification](tasks-deal-only-implementation.md) and [table retirement](retired-relationships.md). |
 | Forms | Saved definitions and submissions; new Leads use protected Sales Group rotation in the sales transaction; retries preserve one turn and returning assignments; publish permission remains separate |
 | Reporting | Reports reuses Dashboard's authorized server aggregates, filters, real stage labels, and CSV definitions |
 | Gmail | Persisted scoped mailbox history and owned account; recipient/CRM assignment checks apply to manual, scheduled, and Workflow sends |
-| Campaigns | Durable submission lease and recipient attempt markers; provider webhooks record delivery; interrupted uncertain outcomes remain reviewable without automatic resend |
+| Campaigns | Durable submission lease and recipient attempt markers; provider webhooks record delivery; interrupted uncertain outcomes remain reviewable without automatic resend. New SMS uses plain URLs; old sent tokens redirect from immutable recipient history without recording new clicks. |
 
 The Department-to-Groups migration preserves all existing memberships and creates/reuses same-tenant Groups for nonblank legacy values before dropping the old field. It does not create a second assignment mechanism. Multiple Group memberships remain supported.
 

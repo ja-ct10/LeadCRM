@@ -136,7 +136,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   });
   it('rejects direct calculated status edits and converts through the confirmed winning workflow', async () => {
     const { lead, deals } = await customer(null, 1);
-    await expect(scope(() => updateLead(lead.id, tenantId, { status: 'Closed Deal' }, adminId))).rejects.toThrow('calculated');
+    await expect(scope(() => updateLead(lead.id, tenantId, { status: 'Closed Deal' }, adminId))).rejects.toThrow(/Confirm a related Deal/);
     await close(deals[0].id);
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBeTruthy();
   });

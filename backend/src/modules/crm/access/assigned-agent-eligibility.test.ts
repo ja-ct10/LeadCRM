@@ -38,4 +38,12 @@ describe('authoritative assignment eligibility', () => {
     expect((await eligibleAssignedAgents(db as never, tenantId, TASK_ASSIGNEE_REQUIREMENTS)).map(user => user.id)).toEqual(['staff']);
     await expect(assertEligibleAssignedAgent(db as never, tenantId, 'admin', TASK_ASSIGNEE_REQUIREMENTS)).rejects.toMatchObject({ statusCode: 400 });
   });
+  it('ignores obsolete group-only grants for CRM and Task assignment', () => {
+    const staff = agent({ userRoles: [], groupMemberships: [{ groupId: 'g1', crmRole: { tenantId, name: 'Group CRM', isArchived: false, isSystemRole: false,
+      permissions: [grant('contacts', { canView: true, canEdit: true }), grant('tasks', { canView: true })] } }] });
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'))).toBe(false);
+    expect(hasAssignedAgentAccess(staff, tenantId, crmAssignmentRequirements('contacts'))).toBe(false);
+    expect(hasAssignedAgentAccess(staff, tenantId, TASK_ASSIGNEE_REQUIREMENTS)).toBe(false);
+  });
+
 });

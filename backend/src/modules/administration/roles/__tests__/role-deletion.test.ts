@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   db: { $transaction: vi.fn() },
   tx: { $queryRaw: vi.fn(), roleDefinition: { findFirst: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    userRole: { count: vi.fn(), deleteMany: vi.fn() }, rolePermission: { deleteMany: vi.fn() } },
+    tenantGroupMember: { count: vi.fn() }, userRole: { count: vi.fn(), deleteMany: vi.fn() }, rolePermission: { deleteMany: vi.fn() } },
   audit: vi.fn(),
 }));
 vi.mock('../../../../config/database.config', () => ({ default: state.db }));
@@ -17,6 +17,7 @@ beforeEach(() => {
   state.tx.roleDefinition.findFirst.mockResolvedValue({ id: 'role', tenantId: 'tenant', name: 'Staff', isSystemRole: false, isArchived: false });
   state.tx.roleDefinition.update.mockResolvedValue({ id: 'role', name: 'Staff', isArchived: true });
   state.tx.userRole.count.mockResolvedValue(0);
+  state.tx.tenantGroupMember.count.mockResolvedValue(0);
 });
 
 it('locks, rechecks and soft-deletes in one transaction, retaining permissions and recording the business audit', async () => {
@@ -29,7 +30,7 @@ it('locks, rechecks and soft-deletes in one transaction, retaining permissions a
   expect(state.tx.userRole.count.mock.invocationCallOrder[0]).toBeLessThan(state.tx.roleDefinition.update.mock.invocationCallOrder[0]);
   expect(state.tx.roleDefinition.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'role', tenantId: 'tenant', isArchived: false }, data: { isArchived: true } });
   expect(state.audit).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor', entityType: 'RoleDefinition', entityId: 'role', action: 'role.deleted',
-    before: { name: 'Staff', isArchived: false }, after: { name: 'Staff', isArchived: true } });
+    before: { name: 'Staff', isArchived: false }, after: { name: 'Staff', isArchived: true } }, state.tx);
   expect(state.tx.roleDefinition.delete).not.toHaveBeenCalled();
   expect(state.tx.rolePermission.deleteMany).not.toHaveBeenCalled();
   expect(state.tx.userRole.deleteMany).not.toHaveBeenCalled();
@@ -56,4 +57,11 @@ it('rejects missing, foreign or already deleted roles using the active tenant qu
   await expect(archiveRole('role', 'tenant', 'actor')).rejects.toMatchObject({ statusCode: 404 });
   expect(state.tx.roleDefinition.findFirst).toHaveBeenCalledWith({ where: { id: 'role', tenantId: 'tenant', isArchived: false } });
   expect(state.tx.roleDefinition.update).not.toHaveBeenCalled();
+});
+
+it('ignores retired Group CRM-role references when archiving an otherwise unassigned role', async () => {
+  state.tx.tenantGroupMember.count.mockResolvedValue(1);
+  await archiveRole('role', 'tenant', 'actor');
+  expect(state.tx.tenantGroupMember.count).not.toHaveBeenCalled();
+  expect(state.tx.roleDefinition.update).toHaveBeenCalledOnce();
 });

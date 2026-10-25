@@ -6,20 +6,15 @@ import { AppError } from '../../../shared/errors/app-error';
 import { salesContext } from '../leads/sales-context';
 import { ValidationError } from '../../../shared/errors/http-error';
 
-/** Evidence stays in the existing stage history and mailbox tables, not a second event store. */
-export async function evaluateDealEngagement(tx: Prisma.TransactionClient, tenantId: string, dealId: string, actorId: string,
-  now = new Date(), emit = true) {
-  const deal = await tx.deal.findFirst({ where: { tenantId, id: dealId, deletedAt: null }, include: { stage: true } });
-  if (!deal || deal.isArchived) return deal;
-  // A sweep's snapshot may precede a qualification/reply committed during that sweep.
-  if (deal.engagementEvaluatedAt && +deal.engagementEvaluatedAt > +now) return deal;
+/** Shared verified inputs for classification and manual-status checkpoints. */
+export async function readDealEngagementEvidence(tx: Prisma.TransactionClient, tenantId: string, dealId: string, now: Date) {
   const [qualifications, messages] = await Promise.all([
     tx.dealStageHistory.findMany({ where: { tenantId, dealId, newStage: { tenantId, name: { equals: 'Qualified', mode: 'insensitive' }, isWon: false, isLost: false } },
-      select: { previousStageId: true, newStageId: true, movedAt: true } }),
+      orderBy: [{ movedAt: 'asc' }, { id: 'asc' }], select: { previousStageId: true, newStageId: true, movedAt: true } }),
     tx.mailboxMessage.findMany({ where: { tenantId, dealId,
       NOT: [{ dealAttribution: { equals: Prisma.DbNull } }, { labels: { hasSome: ['DRAFT', 'SPAM', 'TRASH', 'DELETED'] } }],
       engagementRuleVersion: 2, participantPolicyVersion: 1, sentAt: { lte: now } },
-      select: { id: true, accountId: true, providerMessageId: true, direction: true, meaningful: true, sentAt: true,
+      orderBy: [{ sentAt: 'asc' }, { id: 'asc' }], select: { id: true, accountId: true, providerMessageId: true, direction: true, meaningful: true, sentAt: true,
         account: { select: { syncPageToken: true, syncBaselineHistoryId: true, syncError: true } } } }),
   ]);
   const receipts = messages.length ? await tx.mailboxSendReceipt.findMany({ where: { tenantId, operation: { in: ['send', 'schedule'] }, status: 'sent',
@@ -35,6 +30,18 @@ export async function evaluateDealEngagement(tx: Prisma.TransactionClient, tenan
     const draft = QuotationDraftSchema.safeParse(saved?.quotation?.draft);
     return draft.success && draft.data.dealId === dealId && typeof saved?.quotation?.fingerprint === 'string' && /^[a-f0-9]{64}$/.test(saved.quotation.fingerprint);
   });
+  return { qualifications, events, hasQuotation,
+    incomplete: messages.some(message => message.account.syncPageToken || message.account.syncBaselineHistoryId || message.account.syncError) };
+}
+
+/** Evidence stays in the existing stage history and mailbox tables, not a second event store. */
+export async function evaluateDealEngagement(tx: Prisma.TransactionClient, tenantId: string, dealId: string, actorId: string,
+  now = new Date(), emit = true) {
+  const deal = await tx.deal.findFirst({ where: { tenantId, id: dealId, deletedAt: null }, include: { stage: true } });
+  if (!deal || deal.isArchived) return deal;
+  // A sweep's snapshot may precede a qualification/reply committed during that sweep.
+  if (deal.engagementEvaluatedAt && +deal.engagementEvaluatedAt > +now) return deal;
+  const { qualifications, events, hasQuotation, incomplete } = await readDealEngagementEvidence(tx, tenantId, dealId, now);
   let qualifiedTarget: { id: string } | undefined;
   if (emit && hasQuotation && !qualifications.length && !deal.stage.isWon && !deal.stage.isLost && ['lead', 'contacted'].includes(deal.stage.name.trim().toLowerCase())) {
     const targets = await tx.stage.findMany({ where: { tenantId, pipelineId: deal.pipelineId, name: { equals: 'Qualified', mode: 'insensitive' }, isWon: false, isLost: false }, take: 2 });
@@ -48,7 +55,6 @@ export async function evaluateDealEngagement(tx: Prisma.TransactionClient, tenan
     }
   }
   let status = classifyDealEngagement(events, now, deal.stage.isWon ? 'won' : deal.stage.isLost ? 'lost' : undefined);
-  const incomplete = messages.some(message => message.account.syncPageToken || message.account.syncBaselineHistoryId || message.account.syncError);
   // Incomplete first sync cannot prove absence of a newer reply. Verified snapshots can still age offline.
   if (!deal.engagementEvaluatedAt && incomplete && status === 'Cold') status = 'Inquiry';
   const firstCommunication = emit && !deal.stage.isWon && !deal.stage.isLost && deal.stage.name.trim().toLowerCase() === 'lead' && events.some(event => event.type === 'reply' || event.type === 'outreach');
@@ -73,12 +79,12 @@ export async function evaluateDealEngagement(tx: Prisma.TransactionClient, tenan
       }
     }
   }
-  if (emit && status !== deal.engagementStatus) {
+  if (status !== deal.engagementStatus) {
     const activity = await tx.activity.create({ data: { tenantId, dealId, createdById: actorId, type: 'stage_change',
-      title: `Deal engagement changed from ${deal.engagementStatus} to ${status}`, metadata: { source: 'deal_engagement' } } });
+      title: `Deal engagement changed from ${deal.engagementStatus} to ${status}`, metadata: { source: 'deal_engagement', previousStatus: deal.engagementStatus, newStatus: status, occurredAt: now.toISOString() } } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.engagement_changed', entityType: 'Deal', entityId: dealId,
       changeset: { before: { engagementStatus: deal.engagementStatus }, after: { engagementStatus: status } } } });
-    await fireDealUpdated({ tenantId, actorId, eventId: activity.id, record: updated,
+    if (emit) await fireDealUpdated({ tenantId, actorId, eventId: activity.id, record: updated,
       changedFields: ['engagementStatus'], changes: { before: { engagementStatus: deal.engagementStatus }, after: { engagementStatus: status } } });
   }
   return updated;

@@ -1,4 +1,4 @@
-import { compareSortValues, ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
+import { hasCrmRecordAssignmentAccess, compareSortValues, ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import type { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
@@ -15,14 +15,14 @@ import { assertProductCatalogCapacity, assertProductCatalogEnabled } from '../pr
 
 async function applyAssignmentRestorePolicy(actor: Actor, rows: ArchivedRecord[]) {
   const policy = await resolveCrmActor(prisma, actor);
-  if (!policy.assignmentRestricted) return rows;
+  if (policy.clientAdmin) return rows;
   const models = { Lead: prisma.lead, Contact: prisma.contact, Account: prisma.account, Deal: prisma.deal };
   const assigned = new Set<string>();
   await Promise.all(Object.entries(models).map(async ([type, model]) => {
     const ids = rows.filter(row => row.type === type && row.canRestore).map(row => row.id);
     if (!ids.length) return;
-    const records = await (model as typeof prisma.lead).findMany({ where: { tenantId: actor.tenantId, id: { in: ids }, assignedUserId: actor.userId }, select: { id: true } });
-    for (const record of records) assigned.add(`${type}:${record.id}`);
+    const records = await (model as typeof prisma.lead).findMany({ where: { tenantId: actor.tenantId, id: { in: ids }, }, select: { id: true, tenantId: true, ...(type === 'Account' ? {} : { assignedUserId: true }), ...(['Lead', 'Contact'].includes(type) ? { status: true } : {}) } });
+    for (const record of records) if (hasCrmRecordAssignmentAccess(policy, record, ({ Lead: 'leads', Contact: 'contacts', Account: 'accounts', Deal: 'deals' } as const)[type as 'Lead'], 'canView')) assigned.add(`${type}:${record.id}`);
   }));
   return rows.map(row => row.type in models ? { ...row, canRestore: row.canRestore && assigned.has(`${row.type}:${row.id}`) } : row);
 }

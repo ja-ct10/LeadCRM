@@ -46,6 +46,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
  */
 export function toBackendUpdateContact(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
+  if (data.expectedUpdatedAt !== undefined) result.expectedUpdatedAt = data.expectedUpdatedAt;
   if (data.customFieldValues !== undefined) result.customFieldValues = data.customFieldValues;
   if (data.newAccount !== undefined) result.newAccount = data.newAccount;
 
@@ -80,6 +81,8 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
   const contactPerson = [firstName, lastName].filter(Boolean).join(' ');
 
   return {
+    statusEditOptions: backendContact.statusEditOptions,
+    statusEditRestrictions: backendContact.statusEditRestrictions,
     statusManagedByDeals: backendContact.statusManagedByDeals,
     manualCancellation: backendContact.manualCancellation,
     id: backendContact.id || '',

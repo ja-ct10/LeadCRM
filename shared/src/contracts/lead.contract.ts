@@ -30,7 +30,7 @@ export const CreateLeadSchema = LeadFieldsSchema.extend({ status: LeadStatusSche
 export const ManualCreateLeadSchema = CreateLeadSchema.refine(data => data.status === 'Inquiry', {
   path: ['status'], message: 'Manually created Leads start with Inquiry status.',
 });
-export const UpdateLeadSchema = LeadFieldsSchema.partial()
+export const UpdateLeadSchema = LeadFieldsSchema.partial().extend({ expectedUpdatedAt: z.string().datetime().optional() })
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 export type CreateLeadInput = z.infer<typeof CreateLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof UpdateLeadSchema>;

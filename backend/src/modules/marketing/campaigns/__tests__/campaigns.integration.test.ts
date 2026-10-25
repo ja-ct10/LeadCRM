@@ -1052,6 +1052,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await scoped(async () => {
       const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Campaign sender ${randomUUID()}` } });
       const permission = await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'campaigns', canView: true, canSend: true } });
+      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'contacts', canView: true, canViewAll: true } });
       const actor = await prisma.user.create({ data: { tenantId, role: role.name, email: `${randomUUID()}@camxian.com`, firstName: 'Scheduling', lastName: 'Actor', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date(), userRoles: { create: { tenantId, roleId: role.id } } } });
       const denied = await scheduleDraft();
       await scheduleCampaign(denied.id, tenantId, actor.id, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
@@ -1308,7 +1309,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await vi.waitFor(() => expect(sendMail).toHaveBeenLastCalledWith(expect.objectContaining({ subject: 'From Changed Provider', html: expect.stringContaining('changed-sender@example.test') })), { timeout: 10000 });
       expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: snapshot.id } })).personalization).toEqual(snapshot.personalization);
       await prisma.tenant.update({ where: { id: tenantId }, data: { name: 'Configured Organization', email: 'contact@example.test' } });
-      expect((await request('/marketing/campaigns/sms-settings')).body.data).toEqual({ organizationName: 'Configured Organization', organizationEmail: 'contact@example.test', trackingOrigin: expect.any(String) });
+      expect((await request('/marketing/campaigns/sms-settings')).body.data).toEqual({ organizationName: 'Configured Organization', organizationEmail: 'contact@example.test', trackingOrigin: null });
       const sms = await createCampaign(tenantId, userId, { name: randomUUID(), type: 'SMS', targetAudienceId: audience.id, body: '{{sender_name}} {{sender_email}}' });
       await sendCampaign(sms.id, tenantId, userId);
       expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Configured Organization contact@example.test'), { deviceId: 'device-fixture' });

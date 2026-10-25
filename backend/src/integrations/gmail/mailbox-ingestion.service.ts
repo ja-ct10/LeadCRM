@@ -106,7 +106,7 @@ async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLin
   if (link.leadId) await tx.lead.update({ where: { tenantId, id: link.leadId }, data: timestamps });
   else await tx.contact.update({ where: { tenantId, id: link.contactId }, data: timestamps });
   if (!canEvaluate || !status || normalizeCrmStatus(customer.status) === status) return;
-  await classifyCustomerRecord(tx, tenantId, link, account.userId, { genuineReply: immediateReply }, now);
+  await classifyCustomerRecord(tx, tenantId, link, account.userId, { genuineReply: immediateReply, source: 'gmail' }, now);
   return;
 }
 
@@ -159,7 +159,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         await persistEmailActivity(tx, account, stored);
-        if (stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId);
+        if (stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -189,7 +189,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
       await persistEmailActivity(tx, account, stored);
-      if (!email.labels.includes('DRAFT') && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId);
+      if (!email.labels.includes('DRAFT') && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
       if (email.labels.includes('DRAFT') || !link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
       if (direction === 'outbound' && await tx.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, providerMessageId: email.id, operation: 'send', status: 'sent' }, select: { id: true } })) await recordStaffOutreach(tx, account.tenantId, link, new Date(email.date));

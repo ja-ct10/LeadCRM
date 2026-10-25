@@ -60,7 +60,7 @@ export async function remove(id: string, tenantId: string, actorId: string) {
   if (existing.systemKey) throw new ConflictError('The default Sales group cannot be deleted.');
 
   const deleted = await repo.deleteEmptyGroup(id, tenantId).catch(rethrowMembershipConflict);
-  if (!deleted.count) throw new ConflictError('Remove all members from this group before deleting it.');
+  if (!deleted.count) throw new ConflictError(existing.members.length ? 'Remove all members from this group before deleting it.' : 'This group changed while deleting. Refresh and try again.');
   await writeAuditLog({
     tenantId, userId: actorId,
     action: 'group.deleted', entityType: 'TenantGroup', entityId: id,

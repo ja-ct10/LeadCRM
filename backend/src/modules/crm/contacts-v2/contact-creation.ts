@@ -32,7 +32,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
     if (!contact) throw new NotFoundError('Contact');
     return { contact, replayed: true };
   }
-  await assertCrmCreateAssignment(tx, tenantId, dto.assignedUserId);
+  await assertCrmCreateAssignment(tx, tenantId, dto.assignedUserId, 'contacts');
   await assertContactAccountSelection(tx, tenantId, dto.accountId);
   const status = CrmStatusSchema.parse(dto.status ?? 'Inquiry');
   if (status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');

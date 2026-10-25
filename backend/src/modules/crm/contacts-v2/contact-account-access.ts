@@ -8,10 +8,10 @@ export async function mayReadContactAccount(db: Prisma.TransactionClient, tenant
 }
 
 /** Strip implementation metadata on every public Contact projection. */
-export function presentContactAccount<T extends { companyName?: string | null; companyFromAccount?: boolean; account?: unknown }>(contact: T, permitted: boolean) {
-  const { companyFromAccount, ...record } = contact;
+export function presentContactAccount<T extends { companyName?: string | null; companyFromAccount?: boolean; account?: unknown; manualStatusContext?: unknown }>(contact: T, permitted: boolean) {
+  const { companyFromAccount, manualStatusContext: _checkpoint, ...record } = contact;
   return { ...record, ...(companyFromAccount && !permitted && 'companyName' in record ? { companyName: null } : {}),
-    ...('account' in record ? { account: permitted ? record.account : null } : {}) } as Omit<T, 'companyFromAccount'>;
+    ...('account' in record ? { account: permitted ? record.account : null } : {}) } as Omit<T, 'companyFromAccount' | 'manualStatusContext'>;
 }
 
 export async function assertContactAccountSelection(db: Prisma.TransactionClient, tenantId: string, accountId: unknown, previousId?: string | null): Promise<void> {

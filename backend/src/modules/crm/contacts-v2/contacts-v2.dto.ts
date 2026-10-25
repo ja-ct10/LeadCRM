@@ -22,5 +22,5 @@ export const CreateClientContactSchema = ContactFields.refine(exclusiveProducts,
 export const ManualCreateClientContactSchema = CreateClientContactSchema.refine(data => data.status === 'Inquiry', {
   path: ['status'], message: 'Manually created Contacts start with Inquiry status.',
 });
-export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().strict()
+export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().extend({ expectedUpdatedAt: z.string().datetime().optional() }).strict()
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });

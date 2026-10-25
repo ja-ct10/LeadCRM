@@ -54,6 +54,14 @@ beforeAll(async () => {
     if (name === '20261102000000_retire_relationship_compatibility') await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
     if (name === '20261112000000_retire_lead_nonform_columns') await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
     if (name === '20261208000000_retire_account_fields') await pg.exec(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${'a'.repeat(40)}'`);
+    if (name === '20261210000000_retire_account_internal_notes') {
+      // This disposable fixture runs the compatible API directly. Prove the
+      // populated historical note was reconciled before approving its cutover.
+      await pg.exec(`UPDATE "Account" SET "internalNotes"='Security fixture historical note' WHERE id='migration-account'; SELECT crm_history.reconcile_account_notes();`);
+      const preserved = await pg.query(`SELECT h.note_value FROM crm_history.account_legacy_notes h JOIN "Activity" a ON a.id=h.activity_id AND a."tenantId"=h.tenant_id WHERE h.account_id='migration-account' AND h.source_field='internalNotes' AND a.description=h.note_value`);
+      expect(preserved.rows).toContainEqual({ note_value: 'Security fixture historical note' });
+      await pg.exec(`COMMENT ON TABLE crm_history.account_legacy_notes IS 'leadcrm-account-notes-compatible-v1:${'a'.repeat(40)}'`);
+    }
     if (name === cleanupMigration) {
       await pg.query(`UPDATE "User" SET "passwordHash"=$1, "mfaEnabled"=true, "mfaSecretEncrypted"='old-secret', "passwordChangedAt"=NOW() WHERE id='migration-user'`, [hashSync(initialPassword, 4)]);
       await pg.exec(`
@@ -68,6 +76,8 @@ beforeAll(async () => {
       for (const table of preservedTables) snapshots.set(table, await snapshot(table));
     }
     await pg.exec(readFileSync(migrationPath, 'utf8'));
+    // Later cutovers verify that canonical migrations actually completed.
+    await pg.query('INSERT INTO "_prisma_migrations" (migration_name, finished_at) VALUES ($1, now())', [name]);
     if (name === cleanupMigration) {
       for (const table of preservedTables) expect(await snapshot(table)).toEqual(snapshots.get(table));
     }

@@ -1,11 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../../../modules/administration/roles/roles.repository', () => ({ findUserEffectivePermissions: vi.fn() }));
+vi.mock('../../../modules/crm/access/crm-record-access.service', () => ({ resolveCrmActor: vi.fn() }));
 vi.mock('../../../config/database.config', () => ({ default: {} }));
 import { findUserEffectivePermissions } from '../../../modules/administration/roles/roles.repository';
+import { resolveCrmActor } from '../../../modules/crm/access/crm-record-access.service';
 import prisma from '../../../config/database.config';
 import { authorize } from '../rbac.middleware';
 
-beforeEach(() => { vi.resetAllMocks(); vi.mocked(findUserEffectivePermissions).mockResolvedValue({}); });
+beforeEach(() => { vi.resetAllMocks(); vi.mocked(resolveCrmActor).mockResolvedValue({ groupGrants: [] } as never); vi.mocked(findUserEffectivePermissions).mockResolvedValue({}); });
 const request = (role: string) => ({ user: { userId: 'u', tenantId: 't', role } });
 it.each(['Guest', 'GUEST', ' guest '])('denies retired %s identities', async role => {
   const next = vi.fn();
@@ -35,5 +37,17 @@ it('resolves scoped custom grants and denies missing or removed grants', async (
   expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
   vi.mocked(findUserEffectivePermissions).mockResolvedValue({});
   await authorize('contacts.view')(request('User') as never, {} as never, next);
+  expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
+});
+
+it('does not authorize obsolete group-only CRM grants', async () => {
+  const next = vi.fn();
+  vi.mocked(resolveCrmActor).mockResolvedValue({ groupGrants: [{ groupId: 'one', permissions: { contacts: { canView: true, canEdit: true } } }] } as never);
+  await authorize('contacts.edit')(request('Staff') as never, {} as never, next);
+  expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
+  expect(resolveCrmActor).not.toHaveBeenCalled();
+  await authorize('contacts.archive')(request('Staff') as never, {} as never, next);
+  expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
+  await authorize('deals.edit')(request('Staff') as never, {} as never, next);
   expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403 }));
 });

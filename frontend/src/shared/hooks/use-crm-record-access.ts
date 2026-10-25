@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useMemo } from 'react';
-import { hasCrmRecordAssignmentAccess, type CrmRecordAccessPolicy } from '@leadcrm/shared';
+import { hasCrmRecordAssignmentAccess, canReassignCrmRecord, type CrmRecordAccessPolicy, type PermissionAction } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -16,7 +16,9 @@ export function useCrmRecordAccess(module?: string) {
     userId: user.id, tenantId: tenant.id, clientAdmin: user.role === 'Client Admin',
     assignmentRestricted: /^sales(?:[\s_-]*(?:rep|representative|agent|staff|manager))?$/i.test(user.role.trim()),
   } : query.data?.userId === user?.id && query.data?.tenantId === tenant?.id ? query.data : undefined, [user, tenant, query.data]);
-  const canMutate = useCallback((record: { tenantId?: unknown; assignedUserId?: unknown } | undefined) =>
-    hasCrmRecordAssignmentAccess(policy, record, module), [policy, module]);
-  return { canMutate, canReassign: !!policy && !policy.assignmentRestricted, policy };
+  const canMutate = useCallback((record: { tenantId?: unknown; assignedUserId?: unknown; status?: unknown } | undefined, action: PermissionAction = 'canEdit') =>
+    hasCrmRecordAssignmentAccess(policy, record, module, action), [policy, module]);
+  const canReassignRecord = useCallback((record: Parameters<typeof canMutate>[0]) =>
+    !!module && canReassignCrmRecord(policy, record, module), [policy, module]);
+  return { canMutate, canReassignRecord, canReassign: !!policy && !policy.assignmentRestricted, policy };
 }

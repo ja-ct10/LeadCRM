@@ -34,7 +34,7 @@ export async function resolveManualDealAssociation(tx: Prisma.TransactionClient,
     throw error;
   }
   if (!agent) throw new ValidationError('No eligible Deal agent is available. Ask an administrator to assign the selected Lead or Contact.');
-  await assertCrmCreateAssignment(tx, tenantId, agent.id);
+  await assertCrmCreateAssignment(tx, tenantId, agent.id, 'deals');
   if (input.assignedUserId && input.assignedUserId !== agent.id) throw new ValidationError('The initial Deal agent must match the selected Lead or Contact.');
   const account = record.accountId ? await tx.account.findFirst({ where: { tenantId, id: record.accountId, isArchived: false, deletedAt: null }, select: { id: true } }) : null;
   if (input.accountId && input.accountId !== account?.id) throw new ValidationError('The Deal Account must match the selected Lead or Contact’s linked Account.');

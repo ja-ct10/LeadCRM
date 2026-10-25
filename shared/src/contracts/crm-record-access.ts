@@ -1,5 +1,5 @@
 import { hasModulePermission } from '../constants/permission-modules';
-import type { ResolvedPermissions } from '../types/roles';
+import type { PermissionAction, ResolvedPermissions } from '../types/roles';
 
 export const CRM_SCOPE_ACTIONS = { all: 'canViewAll', my: 'canViewMy', active: 'canViewActive' } as const;
 export type CrmReadScope = keyof typeof CRM_SCOPE_ACTIONS;
@@ -15,13 +15,30 @@ export interface CrmRecordAccessPolicy {
   tenantId: string;
   assignmentRestricted: boolean;
   clientAdmin: boolean;
+  permissions?: ResolvedPermissions;
 }
 
 export function hasCrmRecordAssignmentAccess(
   policy: CrmRecordAccessPolicy | undefined,
-  record: { tenantId?: unknown; assignedUserId?: unknown } | undefined,
+  record: { tenantId?: unknown; assignedUserId?: unknown; status?: unknown } | undefined,
   module?: string,
+  action: PermissionAction = 'canEdit',
 ): boolean {
   if (!policy || !record || record.tenantId !== policy.tenantId) return false;
-  return module === 'accounts' || policy.clientAdmin || !policy.assignmentRestricted || record.assignedUserId === policy.userId;
+  if (policy.clientAdmin) return true;
+  if (!policy.permissions || !module) return module === 'accounts' || !policy.assignmentRestricted || record.assignedUserId === policy.userId;
+  return hasModulePermission(policy.permissions, module, action) &&
+      permittedCrmScopes(policy.permissions, module).some(scope => scope === 'all' || scope === 'my' && record.assignedUserId === policy.userId ||
+        scope === 'active' && ['Inquiry', 'Hot', 'Warm', 'INQUIRY', 'HOT', 'WARM'].includes(String(record.status)) && record.assignedUserId === policy.userId) &&
+      (module === 'accounts' || !policy.assignmentRestricted || record.assignedUserId === policy.userId);
+}
+
+/** Reassignment requires the employee's unrestricted role grants for this record. */
+export function canReassignCrmRecord(policy: CrmRecordAccessPolicy | undefined,
+  record: Parameters<typeof hasCrmRecordAssignmentAccess>[1], module: string): boolean {
+  if (!policy) return false;
+  if (!policy.permissions) return !policy.assignmentRestricted && hasCrmRecordAssignmentAccess(policy, record, module);
+  return hasCrmRecordAssignmentAccess({ ...policy,
+    permissions: policy.assignmentRestricted ? {} : policy.permissions,
+  }, record, module);
 }

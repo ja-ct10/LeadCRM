@@ -423,6 +423,8 @@ All paths are relative to `/api/v1`. Protected operations require a ready worksp
 
 Campaign sends use Brevo email or TextBee SMS, not the removed placeholder scheduler. Durable leases/recipient attempt markers let recovery finalize expired submissions as `INTERRUPTED`. Known unsent recipients are failed; uncertain provider outcomes remain reviewable without an automatic resend. No new recovery endpoint is exposed.
 
+Audience previews and sends also require the selected Lead/Contact source's current CRM View permission and record scope. Counts and personalization exclude inaccessible records and related CRM values. Scheduled dispatch rechecks the scheduling user's current access; tenant-wide suppression and unsubscribe checks remain internal and authoritative.
+
 The variable catalog returns existing `CrmFieldCatalogEntry` metadata; field presence does not authorize recipient values or provide related Account/Deal binding. Send and schedule validate variables against the effective Lead/Contact source. Email settings return configured Brevo `senderName` and `senderEmail`; SMS settings return tenant `organizationName` and validated `organizationEmail`. These public identities contain no provider credentials. Template tokens remain `sender_name` and `sender_email`. See the [variable consistency report](campaign-workflow-variable-consistency-report.md) for availability and verification details.
 
 The SMS footer is editable text in the existing `body` field. The composer seeds
@@ -762,6 +764,25 @@ Permission keys come from the shared module/action catalog. Middleware uses `aut
 
 Frontend permission guards improve the user flow; server checks enforce it. Groups choose assignment pools and do not grant permissions. Access revisions refresh current authorization across open views. Workspace status fails closed unless it is `ACTIVE` or the compatibility `SANDBOX` status.
 
+Customer Group ownership is retired. Lead, Contact, Account and Deal create/update
+requests reject `ownerGroupId`, including `null`, with HTTP 400. Customer responses
+omit that field; `/crm/record-access` omits `groupGrants`, and employee eligibility
+responses omit `assignableGroupModules`. Access and assignment use current employee
+roles and Assigned Agent, with Accounts retaining tenant-scoped module access.
+`PATCH /administration/groups/:id/members/:userId` for a membership CRM role is
+removed (HTTP 404). Employee memberships, Group Heads and workflow Group pools
+remain supported in Team Management; Group responses omit `crmRoleId`.
+
+Apply `20261227000000_retire_crm_group_ownership` with old APIs/workers stopped,
+then regenerate Prisma and release matching clients. Legacy ownership/role values
+remain private ignored metadata; the migration does not rewrite customer records,
+employee memberships, assigned roles, permissions or status history. Old clients
+must reload before submitting customer forms.
+
 ## Current rollout additions
+
+The [retired relationship rollout](retired-relationships.md) removes TaskAccount and SmsCampaignLink through a preserving expansion and separate guarded retirement. Current Account task context derives from associated Deals. Task responses retain compatible direct Account fields as `accountId: null`, `account: null`, `accountIds: []`, and `accounts: []`; private `retiredAccountLinks` is never serialized. Existing TaskLead/TaskContact reads and historical Activity/AuditLog events remain available.
+
+New SMS sends original personalized URLs, records `smsTrackingVersion: 0` and returns unavailable click totals/rates as `null`. Historical SMS reports retain frozen counts and destinations. Existing public `/public/sms-links/:token` and frontend `/s/:token` redirects remain supported without click writes. The private `smsLinkHistory` snapshot and opaque tokens are not included in report recipients. Sender settings return `trackingOrigin: null`. Provider delivery tracking and email engagement remain independent.
 
 Stop old backend processes, then apply `20261116000000_user_groups`, `20261117000000_campaign_submission_recovery`, `20261118000000_group_revisions` and `20261119000000_notification_utc_timestamps` after the existing migration history and before starting the updated backend. These preserve legacy Department values as same-tenant Group memberships, add durable interrupted submission handling, reuse the access-revision stream for Group synchronization and make new notification timestamps explicitly UTC. See [rollout](../README.md#forward-rollout) and the [polish plan](plans/system-polish.md).

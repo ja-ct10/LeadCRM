@@ -12,6 +12,7 @@ export async function assertPermissions(user: {userId:string;tenantId:string;rol
   for (const permission of required) {
     const dot = permission.lastIndexOf('.'), module = permission.slice(0, dot), action = permission.slice(dot + 1);
     const flag = PERMISSION_ACTIONS.find(flag => PERMISSION_ACTION_KEYS[flag] === action);
-    if (!flag || !hasModulePermission(permissions, module, flag)) throw new AppError('Access denied', 403);
+    if (!flag) throw new AppError('Access denied', 403);
+    if (!hasModulePermission(permissions, module, flag)) throw new AppError('Access denied', 403);
   }
 }

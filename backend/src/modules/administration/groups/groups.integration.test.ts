@@ -21,7 +21,7 @@ let beforeHeadWrite: (() => Promise<void>) | undefined;
 const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
 async function request(path: string, method = 'GET', body?: unknown, auth = token) {
   const response = await fetch(base + path, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text() };
 }
 beforeAll(async () => {
   if (!disposable) return;
@@ -434,4 +434,20 @@ it.skipIf(!nativeConcurrency)('coordinates assignment with a concurrent account 
     release(); expect((await assigning).status).toBe(200); await pendingDeactivation;
   } finally { beforeHeadWrite = undefined; release(); }
   expect(await headRows(id)).toEqual([]); expect(await memberCount(id)).toBe(2);
+});
+
+it.skipIf(!disposable)('keeps employee Groups independent of legacy customer ownership', async () => {
+  const groupId = (await request('', 'POST', { name: 'Internal employee group' })).body.data.id;
+  await request('/' + groupId + '/members', 'POST', { userId });
+  const path = '/' + groupId + '/members/' + userId;
+  expect((await request(path, 'PATCH', { crmRoleId: randomUUID() })).status).toBe(404);
+  const customer = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'Customer', lastName: 'Historical' } }));
+  await prisma.$executeRaw`UPDATE "Contact" SET "ownerGroupId"=${groupId} WHERE id=${customer.id} AND "tenantId"=${tenantId}`;
+  const groups = await request('');
+  const member = groups.body.data.find((group: { id: string }) => group.id === groupId).members[0];
+  expect(member).not.toHaveProperty('crmRoleId');
+  expect((await request('/' + groupId, 'DELETE')).status).toBe(409);
+  await request(path, 'DELETE');
+  expect((await request('/' + groupId, 'DELETE')).status).toBe(200);
+  expect(await scoped(() => prisma.contact.findUnique({ where: { id: customer.id } }))).toBeTruthy();
 });
