@@ -1,5 +1,4 @@
 import { creatorWhere } from '../../crm/access/record-visibility';
-import { crmActor } from '../../crm/access/crm-record-access.service';
 import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
