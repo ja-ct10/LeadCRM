@@ -80,7 +80,7 @@ export function LeadActivitiesTab({
           />
           <button
             type="submit"
-            className="bg-primary hover:bg-primary/90 font-semibold text-white px-3.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+            className="bg-primary hover:bg-[var(--primary-hover)] font-semibold text-white px-3.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
           >
             <CheckCircle size={13} /> Log
           </button>

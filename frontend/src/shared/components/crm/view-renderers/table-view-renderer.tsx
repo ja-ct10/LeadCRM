@@ -101,7 +101,7 @@ export function TableViewRenderer({
                     type="checkbox"
                     checked={allSelected}
                     onChange={handleSelectAll}
-                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
                     aria-label="Select all records"
                   />
                 </div>
@@ -164,7 +164,7 @@ export function TableViewRenderer({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => onRowSelect?.(recordId, !isSelected)}
-                        className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+                        className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
                         aria-label={`Select record ${recordId}`}
                       />
                     </div>

@@ -158,7 +158,7 @@ export function ActionPillButton({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50 shadow-sm',
         variant === 'default' && 'border border-border/60 bg-card text-foreground hover:bg-accent hover:text-foreground',
-        variant === 'primary' && 'bg-primary text-primary-foreground hover:bg-primary/90',
+        variant === 'primary' && 'bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]',
         variant === 'outline' && 'border border-dashed border-border bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground'
       )}
     >

@@ -13,6 +13,8 @@ import { CamxianBrandPanel } from './camxian-brand-panel';
 import { useLoginLockout } from '../auth/use-login-lockout';
 import { LoginLockoutDialog } from '../auth/login-lockout-dialog';
 import { PublicFooter } from '@/shared/components/public-footer';
+import { Checkbox } from '@/shared/components/ui/checkbox';
+import { readRememberedEmail, rememberLoginEmail } from '@/shared/auth/remembered-login';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Invalid email address'),
@@ -72,8 +74,13 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (sessionStorage.getItem('leadcrm:idle-expired')) { sessionStorage.removeItem('leadcrm:idle-expired'); setError(SESSION_IDLE_MESSAGE); }
       const params = new URLSearchParams(window.location.search);
+      const remembered = readRememberedEmail();
+      if (remembered) { setEmail(remembered); setRememberMe(true); }
+      try {
+        if (sessionStorage.getItem('leadcrm:idle-expired')) { sessionStorage.removeItem('leadcrm:idle-expired'); setError(SESSION_IDLE_MESSAGE); }
+      } catch { /* Storage may be disabled. */ }
+      if (params.get('reason') === 'idle') setError(SESSION_IDLE_MESSAGE);
       const token = params.get('token');
       if (token) {
         setResetToken(token);
@@ -102,6 +109,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
     try {
       const success = await login(email.trim().toLowerCase(), password, rememberMe);
+      if (success) rememberLoginEmail(email, rememberMe);
       if (!success) {
         // Edge case: API returned 2xx but no user object — structural backend issue.
         // login() throws for all real errors (401, 403, 502, network), so this
@@ -224,7 +232,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
               </div>
               <button
                 onClick={() => { setAuthView('login'); setResetSuccess(false); }}
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                className="w-full h-11 bg-primary hover:bg-[var(--primary-hover)] text-white rounded-xl font-semibold transition-colors active:scale-95"
               >
                 Back to Login
               </button>
@@ -242,7 +250,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       type={showResetPassword ? 'text' : 'password'}
                       value={resetPassword}
                       onChange={(e) => setResetPassword(e.target.value)}
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
                       required
                       minLength={8}
                       maxLength={72}
@@ -274,7 +282,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       aria-describedby={resetMismatch ? "reset-confirm-error" : undefined}
                       onBlur={() => setResetConfirmTouched(true)}
                       onChange={(e) => setResetConfirm(e.target.value)}
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
                       required
                       placeholder="Repeat new password"
                     />
@@ -291,7 +299,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 <button
                   type="submit"
                   disabled={resetBusy || !StrongPasswordSchema.safeParse(resetPassword).success || resetPassword !== resetConfirm}
-                  className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-primary hover:bg-[var(--primary-hover)] text-white rounded-xl font-semibold transition-colors active:scale-95"
                 >
                   Reset Password
                 </button>
@@ -378,14 +386,14 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
             <div className="flex items-center justify-center gap-1.5 text-sm">
               <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
               <button type="button" onClick={() => void submitRecovery(true)} disabled={forgotBusy || retrySeconds > 0}
-                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50">
+                className="text-primary hover:text-primary dark:text-primary dark:hover:text-primary font-medium transition-colors disabled:opacity-50">
                 {forgotBusy ? 'Sending...' : retrySeconds > 0 ? `Resend in ${retrySeconds}s` : 'Resend link'}
               </button>
             </div>
 
             <button
               onClick={() => setAuthView('login')}
-              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+              className="w-full h-11 bg-primary hover:bg-[var(--primary-hover)] text-white rounded-xl font-semibold transition-colors active:scale-95"
             >
               Back to Login
             </button>
@@ -472,7 +480,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                   disabled={forgotBusy}
                   maxLength={254}
                   autoComplete="email"
-                  className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
                   required
                   placeholder="name@email.com"
                   autoFocus
@@ -481,7 +489,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
               <button
                 type="submit"
                 disabled={forgotBusy || retrySeconds > 0}
-                className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-primary hover:bg-[var(--primary-hover)] text-white rounded-xl font-semibold transition-colors active:scale-95"
               >
                 {forgotBusy ? 'Sending...' : retrySeconds > 0 ? `Try again in ${retrySeconds}s` : 'Send Reset Link'}
               </button>
@@ -527,7 +535,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     disabled={isSigningIn}
                     autoComplete="username"
                     maxLength={254}
-                    className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
                     placeholder="name@email.com"
                     required
                   />
@@ -545,7 +553,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={isSigningIn || lockout.locked}
                       autoComplete="current-password"
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
                       placeholder="••••••••••"
                       required
                     />
@@ -561,21 +569,21 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 </div>
 
                 <div className="flex flex-nowrap items-center justify-between gap-2 max-[360px]:gap-0.5">
-                  <label className="flex min-h-11 shrink-0 items-center gap-2 max-[360px]:gap-0.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
+                  <div className="flex min-h-11 shrink-0 items-center gap-2 max-[360px]:gap-0.5 group">
+                    <Checkbox
+                      id="remember-me"
                       checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 shrink-0 rounded border-gray-300 dark:border-white/8 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 transition-colors"
+                      disabled={isSigningIn}
+                      onCheckedChange={checked => { setRememberMe(checked); if (!checked) rememberLoginEmail('', false); }}
                     />
-                    <span className={`${responsiveTypography.body} whitespace-nowrap text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-300 transition-colors`}>
+                    <label htmlFor="remember-me" className={`${responsiveTypography.body} cursor-pointer whitespace-nowrap text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-300 transition-colors`}>
                       Remember me
-                    </span>
-                  </label>
+                    </label>
+                  </div>
                   <button
                     type="button"
                     onClick={() => { setForgotEmail(email); setError(''); setAuthView('forgot'); }}
-                    className={`${responsiveTypography.body} ml-auto min-h-11 shrink-0 whitespace-nowrap text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors`}
+                    className={`${responsiveTypography.body} ml-auto min-h-11 shrink-0 whitespace-nowrap text-primary hover:text-primary dark:text-primary dark:hover:text-primary font-semibold transition-colors`}
                   >
                     Forgot password?
                   </button>
@@ -584,14 +592,14 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 <button
                   type="submit"
                   disabled={isSigningIn || lockout.locked || lockout.checking}
-                  className={`${responsiveTypography.largeAction} w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95`}
+                  className={`${responsiveTypography.largeAction} w-full h-11 bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95`}
                 >
                   {isSigningIn ? 'Signing in…' : lockout.locked ? `Try again in ${lockout.countdown}` : 'Login'}
                 </button>
                 {lockout.locked && (
                   <p className={`${responsiveTypography.body} text-center text-slate-600 dark:text-slate-400`}>
                     Sign-in available in <span className="font-semibold tabular-nums">{lockout.countdown}</span>.{' '}
-                    <button type="button" onClick={() => lockout.setOpen(true)} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">View timer</button>
+                    <button type="button" onClick={() => lockout.setOpen(true)} className="font-semibold text-primary dark:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">View timer</button>
                   </p>
                 )}
               </form>

@@ -25,7 +25,7 @@ export const panelPrimaryButtonClass =
 export const panelCloseClass =
   'h-11 w-11 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring';
 export const panelPrimaryActionClass = responsiveTypography.control + ' ' + panelPrimaryButtonClass +
-  ' inline-flex items-center justify-center gap-2 bg-primary font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  ' inline-flex items-center justify-center gap-2 bg-primary font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 export const panelSecondaryActionClass = responsiveTypography.control + ' ' + panelSecondaryButtonClass +
   ' inline-flex items-center justify-center gap-2 border font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 

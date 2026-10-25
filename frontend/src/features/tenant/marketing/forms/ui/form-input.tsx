@@ -12,7 +12,7 @@ export function FormInput({ field: f, value = '', onChange, error, design, produ
   const props = { id, 'aria-invalid': !!error, 'aria-describedby': error ? id + '-error' : undefined, required: f.required, className: 'w-full min-w-0 max-w-full border focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm', style };
   const phone = ['phone', 'contact-phone'].includes(f.type);
   const string = typeof value === 'string' ? value : '';
-  return <div className="min-w-0">
+  return <div className="min-w-0" style={{ accentColor: design.buttonBg || '#2563eb', '--primary': design.buttonBg || '#2563eb', '--ring': design.buttonBg || '#2563eb' } as CSSProperties}>
     <label htmlFor={id} className="block text-sm font-medium mb-1 break-words">{f.label}{f.required && <span className="text-red-600" aria-hidden="true"> *</span>}</label>
     {f.mapToField === 'productInterest' ? <ProductInterestSelect id={id} searchable showUncategorized={false} ariaLabel={f.label} ariaInvalid={!!error} ariaDescribedBy={props['aria-describedby']} categories={productCatalog?.categories} products={(f.options ?? []).map(option => {
       const product = productCatalog?.products.find(product => product.id === option);

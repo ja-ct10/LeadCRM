@@ -6,8 +6,9 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ login: auth.login }) }
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { restoreLoginLockout: vi.fn().mockResolvedValue({ data: { locked: false } }) } }));
 import ModernLoginPage from '../../pages/modern-login-page';
 import { LEGAL_ORGANIZATION } from '../../legal/legal-documents';
+import { REMEMBERED_EMAIL_KEY } from '@/shared/auth/remembered-login';
 
-beforeEach(() => { auth.login.mockReset().mockResolvedValue(true); });
+beforeEach(() => { localStorage.clear(); sessionStorage.clear(); auth.login.mockReset().mockResolvedValue(true); });
 afterEach(cleanup);
 
 it('describes Camxian access without public signup or Google authentication', () => {
@@ -40,6 +41,32 @@ it.each([false, true])('passes Remember me to login with checked=%s', async chec
   await act(async () => { fireEvent.submit(screen.getByLabelText('Password').closest('form')!); });
   expect(remember.checked).toBe(checked);
   expect(auth.login).toHaveBeenCalledExactlyOnceWith('staff@camxian.com', 'ExistingPassword1!', checked);
+  expect(localStorage.getItem(REMEMBERED_EMAIL_KEY)).toBe(checked ? 'staff@camxian.com' : null);
+  expect(JSON.stringify({ ...localStorage })).not.toContain('ExistingPassword1!');
+});
+
+it('restores only a remembered email and immediately forgets it when unchecked', () => {
+  localStorage.setItem(REMEMBERED_EMAIL_KEY, 'staff@camxian.com');
+  const view = render(<ModernLoginPage onNavigate={vi.fn()} />);
+  expect(screen.getByLabelText('Email address')).toHaveProperty('value', 'staff@camxian.com');
+  expect(screen.getByLabelText('Password')).toHaveProperty('value', '');
+  expect(screen.getByRole('checkbox', { name: 'Remember me' })).toHaveProperty('checked', true);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Remember me' }));
+  expect(localStorage.getItem(REMEMBERED_EMAIL_KEY)).toBeNull();
+  view.unmount(); render(<ModernLoginPage onNavigate={vi.fn()} />);
+  expect(screen.getByLabelText('Email address')).toHaveProperty('value', '');
+  expect(screen.getByRole('checkbox', { name: 'Remember me' })).toHaveProperty('checked', false);
+});
+
+it('does not replace remembered identity after a failed login', async () => {
+  localStorage.setItem(REMEMBERED_EMAIL_KEY, 'original@camxian.com');
+  auth.login.mockRejectedValueOnce(new Error('Invalid email or password.'));
+  render(<ModernLoginPage onNavigate={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'other@camxian.com' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'WrongPassword1!' } });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Login' })).toHaveProperty('disabled', false));
+  await act(async () => fireEvent.submit(screen.getByLabelText('Password').closest('form')!));
+  expect(localStorage.getItem(REMEMBERED_EMAIL_KEY)).toBe('original@camxian.com');
 });
 
 it('renders the login footer with brand, support, company links, and copyright', () => {

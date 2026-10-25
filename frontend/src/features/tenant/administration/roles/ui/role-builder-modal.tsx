@@ -216,7 +216,7 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
             type="button"
             disabled={isSaving}
             onClick={handleSave}
-            className="h-9 px-5 text-[13px] font-medium rounded-lg bg-primary dark:bg-primary text-white hover:bg-primary/90 dark:hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="h-9 px-5 text-[13px] font-medium rounded-lg bg-primary dark:bg-primary text-white hover:bg-[var(--primary-hover)] dark:hover:bg-[var(--primary-hover)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? 'Saving…' : editRole ? 'Update Role' : 'Create Role'}
           </button>

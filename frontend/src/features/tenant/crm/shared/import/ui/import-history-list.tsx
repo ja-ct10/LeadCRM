@@ -126,7 +126,7 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
             Upload a CSV to bring your first batch of {config.moduleLabel.toLowerCase()} into LeadCRM.
           </p>
-          <button onClick={onStartNew ?? (() => router.push(`/crm/${moduleKey}/import`))} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">
+          <button onClick={onStartNew ?? (() => router.push(`/crm/${moduleKey}/import`))} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors cursor-pointer">
             Start an import <ArrowRight size={13} />
           </button>
         </div>

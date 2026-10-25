@@ -1032,7 +1032,7 @@ export function DataGrid<T = Record<string, unknown>>({
                           onClick={emptyState.onCreateRecord}
                           className={cn(
                             'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                            'bg-primary hover:bg-primary/90 dark:bg-primary dark:hover:bg-primary/90',
+                            'bg-primary hover:bg-[var(--primary-hover)] dark:bg-primary dark:hover:bg-[var(--primary-hover)]',
                             'text-white',
                           )}
                         >

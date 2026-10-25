@@ -72,7 +72,7 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
         send(`${prefix}-heartbeat`, {});
       } catch (error) {
         if (error instanceof AppError && [401,403].includes(error.statusCode)) {
-          send(`${prefix}-access-changed`, error.code === 'PASSWORD_CHANGE_REQUIRED' ? { code: error.code } : {}); res.end();
+          send(`${prefix}-access-changed`, ['PASSWORD_CHANGE_REQUIRED', 'SESSION_IDLE_EXPIRED'].includes(error.code ?? '') ? { code: error.code } : {}); res.end();
         } else send(`${prefix}-unavailable`, {});
       } finally { busy = false; if (queued && !stopped) { queued = false; void tick(); } }
     };

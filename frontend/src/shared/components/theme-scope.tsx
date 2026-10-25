@@ -11,7 +11,7 @@ const accentStyle = {
   '--primary': 'var(--app-primary, #2563EB)',
   '--primary-dark': 'var(--app-primary-dark, #1D4ED8)',
   '--primary-hover': 'var(--app-primary-hover, #1D4ED8)',
-  '--ring': 'var(--app-primary, #2563EB)',
+  '--ring': 'var(--control-ring, var(--app-primary, #2563EB))',
   '--focus-ring': 'var(--app-focus-ring, 0 0 0 3px rgb(37 99 235 / 0.2))',
   '--sidebar-active-text': 'var(--app-primary, #2563EB)',
   '--sidebar-active-bg': 'var(--app-primary-light, rgb(37 99 235 / 0.08))',

@@ -1,24 +1,14 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Compass, type LucideIcon } from 'lucide-react';
-import { useAuth } from '@/store/AuthContext';
+import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
 
 export function OnboardingShell({
   step, totalSteps, title = 'Welcome to LeadCRM', description = 'Your customer relationships and daily work, together.',
   icon: Icon = Compass, children,
 }: { step: number; totalSteps?: number; title?: string; description?: string; icon?: LucideIcon; children: ReactNode }) {
-  const { logout } = useAuth();
-  const [error, setError] = useState('');
-  const [signingOut, setSigningOut] = useState(false);
-  async function signOut() {
-    setSigningOut(true);
-    try { await logout(); }
-    catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to sign out. Try again.');
-      setSigningOut(false);
-    }
-  }
+  const requestLogout = useLogoutConfirmation();
   return (
     <main className="grid min-h-[var(--app-viewport-height)] bg-white text-slate-900 lg:grid-cols-2 dark:bg-slate-950 dark:text-white">
       <aside className="flex min-w-0 flex-col bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 p-5 text-white sm:p-10 lg:min-h-[var(--app-viewport-height)] lg:p-12 xl:p-16">
@@ -44,13 +34,12 @@ export function OnboardingShell({
       </aside>
       <section className="flex min-w-0 flex-col px-5 py-5 sm:px-10 lg:px-12 xl:px-16">
         <div className="mb-6 flex justify-end">
-          <button type="button" disabled={signingOut} onClick={() => void signOut()}
-            className="min-h-11 rounded-lg px-2 text-sm text-slate-500 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50">
-            {signingOut ? 'Signing out…' : 'Sign out'}
+          <button type="button" onClick={requestLogout}
+            className="min-h-11 rounded-lg px-2 text-sm text-slate-500 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50">
+            Sign out
           </button>
         </div>
         <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center pb-4 lg:py-10">
-          {error && <p role="alert" className="mb-4 text-sm text-red-600">{error}</p>}
           {children}
         </div>
       </section>
@@ -59,6 +48,6 @@ export function OnboardingShell({
 }
 
 export const primaryButton =
-  'min-h-11 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50';
+  'min-h-11 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50';
 export const secondaryButton =
-  'min-h-11 rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:hover:bg-slate-800 disabled:opacity-50';
+  'min-h-11 rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-primary dark:border-slate-700 dark:hover:bg-slate-800 disabled:opacity-50';

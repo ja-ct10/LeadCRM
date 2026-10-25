@@ -33,7 +33,7 @@ export function LoginLockoutDialog({ open, onOpenChange, countdown, seconds }: {
         <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
           Please wait until the timer reaches 00:00 before trying to sign in again.
         </p>
-        <DialogClose className="mt-6 min-h-11 w-full rounded-xl border border-gray-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <DialogClose className="mt-6 min-h-11 w-full rounded-xl border border-gray-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
           Close
         </DialogClose>
       </DialogContent>

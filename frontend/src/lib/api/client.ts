@@ -3,7 +3,7 @@
 import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import type { ApiError } from '@leadcrm/shared';
-import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
+import { PASSWORD_CHANGE_REQUIRED_EVENT, SESSION_METADATA_EVENT, SESSION_ENDED_EVENT, SESSION_CHANGED_EVENT, getAuthEpoch } from '@/shared/auth/auth-events';
 
 export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | 'retryAt' | 'serverNow'>> & { status?: number; fieldErrors?: Record<string, string[]> };
 
@@ -30,6 +30,7 @@ async function request<T>(
     'X-LeadCRM-Passive': '1',
     'Content-Type': body instanceof Blob ? body.type : 'application/json',
   };
+  const requestEpoch = getAuthEpoch();
 
   let finalPath = path;
   if (params && Object.keys(params).length > 0) {
@@ -75,8 +76,14 @@ async function request<T>(
       if (typeof rawError.serverNow === 'string' && Number.isFinite(Date.parse(rawError.serverNow))) error.serverNow = rawError.serverNow;
     }
     error.status = res.status;
-    if (error.code === 'SESSION_IDLE_EXPIRED' || error.code === 'AUTH_ACCOUNT_LOCKED') window.dispatchEvent(new CustomEvent('leadcrm:session-ended', { detail: { code: error.code } }));
-    if (res.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+    const publicAuth = /^\/auth\/(login|login-lockout|forgot-password|reset-password)$/.test(path);
+    if (!publicAuth && requestEpoch === getAuthEpoch()) {
+      if ((res.status === 401 && error.code !== 'GMAIL_RECONNECT_REQUIRED') || error.code === 'AUTH_ACCOUNT_LOCKED') {
+        window.dispatchEvent(new CustomEvent(SESSION_ENDED_EVENT, { detail: { code: error.code, requestEpoch } }));
+      }
+      if (error.code === 'SESSION_CHANGED') window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
+    }
+    if (requestEpoch === getAuthEpoch() && res.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
       window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
     }
     // Preserve HTTP rate-limit guidance as an absolute time for callers.
@@ -102,7 +109,7 @@ async function request<T>(
   if (responseType === 'blob') return await res.blob() as T;
   const data = await res.json() as T;
   const session = (data as { data?: { session?: unknown } })?.data?.session;
-  if (session) window.dispatchEvent(new CustomEvent('leadcrm:session-metadata', { detail: session }));
+  if (session && requestEpoch === getAuthEpoch()) window.dispatchEvent(new CustomEvent(SESSION_METADATA_EVENT, { detail: session }));
   if (method !== 'GET') invalidateApiPageCache(path);
   return data;
 }

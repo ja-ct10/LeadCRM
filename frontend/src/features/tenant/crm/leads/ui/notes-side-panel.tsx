@@ -503,7 +503,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 shadow-sm transition-colors flex items-center gap-1.5"
+                      className="px-4 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-[var(--primary-hover)] shadow-sm transition-colors flex items-center gap-1.5"
                     >
                       <Check size={13} /> {editingId ? 'Save Edits' : 'Save Note'}
                     </button>

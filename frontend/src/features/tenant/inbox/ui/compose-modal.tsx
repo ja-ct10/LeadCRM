@@ -586,7 +586,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
             <button
               onClick={() => void handleSend()}
               disabled={isSending || isSavingDraft || paused || sourceRequired || attachmentBusy || !!attachmentError}
-              className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
               aria-label={sentLink ? "Retry deal link" : "Send email"}
             >
               {isSending ? (
@@ -601,7 +601,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"
-              className="h-9 px-2 rounded-r-full bg-primary hover:bg-primary/90 disabled:opacity-60 border-l border-primary text-white cursor-pointer transition-colors"
+              className="h-9 px-2 rounded-r-full bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-60 border-l border-primary text-white cursor-pointer transition-colors"
               aria-label="Schedule send options"
             >
               <ChevronDown className="w-3.5 h-3.5" />
@@ -684,7 +684,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
                       />
                       <button
                         onClick={insertLink}
-                        className="h-8 px-3 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 cursor-pointer"
+                        className="h-8 px-3 rounded-md bg-primary text-white text-xs font-medium hover:bg-[var(--primary-hover)] cursor-pointer"
                       >
                         Add
                       </button>

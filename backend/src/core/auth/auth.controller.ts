@@ -47,7 +47,7 @@ export async function loginLockout(req: Request, res: Response, next: NextFuncti
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const token = req.cookies?.[COOKIE_NAME] ?? req.headers.authorization?.replace(/^Bearer /, '');
-    if (token) await revokeSession(token);
+    if (token) await revokeSession(token, req.body?.sessionId);
     const { maxAge: _maxAge, ...options } = COOKIE_OPTIONS;
     res.clearCookie(COOKIE_NAME, options);
     res.json({ success: true });
@@ -61,13 +61,13 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
   } catch (error) { next(error); }
 }
 
-function sessionMetadata(session: { lastActiveAt: Date; expiresAt: Date }) {
-  return { lastActiveAt: session.lastActiveAt.toISOString(), idleExpiresAt: new Date(+session.lastActiveAt + SESSION_IDLE_MS).toISOString(), expiresAt: session.expiresAt.toISOString(), serverNow: new Date().toISOString() };
+function sessionMetadata(session: { sessionId: string; lastActiveAt: Date; expiresAt: Date }) {
+  return { sessionId: session.sessionId, lastActiveAt: session.lastActiveAt.toISOString(), idleExpiresAt: new Date(+session.lastActiveAt + SESSION_IDLE_MS).toISOString(), expiresAt: session.expiresAt.toISOString(), serverNow: new Date().toISOString() };
 }
 export async function activity(req: Request, res: Response, next: NextFunction) {
   try {
     const token = req.cookies?.[COOKIE_NAME] ?? req.headers.authorization?.replace(/^Bearer /, '');
-    const session = await validateSession(token, new Date(req.body.lastActiveAt), true);
+    const session = await validateSession(token, new Date(req.body.lastActiveAt), true, req.body.sessionId);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, data: { session: sessionMetadata(session) } });
   } catch (error) { next(error); }

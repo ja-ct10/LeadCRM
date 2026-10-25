@@ -79,3 +79,14 @@ it.each(['Classic', 'Light', 'Dark', 'System'])('initializes %s before paint wit
   expect(document.documentElement.style.fontSize).toBe('14px');
   expect(document.documentElement.classList.contains('dark')).toBe(false);
 });
+
+it.each(ACCENT_COLORS)('keeps $name action fills and hover fills readable with white text', color => {
+  const luminance = (hex: string) => {
+    const [r, g, b] = hex.slice(1).match(/../g)!.map(part => parseInt(part, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+    return r * .2126 + g * .7152 + b * .0722;
+  };
+  expect(1.05 / (luminance(color.primary) + .05)).toBeGreaterThanOrEqual(4.5);
+  expect(1.05 / (luminance(color.primaryHover) + .05)).toBeGreaterThanOrEqual(4.5);
+  localStorage.setItem('app_accent_color', color.id); new Function(APPEARANCE_INIT_SCRIPT)();
+  expect(document.documentElement.style.getPropertyValue('--app-primary')).toBe(color.primary);
+});

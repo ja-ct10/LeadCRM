@@ -31,7 +31,14 @@ export interface AuthResponse {
   success: boolean;
   data: { user: AuthUser; session?: SessionMetadata };
 }
-export interface SessionMetadata { lastActiveAt: string; idleExpiresAt: string; expiresAt: string; serverNow: string; }
+export interface SessionMetadata {
+  /** Opaque correlation ID, never a session credential. Optional for older API responses. */
+  sessionId?: string;
+  lastActiveAt: string;
+  idleExpiresAt: string;
+  expiresAt: string;
+  serverNow: string;
+}
 
 export type LoginResponse = AuthResponse;
 export const INVALID_LOGIN_CODE = 'AUTH_INVALID_CREDENTIALS';

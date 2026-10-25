@@ -3,9 +3,11 @@ import { ThemeScope } from '@/shared/components/theme-scope';
 
 import { useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
+import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
 
 export function AuthRecoveryScreen({ message, workspace = false }: { message: string; workspace?: boolean }) {
-  const { retryAuthInit, logout } = useAuth();
+  const { retryAuthInit } = useAuth();
+  const requestLogout = useLogoutConfirmation();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +29,7 @@ export function AuthRecoveryScreen({ message, workspace = false }: { message: st
             className="rounded-lg bg-primary px-5 py-2 text-white disabled:opacity-50">
             Try again
           </button>
-          <button disabled={busy} onClick={() => void run(logout)}
+          <button disabled={busy} onClick={requestLogout}
             className="rounded-lg border px-5 py-2 disabled:opacity-50">
             Sign out
           </button>

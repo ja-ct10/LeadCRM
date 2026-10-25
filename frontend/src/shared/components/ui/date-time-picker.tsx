@@ -141,7 +141,7 @@ export function DatePicker({ value, onChange, minDate, inline = false, todayDate
                     onClick={() => selectDay(day)}
                     className={`h-8 ${inline ? 'w-full max-w-8' : 'w-8'} mx-auto rounded-md text-xs font-medium transition-all duration-200
                       ${disabled ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-primary/10'}
-                      ${selected ? 'bg-primary text-white hover:bg-primary/90' : ''}
+                      ${selected ? 'bg-primary text-white hover:bg-[var(--primary-hover)]' : ''}
                       ${isToday && !selected ? 'border border-primary/50 text-primary' : ''}
                       ${!selected && !disabled && !isToday ? 'text-slate-700 dark:text-slate-200' : ''}
                     `}

@@ -377,7 +377,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm">
           You don&apos;t have permission to import {config.moduleLabel.toLowerCase()}.
         </p>
-        <button onClick={() => router.push(config.backRoute)} className="mt-5 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">
+        <button onClick={() => router.push(config.backRoute)} className="mt-5 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors cursor-pointer">
           <ArrowLeft size={14} /> Back to {config.moduleLabel}
         </button>
       </div>
@@ -447,11 +447,11 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                     </button>
                   )}
                   {step < 3 ? (
-                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && (!allRequiredMapped || !!compatibility.error))} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped && !compatibility.error)) ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
+                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && (!allRequiredMapped || !!compatibility.error))} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped && !compatibility.error)) ? 'text-white bg-primary hover:bg-[var(--primary-hover)] cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
                       {isValidating ? <><Loader2 size={14} className="animate-spin" /> Validating…</> : <>Continue <ArrowRight size={14} /></>}
                     </button>
                   ) : (
-                    <button onClick={handleImport} disabled={isImporting || (!canResume && serverRows === null)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-white bg-primary cursor-not-allowed')}>
+                    <button onClick={handleImport} disabled={isImporting || (!canResume && serverRows === null)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-primary hover:bg-[var(--primary-hover)] cursor-pointer' : 'text-white bg-primary cursor-not-allowed')}>
                       {isImporting ? <><Loader2 size={14} className="animate-spin" /> Importing {progress}/{csvRows.length}…</> : <><Sparkles size={14} /> {canResume ? 'Resume import' : 'Import ' + validCount + ' ' + config.moduleLabel.toLowerCase()}</>}
                     </button>
                   )}
@@ -778,7 +778,7 @@ function ImportResultView({ config, result, onViewDetails, onStartNew }: { confi
         {result.failedRecords > 0 && <div className="border border-red-200 dark:border-red-700/50 bg-red-50/50 dark:bg-red-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-red-600 dark:text-red-400 mb-1">Failed</p><p className="text-[16px] font-bold text-red-600 dark:text-red-400">{result.failedRecords}</p></div>}
       </div>
       <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-        <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
+        <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
         <button onClick={onStartNew} className="text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Start new import</button>
       </div>
     </div>

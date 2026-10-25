@@ -401,7 +401,7 @@ export default function EmptyState({
         {onAction && actionLabel && (
           <button
             onClick={onAction}
-            className="w-full sm:w-auto h-9 px-4 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="w-full sm:w-auto h-9 px-4 text-xs font-medium bg-primary text-white rounded-md hover:bg-[var(--primary-hover)] transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Plus size={14} />
             <span>{actionLabel}</span>

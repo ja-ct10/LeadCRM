@@ -291,7 +291,7 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="h-7 w-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="h-7 w-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
               aria-label="Save"
             >
               <Check className="h-3.5 w-3.5" />

@@ -24,6 +24,18 @@ thirty-minute inactivity expiry. `AUTH_INVALID_CREDENTIALS` identifies a rejecte
 email/password pair; the login form clears those inputs only for that error.
 Recoverable network and server errors preserve the inputs.
 
+The Login form also remembers only the normalized email on this browser after a
+successful checked login, using `leadcrm:remembered-email`. It restores the email
+and checkbox on the next visit; unchecking removes that preference immediately.
+Passwords are never saved by this feature. Browser password-manager autofill uses
+the existing `username` and `current-password` autocomplete fields.
+
+All manual sign-out entries use the existing confirmation dialog and dirty-editor
+navigation guard. Cancel leaves authentication intact. Confirmation waits for
+server revocation, clears local authentication/permission caches, and redirects to
+Login. Failed revocation stays retryable; repeated confirmation submits one
+pending request. Remembered email and appearance preferences survive logout.
+
 - All new users: sign in with email/password → change temporary password when required → informational LeadCRM onboarding → dashboard with existing role permissions.
 - Returning users who have completed setup: sign in → dashboard, or change their password first when it has expired.
 - Existing users with `mustChangePassword=false` at migration time keep their established access; their passwords and roles are unchanged.
@@ -66,7 +78,17 @@ Replace the target with the exact host, port and database from that URL. Only if
 
 POST /auth/change-password accepts `{ currentPassword, password }` from the authenticated session. It verifies the current credential first, returning `CURRENT_PASSWORD_INCORRECT` with “Current password is incorrect.” on failure. The issued temporary credential is accepted as Old Password. Reusing it as the new password still returns `PASSWORD_REUSE`: “You cannot reuse your temporary password. Please choose a new password.” Different passwords must meet the shared strength policy. It writes the new hash, clears the flag, revokes other sessions and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid. The frontend reuses the profile password form, shows field errors and “Password updated successfully.”, and applies the canonical user response to advance to onboarding. Password recovery uses its separate token contract and the same new-password strength policy; it does not require Old Password or complete onboarding.
 
-Sessions additionally expire after thirty minutes without activity. Validation checks the existing `lastActiveAt` before renewing it, returning `401 SESSION_IDLE_EXPIRED` and revoking idle sessions. Browser interactions use `/auth/activity` with leading/trailing updates coalesced to once per minute; passive polling, session restoration and SSE do not renew activity. The frontend shares activity/logout across tabs and displays “Your session expired due to inactivity. Please log in again.” Absolute expiration and manual logout retain their existing behavior.
+Sessions additionally expire after thirty minutes without activity. Validation checks the existing `lastActiveAt` before renewing it, returning `401 SESSION_IDLE_EXPIRED` and revoking idle sessions. Browser pointer movement, clicks, typing, scrolling, touch and history navigation use `/auth/activity` with leading/trailing updates coalesced to once per minute; passive polling, session restoration and SSE do not renew activity. Conditional activity writes revalidate concurrent session changes and cannot revive revoked sessions or move activity into the future.
+
+The frontend shares activity/logout across tabs, checks elapsed time after sleep,
+and expires without a confirmation, displaying “Your session expired due to
+inactivity. Please log in again.” Its local cleanup and redirect do not wait for
+the network; server validation still denies expired cookies. The idle redirect
+does not automatically restore the expired session. Absolute expiration remains
+an independent limit. Opaque session IDs correlate tab messages and logout/activity
+requests so stale tabs cannot revoke a replacement session; they are not credentials.
+Late transport responses from an earlier authentication lifecycle cannot restore
+or end the next login.
 
 The existing notification outbox schedules a mandatory, self-only `password_expiring_soon` reminder at `passwordChangedAt + 89 days`. The worker checks the current cycle and suppresses stale events and events arriving at day 90. Delivery is deduplicated by the existing ledger, even after notification deletion. The link opens the Settings password dialog. Password changes and resets start the next cycle; null timestamps remain null. No email or SMS reminder is sent.
 

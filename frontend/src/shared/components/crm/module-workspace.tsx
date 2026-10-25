@@ -411,7 +411,7 @@ export function ModuleWorkspace({
                           className={cn(
                             'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
                             isActive
-                              ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
+                              ? 'text-primary dark:text-primary bg-primary/10 dark:bg-primary/10'
                               : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                           )}
                         >
@@ -466,7 +466,7 @@ export function ModuleWorkspace({
                           className={cn(
                             'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
                             isActive
-                              ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
+                              ? 'text-primary dark:text-primary bg-primary/10 dark:bg-primary/10'
                               : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                           )}
                         >

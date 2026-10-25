@@ -465,7 +465,7 @@ export function DealForm({
               'h-[42px] px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all shadow-lg shadow-primary/25',
               isSubmitDisabled
                 ? 'bg-primary cursor-not-allowed opacity-60'
-                : 'bg-primary hover:bg-primary/90 active:scale-95',
+                : 'bg-primary hover:bg-[var(--primary-hover)] active:scale-95',
             )}
           >
             {isLoading || isSubmitting ? 'Saving...' : isCreateMode ? 'Create Deal' : 'Update Deal'}

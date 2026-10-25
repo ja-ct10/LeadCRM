@@ -266,7 +266,7 @@ export function ColumnsPopover({
               </button>
               <button
                 onClick={handleApply}
-                className="h-7 px-3 text-[12px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-md transition-colors"
+                className="h-7 px-3 text-[12px] font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] rounded-md transition-colors"
               >
                 Apply
               </button>
