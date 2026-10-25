@@ -2,10 +2,11 @@ import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { UserProfileDropdown } from '../../layout/user-profile-dropdown';
+import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
 import { useLayout } from '../../layout/use-layout';
 
-const mocks = vi.hoisted(() => ({ pathname: '/help', push: vi.fn(), toast: vi.fn() }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }), usePathname: () => mocks.pathname }));
+const mocks = vi.hoisted(() => ({ pathname: '/help', push: vi.fn(), replace: vi.fn(), toast: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, replace: mocks.replace }), usePathname: () => mocks.pathname }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { firstName: 'Preview', lastName: 'User', role: 'User' }, tenant: { name: 'Test workspace' }, logout: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: () => ['contacts.view'], PERMISSION_BRIDGE: {} }));
 vi.mock('@/shared/components/user-avatar', () => ({ UserAvatar: () => <span>PU</span> }));
@@ -16,7 +17,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 it('opens an internal Help Center link and closes the dropdown without a placeholder toast', async () => {
-  render(<UserProfileDropdown />);
+  render(<LogoutConfirmationProvider><UserProfileDropdown /></LogoutConfirmationProvider>);
   fireEvent.click(screen.getByRole('button', { name: 'User profile menu' }));
   const help = screen.getByRole('menuitem', { name: 'Help Center' });
   expect(help.getAttribute('href')).toBe('/help');
@@ -35,6 +36,16 @@ it.each(['/help', '/help/articles/creating-leads', '/help/category/leads'])('rec
   expect(result.current.currentPath).toBe('help');
   result.current.navigate('help');
   expect(mocks.push).toHaveBeenCalledWith('/help');
+});
+
+it('redirects confirmed logout from public Help to Login', async () => {
+  mocks.pathname = '/help';
+  render(<LogoutConfirmationProvider><UserProfileDropdown /></LogoutConfirmationProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'User profile menu' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
+  expect(mocks.replace).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+  await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/login'));
 });
 
 it('preserves normal CRM navigation and permission filtering', () => {

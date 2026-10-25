@@ -101,7 +101,7 @@ export function LeadEmailTab({
           <button
             type="submit"
             disabled={isSending}
-            className="bg-primary hover:bg-primary/90 font-semibold text-white px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50"
+            className="bg-primary hover:bg-[var(--primary-hover)] font-semibold text-white px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50"
           >
             <Send size={13} />
             {isSending ? 'Sending Dispatch...' : 'Dispatch Email'}

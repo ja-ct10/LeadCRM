@@ -80,7 +80,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     </div>
     <div className={`${panelFooterClass} justify-end`}>
       <button type="button" onClick={requestClose ?? onCancel} className={panelSecondaryActionClass} disabled={isSubmitting}>Cancel</button>
-      <button type="submit" disabled={!canSubmit || customFields.blocked || isSubmitting} className="h-[42px] rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
+      <button type="submit" disabled={!canSubmit || customFields.blocked || isSubmitting} className="h-[42px] rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50">
         {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Account'}
       </button>
     </div>

@@ -12,7 +12,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "rounded-xl shadow-sm active:scale-95 text-white",
+          "rounded-xl shadow-sm active:scale-95 bg-primary hover:bg-[var(--primary-hover)] text-white",
         destructive:
           "rounded-xl shadow-sm active:scale-95 bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-800",
         outline:
@@ -47,32 +47,19 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, style, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     
-    // Apply primary color CSS variable to default variant
-    const variantStyle = variant === "default" || !variant
-      ? {
-          backgroundColor: 'var(--primary)',
-          ...style,
-        }
-      : variant === "link"
+    const variantStyle = variant === "link"
         ? {
             color: 'var(--primary)',
             ...style,
           }
         : style;
 
-    const hoverStyle = variant === "default" || !variant
-      ? {
-          '--hover-bg': 'var(--primary-hover)',
-        }
-      : {};
-    
     return (
       <Comp
         className={cn(
           buttonVariants({ variant, size, className }),
-          (variant === "default" || !variant) && "hover:brightness-110"
         )}
-        style={{ ...variantStyle, ...hoverStyle } as React.CSSProperties}
+        style={variantStyle}
         ref={ref}
         {...props}
       />

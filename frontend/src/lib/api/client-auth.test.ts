@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
+import { SESSION_ENDED_EVENT, SESSION_METADATA_EVENT, advanceAuthEpoch } from '@/shared/auth/auth-events';
 import { clearPageCache, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -63,6 +64,34 @@ it('preserves genuine 401 errors without retrying or concealing them', async () 
   vi.stubGlobal('fetch', fetchMock);
   await expect(apiClient.get('/crm/leads')).rejects.toMatchObject({ status: 401, message: 'Authentication required' });
   expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it.each(['/auth/login', '/auth/login-lockout', '/auth/forgot-password', '/auth/reset-password', '/integrations/gmail/emails'])('does not end LeadCRM authentication for public/provider rejection at %s', async path => {
+  const ended = vi.fn(); window.addEventListener(SESSION_ENDED_EVENT, ended);
+  try {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: path.includes('gmail') ? 'GMAIL_RECONNECT_REQUIRED' : 'AUTH_INVALID_CREDENTIALS', message: 'Denied' } }), { status: 401 })));
+    await expect(apiClient.post(path, {})).rejects.toMatchObject({ status: 401 });
+    expect(ended).not.toHaveBeenCalled();
+  } finally { window.removeEventListener(SESSION_ENDED_EVENT, ended); }
+});
+
+it('signals a protected authentication rejection but ignores responses from an earlier login lifecycle', async () => {
+  const ended = vi.fn(), metadata = vi.fn();
+  window.addEventListener(SESSION_ENDED_EVENT, ended); window.addEventListener(SESSION_METADATA_EVENT, metadata);
+  try {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Session revoked"}', { status: 401 })));
+    await expect(apiClient.get('/crm/leads')).rejects.toMatchObject({ status: 401 });
+    expect(ended).toHaveBeenCalledOnce(); ended.mockClear();
+    let finish!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+    const oldRequest = apiClient.get('/crm/leads'); advanceAuthEpoch();
+    finish(new Response('{"error":{"code":"SESSION_IDLE_EXPIRED","message":"Expired"}}', { status: 401 }));
+    await expect(oldRequest).rejects.toMatchObject({ status: 401 });
+    expect(ended).not.toHaveBeenCalled();
+    const oldMetadata = apiClient.get('/auth/me'); advanceAuthEpoch();
+    finish(new Response('{"data":{"session":{"sessionId":"old"}}}'));
+    await oldMetadata; expect(metadata).not.toHaveBeenCalled();
+  } finally { window.removeEventListener(SESSION_ENDED_EVENT, ended); window.removeEventListener(SESSION_METADATA_EVENT, metadata); }
 });
 
 it('exposes Retry-After as an absolute cooldown after a 429 response', async () => {

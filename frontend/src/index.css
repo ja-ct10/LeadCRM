@@ -186,11 +186,13 @@
   --accent-foreground: #25313D;
 
   /* ── Brand (LeadCRM Blue) ──────────────────────────────────────────── */
-  --primary: #3B82F6;
-  --primary-dark: #2563EB;
-  --primary-hover: #2563EB;
+  --primary: var(--app-primary, #2563EB);
+  --primary-dark: var(--app-primary-dark, #1D4ED8);
+  --primary-hover: var(--app-primary-hover, #1D4ED8);
   --primary-foreground: #FFFFFF;
-  --ring: #3B82F6;
+  --ring: var(--app-primary, #2563EB);
+  --control-ring: var(--primary);
+  accent-color: var(--primary);
   --radius: 0.625rem;
 
   /* ── Neutrals (Deep Slate based) ─────────────────────────────────────── */
@@ -269,11 +271,12 @@
   --accent: #262B36;
   --accent-foreground: #F1F5F9;
 
-  --primary: #2563EB;
-  --primary-dark: #1D4ED8;
-  --primary-hover: #3B82F6;
+  --primary: var(--app-primary, #2563EB);
+  --primary-dark: var(--app-primary-dark, #1D4ED8);
+  --primary-hover: var(--app-primary-hover, #1D4ED8);
   --primary-foreground: #FFFFFF;
-  --ring: #2563EB;
+  --ring: var(--app-primary, #2563EB);
+  --control-ring: color-mix(in srgb, var(--primary) 75%, white);
 
   --text-primary: #F1F5F9;
   --text-secondary: #94A3B8;
@@ -349,9 +352,9 @@
   --surface: #FFFFFF;
   --surface-secondary: #F1F5F9;
 
-  --primary: #2563EB;
-  --primary-dark: #1D4ED8;
-  --primary-hover: #1D4ED8;
+  --primary: var(--app-primary, #2563EB);
+  --primary-dark: var(--app-primary-dark, #1D4ED8);
+  --primary-hover: var(--app-primary-hover, #1D4ED8);
   --primary-foreground: #FFFFFF;
 
   --text-primary: #0F172A;
@@ -426,6 +429,11 @@
     border-color: var(--primary) !important;
     box-shadow: var(--focus-ring) !important;
     outline: none !important;
+  }
+
+  :is(input, select, textarea, button, a[href], [role="switch"], [role="tab"]):focus-visible:not([class*="outline-white"]) {
+    outline: 2px solid var(--ring) !important;
+    outline-offset: 2px;
   }
 
   /* Select options */

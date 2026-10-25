@@ -10,6 +10,7 @@ import { usesWorkspaceAppearance } from '@/lib/appearance-config';
 import { ThemeScope } from '@/shared/components/theme-scope';
 import { Toaster } from 'sonner';
 import { DealActionsProvider } from '@/shared/components/crm/deal-card-menu';
+import { LogoutConfirmationProvider } from './logout-confirmation-provider';
 
 function AppearanceToaster() {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ export function AppProviders({ children, initialHasSessionCookie }: {
   return (
     <AuthProvider initialHasSessionCookie={initialHasSessionCookie}>
       <DataProvider>
-        <DealActionsProvider>{children}</DealActionsProvider>
+        <LogoutConfirmationProvider><DealActionsProvider>{children}</DealActionsProvider></LogoutConfirmationProvider>
         <AppearanceToaster />
       </DataProvider>
     </AuthProvider>

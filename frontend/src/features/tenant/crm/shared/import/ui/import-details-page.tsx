@@ -193,7 +193,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
         </p>
         <button
           onClick={() => router.push(backToImport)}
-          className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
+          className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors"
         >
           <ArrowLeft size={14} />
           Back to Import

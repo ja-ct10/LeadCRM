@@ -46,13 +46,16 @@ export async function createSession(params: {
  * Validate a token hash against the session store.
  * Returns the session or throws 401 if invalid/revoked/expired.
  */
-export async function validateSession(token: string, activityAt?: Date, explicitActivity = false): Promise<{ userId: string; tenantId: string; lastActiveAt: Date; expiresAt: Date }> {
+export async function validateSession(token: string, activityAt?: Date, explicitActivity = false, expectedSessionId?: string): Promise<{ sessionId: string; userId: string; tenantId: string; lastActiveAt: Date; expiresAt: Date }> {
   const tokenHash = hashToken(token);
 
   const session = await prisma.session.findUnique({ where: { tokenHash } });
 
   if (!session) {
     throw new AppError('Session not found — please log in again', 401);
+  }
+  if (expectedSessionId && session.id !== expectedSessionId) {
+    throw new AppError('Your session changed. Please try again with your current account.', 409, 'SESSION_CHANGED');
   }
   if (session.revokedAt) {
     if (+session.revokedAt - +session.lastActiveAt >= SESSION_IDLE_MS) throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
@@ -68,23 +71,28 @@ export async function validateSession(token: string, activityAt?: Date, explicit
     if (crmRetirementMaintenance.active) throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
     const revoked = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, lastActiveAt: { lte: cutoff } }, data: { revokedAt: now } });
     // A concurrent valid activity update won; validate that newer state.
-    if (!revoked.count) return validateSession(token, activityAt, explicitActivity);
+    if (!revoked.count) return validateSession(token, activityAt, explicitActivity, expectedSessionId);
     throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
   }
-  if (!crmRetirementMaintenance.active && activityAt && activityAt > session.lastActiveAt && (explicitActivity || +activityAt - +session.lastActiveAt >= 60000)) {
-    const at = new Date(Math.min(activityAt.getTime(), now.getTime()));
+  const at = activityAt && new Date(Math.min(activityAt.getTime(), now.getTime()));
+  if (!crmRetirementMaintenance.active && at && at > session.lastActiveAt && (explicitActivity || +at - +session.lastActiveAt >= 60000)) {
     // Conditional writes cannot resurrect revoked/expired sessions or move activity backwards.
     const updated = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, expiresAt: { gt: now }, lastActiveAt: { gt: cutoff, lt: at } }, data: { lastActiveAt: at } });
-    if (updated.count) session.lastActiveAt = at;
+    if (!updated.count) return validateSession(token, activityAt, explicitActivity, expectedSessionId);
+    session.lastActiveAt = at;
   }
-  return { userId: session.userId, tenantId: session.tenantId, lastActiveAt: session.lastActiveAt, expiresAt: session.expiresAt };
+  return { sessionId: session.id, userId: session.userId, tenantId: session.tenantId, lastActiveAt: session.lastActiveAt, expiresAt: session.expiresAt };
 }
 
 /**
  * Revoke a specific session on logout.
  */
-export async function revokeSession(token: string): Promise<void> {
+export async function revokeSession(token: string, expectedSessionId?: string): Promise<void> {
   const tokenHash = hashToken(token);
+  if (expectedSessionId) {
+    const current = await prisma.session.findUnique({ where: { tokenHash }, select: { id: true } });
+    if (current && current.id !== expectedSessionId) throw new AppError('Your session changed. Please try again with your current account.', 409, 'SESSION_CHANGED');
+  }
   // Missing sessions are already logged out; database failures must reach the caller.
   await prisma.session.updateMany({
     where: { tokenHash, revokedAt: null },

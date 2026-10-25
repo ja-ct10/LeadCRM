@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OnboardingProgressSchema = exports.CompanySetupSchema = exports.RegisterSchema = exports.ChangePasswordSchema = exports.StrongPasswordSchema = exports.ForgotPasswordSchema = void 0;
+exports.OnboardingProgressSchema = exports.CompanySetupSchema = exports.RegisterSchema = exports.ChangePasswordSchema = exports.StrongPasswordSchema = exports.ForgotPasswordSchema = exports.SessionActivitySchema = exports.LogoutSchema = void 0;
 const zod_1 = require("zod");
 const security_schema_1 = require("./security.schema");
+exports.LogoutSchema = zod_1.z.object({ sessionId: zod_1.z.string().uuid().optional() }).strict();
+exports.SessionActivitySchema = exports.LogoutSchema.extend({ lastActiveAt: zod_1.z.string().datetime() });
 /** Recovery uses login normalization without revealing account-access restrictions. */
 exports.ForgotPasswordSchema = zod_1.z.object({
     email: zod_1.z.string().trim().toLowerCase().max(254).email('Valid email required'),

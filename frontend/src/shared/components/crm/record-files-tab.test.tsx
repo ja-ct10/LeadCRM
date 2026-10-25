@@ -24,7 +24,7 @@ it('uses the primary picker button and displays the supported formats and size b
   expect(screen.getByText('Maximum file size: 10 MB per file')).toBeTruthy();
   const click = vi.spyOn(picker, 'click');
   const button = screen.getByRole('button', { name: 'Upload File' });
-  expect(button.style.backgroundColor).toBe('var(--primary)');
+  expect(button.classList.contains('bg-primary')).toBe(true);
   fireEvent.click(button); expect(click).toHaveBeenCalledOnce();
 });
 

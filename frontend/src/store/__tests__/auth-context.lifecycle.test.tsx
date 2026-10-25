@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from '../AuthContext';
 import { clearPageCache, getPageCacheGeneration, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
 import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
 import { getAccountDestination } from '@/shared/auth/auth-routing';
+import { REMEMBERED_EMAIL_KEY } from '@/shared/auth/remembered-login';
 let auth: ReturnType<typeof useAuth>;
 const user = {
   id: 'user', tenantId: 'tenant', role: 'Sales', firstName: 'Alice', lastName: 'Owner',
@@ -38,6 +39,42 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+it('deduplicates logout, preserves the remembered email and rejects stale session refreshes', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show(); await waitFor(() => expect(auth.user?.id).toBe(user.id));
+  localStorage.setItem(REMEMBERED_EMAIL_KEY, user.email);
+  setPageCache('logout-fixture', 'tenant', {}, { private: 'data' });
+  let finish!: () => void;
+  mocks.logout.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+  let first!: Promise<void>, second!: Promise<void>;
+  act(() => { first = auth.logout(); second = auth.logout(); });
+  expect(mocks.logout).toHaveBeenCalledOnce();
+  expect(auth.user?.id).toBe(user.id);
+  await act(async () => { await auth.refreshUser(); });
+  await act(async () => { finish(); await Promise.all([first, second]); });
+  expect(auth.user).toBeNull(); expect(auth.permissions).toEqual({}); expect(getPageCacheSize()).toBe(0);
+  expect(localStorage.getItem(REMEMBERED_EMAIL_KEY)).toBe(user.email);
+});
+
+it('keeps the session active after failed manual logout and permits retry with blocked storage', async () => {
+  mocks.me.mockResolvedValue({ data: { user } }); show();
+  await waitFor(() => expect(auth.user?.id).toBe(user.id));
+  mocks.logout.mockRejectedValueOnce(new Error('Database unavailable'));
+  await act(async () => { await expect(auth.logout()).rejects.toThrow('Database unavailable'); });
+  expect(auth.user?.id).toBe(user.id);
+  const spy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked'); });
+  try { await act(async () => { await auth.logout(); }); expect(auth.user).toBeNull(); }
+  finally { spy.mockRestore(); }
+});
+
+it('clears a peer-expired session immediately without making a duplicate revocation request', async () => {
+  mocks.me.mockResolvedValue({ data: { user } }); show();
+  await waitFor(() => expect(auth.user?.id).toBe(user.id));
+  await act(async () => window.dispatchEvent(new StorageEvent('storage', { key: 'leadcrm:session-activity', newValue: JSON.stringify({ userId: user.id, logout: true, idle: true, at: Date.now() }) })));
+  expect(auth.user).toBeNull(); expect(mocks.logout).not.toHaveBeenCalled();
+  expect(sessionStorage.getItem('leadcrm:idle-expired')).toBe('1');
+});
+
 it('skips anonymous startup even in Strict Mode and does not reuse the hint on prop changes', async () => {
   const view = render(<React.StrictMode><AuthProvider initialHasSessionCookie={false}><Probe /></AuthProvider></React.StrictMode>);
   await waitFor(() => expect(auth.isLoading).toBe(false));
@@ -48,6 +85,15 @@ it('skips anonymous startup even in Strict Mode and does not reuse the hint on p
   view.rerender(<React.StrictMode><AuthProvider initialHasSessionCookie><Probe /></AuthProvider></React.StrictMode>);
   expect(mocks.me).not.toHaveBeenCalled();
   expect(mocks.permissions).not.toHaveBeenCalled();
+});
+
+it('keeps an idle-expiration redirect on Login even when revocation or session restoration is offline', async () => {
+  window.history.replaceState({}, '', '/login?reason=idle');
+  mocks.me.mockRejectedValue(new TypeError('Offline'));
+  try {
+    show(true); await waitFor(() => expect(auth.isLoading).toBe(false));
+    expect(auth.user).toBeNull(); expect(auth.authError).toBeNull(); expect(mocks.me).not.toHaveBeenCalled();
+  } finally { window.history.replaceState({}, '', '/'); }
 });
 
 it.each([true, undefined])('validates and restores a possible session when the initial cookie hint is %s', async hint => {

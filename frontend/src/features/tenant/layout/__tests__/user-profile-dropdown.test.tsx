@@ -2,14 +2,15 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UserProfileDropdown } from '../user-profile-dropdown';
+import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
 import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn(), push: vi.fn(), logout: vi.fn(), success: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), push: vi.fn(), replace: vi.fn(), logout: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
   user: { firstName: 'Seeder', lastName: 'Admin', email: 'seeder@camxian.com', role: 'Client Admin' }, tenant: { name: 'Camxian Technologies' }, logout: mocks.logout,
 }) }));
 vi.mock('../use-layout', () => ({ useLayout: () => ({ navigate: mocks.navigate }) }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, replace: mocks.replace }), usePathname: () => '/dashboard' }));
 vi.mock('sonner', () => ({ toast: mocks }));
 vi.mock('motion/react', () => ({
   motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children,
@@ -18,7 +19,7 @@ vi.mock('motion/react', () => ({
 let triggerBottom: number;
 let viewport: EventTarget & { width: number; height: number; offsetTop: number; offsetLeft: number };
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'User profile menu' }));
-function App() { return <><header><UserProfileDropdown /></header><button>Outside</button></>; }
+function App() { return <LogoutConfirmationProvider><header><UserProfileDropdown /></header><button>Outside</button></LogoutConfirmationProvider>; }
 beforeEach(() => {
   vi.clearAllMocks(); triggerBottom = 94; mocks.logout.mockResolvedValue(undefined);
   vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 642);
@@ -75,8 +76,11 @@ it('preserves account, workspace, appearance, help and logout actions', async ()
   open(); const help = screen.getByRole('menuitem', { name: 'Help Center' }); expect(help.getAttribute('href')).toBe('/help');
   fireEvent.click(help); expect(screen.queryByRole('menu')).toBeNull();
   open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Signed out successfully'));
+  expect(mocks.logout).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(mocks.logout).toHaveBeenCalledOnce(); expect(screen.queryByRole('menu')).toBeNull();
+  expect(mocks.replace).toHaveBeenCalledWith('/login');
 });
 
 it.each(['My Account', 'Appearance', 'Log out'])('defers %s until the stored navigation action is confirmed', async label => {
@@ -86,13 +90,47 @@ it.each(['My Account', 'Appearance', 'Log out'])('defers %s until the stored nav
   try {
     fireEvent.click(screen.getByRole('menuitem', { name: label }));
     expect(mocks.navigate).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled(); expect(mocks.logout).not.toHaveBeenCalled();
-    expect(screen.getByRole('menu')).toBeTruthy(); pending = undefined;
+    if (label !== 'Log out') expect(screen.getByRole('menu')).toBeTruthy(); pending = undefined;
+    if (label === 'Log out') open();
     fireEvent.click(screen.getByRole('menuitem', { name: label }));
     // The originating dropdown can unmount while confirmation is displayed.
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Outside' })); expect(screen.queryByRole('menu')).toBeNull();
     window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); await act(async () => pending?.());
     if (label === 'My Account') expect(mocks.navigate).toHaveBeenCalledWith('settings');
     else if (label === 'Appearance') expect(mocks.push).toHaveBeenCalledWith('/settings?tab=appearance');
-    else expect(mocks.logout).toHaveBeenCalledOnce();
+    else {
+      expect(mocks.logout).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+      await waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+    }
   } finally { window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); }
+});
+
+it('cancels logout without touching authentication and shows a retryable revocation error', async () => {
+  render(<App />); open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
+  expect(screen.getByText('Are you sure you want to log out?')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(mocks.logout).not.toHaveBeenCalled();
+  expect(mocks.replace).not.toHaveBeenCalled();
+  open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
+  mocks.logout.mockRejectedValueOnce(new Error('Server unavailable. Please retry.'));
+  fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Server unavailable');
+  expect(mocks.replace).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(mocks.logout).toHaveBeenCalledTimes(2);
+});
+
+it('submits confirmation only once while revocation is pending', async () => {
+  let finish!: () => void;
+  mocks.logout.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+  render(<App />); open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
+  const confirm = screen.getByRole('button', { name: 'Log Out' });
+  fireEvent.click(confirm); fireEvent.click(confirm);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(mocks.logout).toHaveBeenCalledOnce();
+  expect(screen.getByRole('alertdialog').getAttribute('aria-busy')).toBe('true');
+  await act(async () => finish());
+  expect(screen.queryByRole('alertdialog')).toBeNull();
 });

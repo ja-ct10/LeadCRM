@@ -419,7 +419,7 @@ export default function CampaignsPage() {
                       setBuilderInitialType('Email');
                       setBuilderInitialContent(template.content); setBuilderSubject(template.subject || '');
                       setShowBuilder(true);
-                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
+                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-[var(--primary-hover)] transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                       Use Template
                     </button>
                   </div>
@@ -464,7 +464,7 @@ export default function CampaignsPage() {
                     <button onClick={() => {
                       setBuilderInitialType('SMS'); setBuilderInitialContent(template.content);
                       setShowBuilder(true);
-                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
+                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-[var(--primary-hover)] transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                       Use Template
                     </button>
                   </div>
@@ -597,7 +597,7 @@ export default function CampaignsPage() {
                   setShowBuilder(true);
                   setPreviewTemplate(null);
                 }}
-                className="px-4 py-2 bg-primary text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
+                className="px-4 py-2 bg-primary text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-[var(--primary-hover)] transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
               >
                 Use Template
               </button>

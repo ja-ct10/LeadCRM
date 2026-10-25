@@ -12,6 +12,7 @@ beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers(); mocks.revision.mockRe
 afterEach(() => vi.useRealTimers());
 it.each([
   [403, 'PASSWORD_CHANGE_REQUIRED', { code: 'PASSWORD_CHANGE_REQUIRED' }],
+  [401, 'SESSION_IDLE_EXPIRED', { code: 'SESSION_IDLE_EXPIRED' }],
   [401, undefined, {}],
   [403, 'ROLE_RETIRED', {}],
 ] as const)('closes an existing authorization stream with the appropriate access-loss reason (%s, %s)', async (status, code, data) => {

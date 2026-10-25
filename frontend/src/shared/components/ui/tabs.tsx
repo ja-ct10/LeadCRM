@@ -299,7 +299,7 @@ export function PillTabTrigger({
         'disabled:opacity-50 disabled:cursor-not-allowed',
         isActive
           ? 'bg-primary text-white shadow-lg shadow-primary/30'
-          : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-white/8 hover:border-blue-300 dark:hover:border-primary/30 shadow-sm',
+          : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-white/8 hover:border-primary dark:hover:border-primary/30 shadow-sm',
         className
       )}
     >

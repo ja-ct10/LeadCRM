@@ -2,7 +2,7 @@
 
 import { useIdleSession } from '@/shared/auth/use-idle-session';
 import { normalizeMockUser } from './auth-state';
-import type { AuthUser, PasswordRecoveryResponse } from '@leadcrm/shared';
+import type { AuthUser, PasswordRecoveryResponse, SessionMetadata } from '@leadcrm/shared';
 import React, {
   createContext, useContext, useState, useEffect,
   useCallback, useRef, ReactNode,
@@ -16,7 +16,7 @@ import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
 import { clearNotificationTracking } from '@/features/tenant/notifications/hooks/notification-requests';
-import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
+import { PASSWORD_CHANGE_REQUIRED_EVENT, SESSION_METADATA_EVENT, SESSION_CHANGED_EVENT, advanceAuthEpoch, markIdleExpired, publishSessionActivity } from '@/shared/auth/auth-events';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -124,7 +124,34 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
   const authenticatedIdentity = useRef<string | null>(null);
   const appliedPermissions = useRef<string | null>(null);
   const passwordRecoveryRefresh = useRef<Promise<void> | null>(null);
+  const sessionId = useRef<string | undefined>(undefined);
+  const logoutRequest = useRef<Promise<void> | null>(null);
   activeUserId.current = user?.id ?? null;
+
+  const clearAuthState = useCallback(() => {
+    advanceAuthEpoch();
+    requestGeneration.current += 1;
+    permissionGeneration.current += 1;
+    activeUserId.current = null;
+    authenticatedIdentity.current = null;
+    appliedPermissions.current = null;
+    sessionId.current = undefined;
+    clearNotificationTracking();
+    clearPageCache();
+    setUser(null); setTenant(null); setAuthError(null);
+    setPermissions({}); setIsPermissionsLoaded(true); setPermissionsError(null);
+    setIsLoading(false);
+    for (const key of ['leadcrm_user', 'leadcrm_tenant', 'leadcrm_onboarding_complete', 'leadcrm_needs_company_setup']) {
+      try { localStorage.removeItem(key); } catch { /* Authentication cleanup must complete when storage is disabled. */ }
+    }
+    try { sessionStorage.removeItem('leadcrm_redirect_after_login'); } catch { /* Optional browser state. */ }
+  }, []);
+
+  useEffect(() => {
+    const receive = (event: Event) => { sessionId.current = (event as CustomEvent<SessionMetadata>).detail?.sessionId; };
+    window.addEventListener(SESSION_METADATA_EVENT, receive);
+    return () => window.removeEventListener(SESSION_METADATA_EVENT, receive);
+  }, []);
 
   const applyOrganizationSettings = useCallback((settings: import('@leadcrm/shared').OrganizationSettings) => {
     setTenant(current => current?.id === settings.id ? {
@@ -134,8 +161,10 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
     setUser(current => current?.tenantId === settings.id ? { ...current, tenantName: settings.name, industry: settings.industry } : current);
   }, []);
 
-  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
+  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string, session?: SessionMetadata) => {
+    if (logoutRequest.current) return;
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
+    if (session) sessionId.current = session.sessionId;
     const identity = JSON.stringify([apiUser.id, apiUser.tenantId, apiUser.role, apiUser.status, apiUser.tenantStatus, apiUser.mustChangePassword, isOnboardingComplete(apiUser)]);
     if (authenticatedIdentity.current !== identity) clearNotificationTracking();
     if (authenticatedIdentity.current !== identity) {
@@ -182,11 +211,11 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
     try {
       const response = await authApi.me();
       if (generation !== requestGeneration.current) return;
-      applyAuthUser(response.data.user);
+      applyAuthUser(response.data.user, undefined, response.data.session);
     } catch (error) {
       if (generation !== requestGeneration.current) return;
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'SESSION_IDLE_EXPIRED') {
-        sessionStorage.setItem('leadcrm:idle-expired', '1');
+        markIdleExpired();
       }
       setUser(null);
       setTenant(null);
@@ -203,7 +232,8 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
   useEffect(() => {
     // The server can rule out a cookie session at startup. Explicit restores
     // still validate with the backend because this initial hint can go stale.
-    if (!USE_MOCK_AUTH && initialHasSessionCookie === false) {
+    const idleRedirect = window.location.pathname === '/login' && new URLSearchParams(window.location.search).get('reason') === 'idle';
+    if (!USE_MOCK_AUTH && (initialHasSessionCookie === false || idleRedirect)) {
       setIsPermissionsLoaded(true);
       setIsLoading(false);
     } else {
@@ -296,17 +326,12 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
     const generation = ++requestGeneration.current;
     try {
       const response = await authApi.me();
-      if (generation === requestGeneration.current) applyAuthUser(response.data.user);
+      if (generation === requestGeneration.current) applyAuthUser(response.data.user, undefined, response.data.session);
     } catch (error) {
       if (generation === requestGeneration.current) {
         if (isNoSessionError(error)) {
-          authenticatedIdentity.current = null;
-          appliedPermissions.current = null;
-          clearPageCache(true);
-          setUser(null);
-          setTenant(null);
-          setPermissions({});
-          setPermissionsError(null);
+          if ((error as { code?: string }).code === 'SESSION_IDLE_EXPIRED') markIdleExpired();
+          clearAuthState();
         }
       }
       throw error;
@@ -325,6 +350,11 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
 
   const accessRefresh = useRef({ refreshUser, refreshPermissions });
   accessRefresh.current = { refreshUser, refreshPermissions };
+  useEffect(() => {
+    const changed = () => { void accessRefresh.current.refreshUser().catch(() => {}); };
+    window.addEventListener(SESSION_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(SESSION_CHANGED_EVENT, changed);
+  }, []);
   useEffect(() => {
     if (USE_MOCK_AUTH || !user?.id) return;
     const changed = () => {
@@ -369,24 +399,25 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
           return;
         }
       } catch { /* Preserve the existing access-loss handling for older or malformed events. */ }
-      requestGeneration.current += 1;
-      permissionGeneration.current += 1;
-      activeUserId.current = null;
-      authenticatedIdentity.current = null;
-      appliedPermissions.current = null;
-      setUser(null); setTenant(null); setPermissions({});
-      setPermissionsError(null);
-      clearPageCache(); source.close();
+      source.close();
+      try {
+        const data = JSON.parse((event as MessageEvent<string>).data) as { code?: string };
+        if (data.code === 'SESSION_IDLE_EXPIRED') markIdleExpired();
+      } catch { /* Older servers may omit the reason. */ }
+      clearAuthState();
     });
     return () => source.close();
   }, [user?.id, user?.tenantId, user?.mustChangePassword, onboardingComplete, isLoading, authError]);
 
   const login = async (email: string, password?: string, rememberMe = false): Promise<boolean> => {
+    if (logoutRequest.current) await logoutRequest.current;
+    advanceAuthEpoch();
     if (USE_MOCK_AUTH) return mockLogin(email);
     const generation = ++requestGeneration.current;
     const response = await authApi.login({ email, password: password ?? '', rememberMe });
     if (generation !== requestGeneration.current) return false;
-    applyAuthUser(response.data.user);
+    applyAuthUser(response.data.user, undefined, response.data.session);
+    try { sessionStorage.removeItem('leadcrm:idle-expired'); } catch { /* Optional message state. */ }
     return true;
   };
 
@@ -433,40 +464,26 @@ export function AuthProvider({ children, initialHasSessionCookie }: {
 
 
   // ── Logout ────────────────────────────────────────────────────────
-  const logout = async (forced = false): Promise<void> => {
-    clearNotificationTracking();
+  const logoutSessionId = sessionId.current;
+  const logout = async (): Promise<void> => {
+    if (logoutRequest.current) return logoutRequest.current;
     requestGeneration.current += 1;
-    if (!USE_MOCK_AUTH) {
-      // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie
-      try { await authApi.logout(); } catch (error) { if (!forced) throw error; }
-    }
-    if (!forced && user) localStorage.setItem('leadcrm:session-activity', JSON.stringify({ userId: user.id, logout: true, idle: false, at: Date.now() }));
-    setUser(null);
-    setTenant(null);
-    setAuthError(null);
-    activeUserId.current = null;
-    authenticatedIdentity.current = null;
-    appliedPermissions.current = null;
-    permissionGeneration.current += 1;
-    setPermissions({});
-    setIsPermissionsLoaded(true);
-    setPermissionsError(null);
-    clearPageCache(); // evict all cross-route module data — prevents stale data after re-login
-    localStorage.removeItem('leadcrm_user');
-    localStorage.removeItem('leadcrm_tenant');
-    // Clear onboarding flags so the next user on this browser sees the
-    // full onboarding flow (keys must not leak across accounts).
-    localStorage.removeItem('leadcrm_onboarding_complete');
-    localStorage.removeItem('leadcrm_needs_company_setup');
-    // Clear any saved post-login redirect so a new user doesn't inherit the
-    // previous session's destination .
-    sessionStorage.removeItem('leadcrm_redirect_after_login');
+    const task = (async () => {
+      if (!USE_MOCK_AUTH) await authApi.logout(logoutSessionId);
+      if (user) publishSessionActivity({ userId: user.id, sessionId: logoutSessionId, logout: true, idle: false, at: Date.now() });
+      clearAuthState();
+    })();
+    logoutRequest.current = task;
+    try { await task; }
+    finally { if (logoutRequest.current === task) logoutRequest.current = null; }
   };
 
-  useIdleSession(USE_MOCK_AUTH ? undefined : user?.id, async idle => {
-    if (idle) sessionStorage.setItem('leadcrm:idle-expired', '1');
-    await logout(true);
-    window.location.replace('/login');
+  useIdleSession(USE_MOCK_AUTH ? undefined : user?.id, async (idle, options) => {
+    if (idle) markIdleExpired();
+    // Peers only clear local state; the originating tab already revoked the session.
+    if (!options?.remote && !logoutRequest.current) void authApi.logout(options?.sessionId ?? sessionId.current).catch(() => {});
+    clearAuthState();
+    window.location.replace(idle ? '/login?reason=idle' : '/login');
   });
 
   // ── Password reset ─────────────────────────────────────────────────

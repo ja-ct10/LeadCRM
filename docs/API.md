@@ -117,6 +117,19 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | GET | /auth/onboarding/status | Canonical account state |
 | POST | /auth/onboarding/complete | Per-user informational acknowledgment after password setup; empty body |
 
+Login, `/auth/me`, and `/auth/activity` return session metadata including
+`sessionId`, `lastActiveAt`, `idleExpiresAt`, `expiresAt`, and `serverNow`.
+`POST /auth/logout` accepts `{ sessionId?: UUID }`; `/auth/activity` accepts
+`{ lastActiveAt: ISO datetime, sessionId?: UUID }`. A supplied ID that differs
+from the authenticated cookie session returns `409 SESSION_CHANGED` without
+revoking that replacement session or clearing its cookie. Clients then revalidate
+their current account. IDs are correlation metadata, never authentication tokens.
+Empty logout payloads remain supported and revocation is idempotent.
+
+Idle sessions return `401 SESSION_IDLE_EXPIRED` before activity renewal. The
+authorization access-change stream preserves that reason for the Login notice;
+passive API polling and SSE do not extend the 30-minute inactivity deadline.
+
 `POST /auth/forgot-password` accepts only `{ email }`. The shared schema trims and lowercases the address before the authoritative case-insensitive lookup. Under the owner's approved disclosure policy, an unknown address returns HTTP 404 and `{ success: false, error: { code: "ACCOUNT_NOT_FOUND", message: "No account exists with this email address." } }`. Known restricted/ambiguous identities receive the same neutral success shape as eligible accounts, without security metadata, tokens or tenant selection.
 
 Recovery success contains `success`, the neutral `message`, `expiresInMinutes`, and `resendAfterSeconds`; it confirms request processing, not inbox delivery. Definite email submission rejection returns HTTP 502 with `PASSWORD_RESET_EMAIL_FAILED`. Uncertain submission returns HTTP 502 with `PASSWORD_RESET_SUBMISSION_UNCONFIRMED` and `retryAt`, and suppresses additional email submission until that attempt expires. Resend uses this same route. Production recovery limits remain three requests per IP per hour, with an additional three per normalized address per hour. See the [recovery verification report](password-recovery-verification.md) for acceptance evidence and rollout requirements.

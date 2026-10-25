@@ -389,7 +389,7 @@ export function DealDetailsModal({
                       Cancel
                     </button>
                     <button type="submit"
-                      className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-all shadow-md shadow-primary/10">
+                      className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-[var(--primary-hover)] transition-all shadow-md shadow-primary/10">
                       Save Changes
                     </button>
                   </div>
@@ -551,7 +551,7 @@ export function DealDetailsModal({
                   className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-sm text-slate-900 dark:text-white focus:outline-none resize-none" />
                 <div className="flex justify-end">
                   <button type="submit"
-                    className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-all">
+                    className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-[var(--primary-hover)] transition-all">
                     Log Activity
                   </button>
                 </div>
@@ -659,7 +659,7 @@ export function DealDetailsModal({
           </button>
           {canEdit && (
             <button type="button" onClick={handleOpenEdit}
-              className="flex-1 bg-primary hover:bg-primary/90 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-primary/20">
+              className="flex-1 bg-primary hover:bg-[var(--primary-hover)] text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-primary/20">
               Edit Deal
             </button>
           )}

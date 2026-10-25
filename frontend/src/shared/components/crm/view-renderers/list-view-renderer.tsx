@@ -66,9 +66,9 @@ export function ListViewRenderer({
             className={cn(
               'bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl',
               'px-4 py-3 cursor-pointer transition-colors',
-              'focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 focus:ring-offset-1',
+              'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-1',
               isSelected
-                ? 'bg-blue-50/60 dark:bg-blue-500/5 border-blue-200 dark:border-blue-500/30'
+                ? 'bg-blue-50/60 dark:bg-blue-500/5 border-blue-200 dark:border-primary/30'
                 : 'hover:bg-slate-50 dark:hover:bg-slate-800/60',
             )}
             aria-selected={isSelected}
@@ -83,7 +83,7 @@ export function ListViewRenderer({
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => onRowSelect?.(recordId, !isSelected)}
-                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
                   aria-label={`Select record ${recordId}`}
                 />
               </div>

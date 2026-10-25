@@ -23,7 +23,7 @@ declare global {
     interface Request {
       user?: AuthenticatedUser;
       authUser?: AuthUser;
-      authSession?: { lastActiveAt: Date; expiresAt: Date };
+      authSession?: { sessionId: string; lastActiveAt: Date; expiresAt: Date };
     }
   }
 }

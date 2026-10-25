@@ -7,6 +7,7 @@ import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_AUTH } from '@/lib/config';
+import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
 
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -43,7 +44,8 @@ export default function AccountDropdown({
   navigate: _navigate,
   collapsed = false,
 }: AccountDropdownProps): React.ReactElement {
-  const { user, switchDemoAccount, logout } = useAuth();
+  const { user, switchDemoAccount } = useAuth();
+  const requestLogout = useLogoutConfirmation();
 
   const handleSwitch = (acc: SwitchAccount) => {
     if (user?.email === acc.email) { onToggle(); return; }
@@ -56,7 +58,7 @@ export default function AccountDropdown({
 
   const handleLogout = () => {
     onToggle();
-    logout().then(() => toast.success('Logged out'));
+    requestLogout();
   };
 
   const initials = `${user?.firstName?.charAt(0) ?? 'U'}${user?.lastName?.charAt(0) ?? ''}`.toUpperCase();

@@ -651,7 +651,7 @@ export const CompanyProfileTabs = ({
                   <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This account has no associated B2B deals yet.</p>
                   <button 
                     onClick={() => toast.info('Initiate new B2B deal from the Deals page or Pipeline module.')}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-white shadow-sm transition-colors"
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary hover:bg-[var(--primary-hover)] text-white shadow-sm transition-colors"
                   >
                     <Plus size={14} />
                     Create Deal

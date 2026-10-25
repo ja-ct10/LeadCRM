@@ -12,11 +12,11 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 it('expires exactly at 30 minutes without interactions', async () => {
   renderHook(() => useIdleSession('u', expire)); metadata();
   await act(async () => { vi.advanceTimersByTime(1799000); }); expect(expire).not.toHaveBeenCalled();
-  await act(async () => { vi.advanceTimersByTime(1000); }); expect(expire).toHaveBeenCalledWith(true);
+  await act(async () => { vi.advanceTimersByTime(1000); }); expect(expire).toHaveBeenCalledWith(true, { remote: false, sessionId: undefined });
 });
 it('uses server activity on refresh instead of restarting the timer', async () => {
   renderHook(() => useIdleSession('u', expire)); metadata(29 * 60000);
-  await act(async () => { vi.advanceTimersByTime(60000); }); expect(expire).toHaveBeenCalledWith(true);
+  await act(async () => { vi.advanceTimersByTime(60000); }); expect(expire).toHaveBeenCalledWith(true, { remote: false, sessionId: undefined });
 });
 it('coalesces real interaction and records the trailing actual interaction time', async () => {
   renderHook(() => useIdleSession('u', expire)); metadata();
@@ -31,5 +31,33 @@ it('synchronizes activity and logout between tabs and checks elapsed sleep on vi
   await act(async () => { vi.advanceTimersByTime(29 * 60000); window.dispatchEvent(new StorageEvent('storage', { key: 'leadcrm:session-activity', newValue: JSON.stringify({ userId: 'u', at: Date.now() }) })); vi.advanceTimersByTime(60000); });
   expect(expire).not.toHaveBeenCalled();
   await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'leadcrm:session-activity', newValue: JSON.stringify({ userId: 'u', logout: true, idle: false }) })); });
-  expect(expire).toHaveBeenCalledWith(false);
+  expect(expire).toHaveBeenCalledWith(false, { remote: true, sessionId: undefined });
+});
+
+it('ignores stale cross-tab logout messages from a replaced session', async () => {
+  renderHook(() => useIdleSession('u', expire));
+  window.dispatchEvent(new CustomEvent('leadcrm:session-metadata', { detail: { sessionId: 'current', lastActiveAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), serverNow: new Date().toISOString() } }));
+  await act(async () => window.dispatchEvent(new StorageEvent('storage', { key: 'leadcrm:session-activity', newValue: JSON.stringify({ userId: 'u', sessionId: 'old', logout: true, at: Date.now() }) })));
+  expect(expire).not.toHaveBeenCalled();
+  await act(async () => window.dispatchEvent(new StorageEvent('storage', { key: 'leadcrm:session-activity', newValue: JSON.stringify({ userId: 'u', sessionId: 'current', logout: true, idle: true, at: Date.now() }) })));
+  expect(expire).toHaveBeenCalledExactlyOnceWith(true, { remote: true, sessionId: 'current' });
+  expect(post).not.toHaveBeenCalled();
+});
+
+it('checks elapsed time on wake and cannot renew an expired session', async () => {
+  renderHook(() => useIdleSession('u', expire)); metadata();
+  vi.setSystemTime(Date.now() + 30 * 60000);
+  await act(async () => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('keydown')); });
+  expect(expire).toHaveBeenCalledOnce(); expect(post).not.toHaveBeenCalled();
+});
+
+it('continues expiration and renewal when cross-tab storage is unavailable', async () => {
+  renderHook(() => useIdleSession('u', expire)); metadata();
+  const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+  try {
+    await act(async () => window.dispatchEvent(new Event('keydown')));
+    expect(post).toHaveBeenCalledOnce();
+    await act(async () => vi.advanceTimersByTime(30 * 60000));
+    expect(expire).toHaveBeenCalledOnce();
+  } finally { spy.mockRestore(); }
 });

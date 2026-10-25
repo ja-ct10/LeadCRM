@@ -24,8 +24,8 @@ export const authApi = {
     apiClient.post<AuthResponse>('/auth/change-password', payload),
 
 
-  logout: () =>
-    apiClient.post<{ success: boolean }>('/auth/logout', {}),
+  logout: (sessionId?: string) =>
+    apiClient.post<{ success: boolean }>('/auth/logout', sessionId ? { sessionId } : {}),
 
   me: () =>
     apiClient.get<AuthResponse>('/auth/me'),

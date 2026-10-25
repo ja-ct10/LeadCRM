@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { EmployeeEmailSchema } from './security.schema';
 
+export const LogoutSchema = z.object({ sessionId: z.string().uuid().optional() }).strict();
+export const SessionActivitySchema = LogoutSchema.extend({ lastActiveAt: z.string().datetime() });
+
 /** Recovery uses login normalization without revealing account-access restrictions. */
 export const ForgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Valid email required'),

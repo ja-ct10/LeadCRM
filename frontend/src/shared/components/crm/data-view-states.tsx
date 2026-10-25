@@ -234,7 +234,7 @@ export function EmptyTotalState({
       {canCreate && (
         <button
           onClick={onCreateRecord}
-          className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm"
+          className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors shadow-sm"
         >
           <Plus size={14} />
           Create {moduleName.charAt(0).toUpperCase() + moduleName.slice(1, -1)}

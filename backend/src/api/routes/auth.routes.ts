@@ -1,4 +1,4 @@
-import { UpdateSelfProfileSchema, AVATAR_MAX_BYTES } from '@leadcrm/shared';
+import { UpdateSelfProfileSchema, AVATAR_MAX_BYTES, LogoutSchema, SessionActivitySchema } from '@leadcrm/shared';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { patchProfile, uploadAvatar, getAvatar } from '../../core/auth/profile.controller';
 import { Router, raw } from 'express';
@@ -11,7 +11,6 @@ import * as authController from '../../core/auth/auth.controller';
 import { PasswordChangeRequestSchema } from '../../core/auth/change-password.service';
 import { changePasswordController } from '../../core/auth/change-password.controller';
 import { authorizationEvents } from '../../modules/reporting/reports/dashboard.events';
-import { z } from 'zod';
 
 const router = Router();
 const parseAvatar = raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: AVATAR_MAX_BYTES });
@@ -24,9 +23,9 @@ router.post('/profile/avatar', authMiddleware, tenantMiddleware, (req, res, next
 router.get('/profile/avatar/:avatarId', authMiddleware, tenantMiddleware, getAvatar);
 router.post('/login', loginIpRateLimiter, validate(LoginIdentitySchema), authController.login);
 router.post('/login-lockout', loginIpRateLimiter, validate(LoginLockoutSchema), authController.loginLockout);
-router.post('/logout', authController.logout);
+router.post('/logout', validate(LogoutSchema), authController.logout);
 router.get('/me', authMiddleware, authController.me);
-router.post('/activity', authMiddleware, validate(z.object({ lastActiveAt: z.string().datetime() }).strict()), authController.activity);
+router.post('/activity', authMiddleware, validate(SessionActivitySchema), authController.activity);
 router.get('/events', authMiddleware, tenantMiddleware, authorizationEvents);
 router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), passwordRecoveryAddressRateLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetRateLimiter, validate(ResetPasswordSchema), authController.resetPassword);

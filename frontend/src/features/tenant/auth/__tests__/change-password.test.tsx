@@ -4,16 +4,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const { changePassword, applyAuthUser, user } = vi.hoisted(() => ({ changePassword: vi.fn(), applyAuthUser: vi.fn(), user: { id: 'employee', email: 'employee@camxian.com', mustChangePassword: true, onboardingCompletedAt: null as string | null } }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { changePassword } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user, applyAuthUser, logout: vi.fn() }) }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/change-password', useRouter: () => ({ replace: vi.fn() }) }));
 import ChangePasswordPage from '../ui/change-password-page';
+import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
+function show() { return render(<LogoutConfirmationProvider><ChangePasswordPage /></LogoutConfirmationProvider>); }
 beforeEach(() => { cleanup(); vi.resetAllMocks(); user.onboardingCompletedAt = null; });
 it('keeps the first-login password and tour copy', () => {
-  render(<ChangePasswordPage />);
+  show();
   expect(screen.getByRole('heading', { name: 'Change your temporary password' })).toBeTruthy();
   expect(screen.getByText(/short tour of LeadCRM/)).toBeTruthy();
 });
 it('uses returning-user copy without promising another onboarding tour', () => {
   user.onboardingCompletedAt = '2026-01-01';
-  render(<ChangePasswordPage />);
+  show();
   expect(screen.getByRole('heading', { name: 'Change your password' })).toBeTruthy();
   expect(screen.queryByText(/short tour|permanent password/)).toBeNull();
 });
@@ -25,25 +28,25 @@ function fill(confirm = 'Personal2!') {
 }
 it('changes credentials then applies the canonical response using the preserved session', async () => {
   changePassword.mockResolvedValue({ success: true, data: { user: { id: 'employee', mustChangePassword: false } } });
-  render(<ChangePasswordPage />); fill();
+  show(); fill();
   await waitFor(() => expect(applyAuthUser).toHaveBeenCalledWith({ id: 'employee', mustChangePassword: false }, 'employee'));
   expect(changePassword).toHaveBeenCalledWith({ currentPassword: 'OldPassword1!', password: 'Personal2!' });
 });
 it('does not update authentication after the server rejects password reuse', async () => {
   changePassword.mockRejectedValue(new Error('Choose a password different from your current password.'));
-  render(<ChangePasswordPage />); fill();
+  show(); fill();
   expect((await screen.findByRole('alert')).textContent).toContain('Choose a password');
   expect(applyAuthUser).not.toHaveBeenCalled();
 });
 it('checks confirmation before sending credentials', async () => {
-  render(<ChangePasswordPage />); fill('Different3!');
+  show(); fill('Different3!');
   expect(screen.getByRole('alert').textContent).toContain('Passwords do not match');
   expect(changePassword).not.toHaveBeenCalled();
 });
 it('shows the exact inline error when the lowercase temporary credential is reused', async () => {
   const message = 'You cannot reuse your temporary password. Please choose a new password.';
   changePassword.mockRejectedValue(Object.assign(new Error(message), { code: 'PASSWORD_REUSE' }));
-  render(<ChangePasswordPage />);
+  show();
   fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'first.last42' } });
   fireEvent.change(screen.getByLabelText('New password *'), { target: { value: 'first.last42' } });
   fireEvent.change(screen.getByLabelText('Confirm new password *'), { target: { value: 'first.last42' } });

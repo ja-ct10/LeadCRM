@@ -26,6 +26,7 @@ async function form() {
 }
 async function submit(element: HTMLFormElement) { await act(async () => { fireEvent.submit(element); }); }
 beforeEach(() => {
+  localStorage.clear(); sessionStorage.clear();
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-12T04:00:00Z'));
   mocks.login.mockReset(); mocks.restore.mockReset(); mocks.toast.error.mockReset(); mocks.toast.dismiss.mockReset();
   mocks.restore.mockImplementation(async () => ({ success: true, data: { locked: false, serverNow: new Date().toISOString() } }));

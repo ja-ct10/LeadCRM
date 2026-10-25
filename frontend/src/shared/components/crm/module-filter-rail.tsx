@@ -126,7 +126,7 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                       onChange={(e) => onFilterSearch?.(e.target.value)}
                       placeholder="Search filters"
                       aria-label="Search filters"
-                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all"
+                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                     <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
                   </div>
@@ -146,7 +146,7 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                 {/* Footer */}
                 <div className="px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 text-[11.5px] text-[#5A6B85] dark:text-slate-400">
                   {totalRecords} records in this module
-                  {onClearFilters && <button onClick={onClearFilters} className="block mt-2 text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">Clear filters</button>}
+                  {onClearFilters && <button onClick={onClearFilters} className="block mt-2 text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary">Clear filters</button>}
                 </div>
               </div>
             </motion.aside>
@@ -192,7 +192,7 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                       onChange={(e) => onFilterSearch?.(e.target.value)}
                       placeholder="Search filters"
                       aria-label="Search filters"
-                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all"
+                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                     <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
                   </div>
@@ -214,7 +214,7 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                 {/* Footer */}
                 <div className="px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 text-[11.5px] text-[#5A6B85] dark:text-slate-400">
                   {totalRecords} records in this module
-                  {onClearFilters && <button onClick={onClearFilters} className="block mt-2 text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">Clear filters</button>}
+                  {onClearFilters && <button onClick={onClearFilters} className="block mt-2 text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary">Clear filters</button>}
                 </div>
               </div>
             </motion.aside>
@@ -278,7 +278,7 @@ export function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: F
                     type="checkbox"
                     checked={item.isChecked ?? false}
                     onChange={() => onToggle?.(group.id, item.id)}
-                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
+                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer"
                     aria-label={`Filter by ${item.label}`}
                   />
                   <span className="flex-1 text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate min-w-0">

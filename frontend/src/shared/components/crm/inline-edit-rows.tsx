@@ -112,7 +112,7 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
                   )}
                   {(fieldError || editorError) && <p role="alert" className="text-xs text-destructive [overflow-wrap:anywhere]">{fieldError || editorError}</p>}
                   <div className="flex flex-wrap justify-end gap-1">
-                    <button type="button" onClick={() => void commitEdit(apiField)} disabled={blocked || editorDisabled} className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">{isSaving ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : 'Save'}</button>
+                    <button type="button" onClick={() => void commitEdit(apiField)} disabled={blocked || editorDisabled} className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors">{isSaving ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : 'Save'}</button>
                     <button type="button" onClick={cancelEdit} disabled={blocked} className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors">Cancel</button>
                   </div>
                 </div>

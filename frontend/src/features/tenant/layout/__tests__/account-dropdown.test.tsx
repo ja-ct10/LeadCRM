@@ -10,11 +10,13 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
 }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import AccountDropdown from '../account-dropdown';
+import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
+vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: () => ({ replace: vi.fn() }) }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it('keeps demo account switching out of a connected session while retaining logout', () => {
   state.mockAuth = false;
-  render(<AccountDropdown isOpen onToggle={state.toggle} navigate={() => {}} />);
+  render(<LogoutConfirmationProvider><AccountDropdown isOpen onToggle={state.toggle} navigate={() => {}} /></LogoutConfirmationProvider>);
   expect(screen.queryByText('Switch Role / Demo Host')).toBeNull();
   expect(screen.queryByRole('button', { name: /Bob Sales/ })).toBeNull();
   expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
@@ -22,7 +24,7 @@ it('keeps demo account switching out of a connected session while retaining logo
 });
 it('keeps the local Sales fixture available with its actual role label', () => {
   state.mockAuth = true;
-  render(<AccountDropdown isOpen onToggle={state.toggle} navigate={() => {}} />);
+  render(<LogoutConfirmationProvider><AccountDropdown isOpen onToggle={state.toggle} navigate={() => {}} /></LogoutConfirmationProvider>);
   const button = screen.getByRole('button', { name: /Bob Sales Sales/ });
   fireEvent.click(button);
   expect(state.switchAccount).toHaveBeenCalledOnce();

@@ -153,7 +153,7 @@ export default function SettingsPage(): React.ReactElement {
                         className={cn(
                           'w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left',
                           isActive
-                            ? 'border-l-2 -ml-[11px] border-[#2563EB] pl-2.5 text-[#2563EB] dark:text-[#3B82F6] font-semibold'
+                            ? 'border-l-2 -ml-[11px] border-primary pl-2.5 text-primary dark:text-primary font-semibold'
                             : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F1F5F9] hover:bg-slate-50 dark:hover:bg-[#1C2027]'
                         )}
                       >

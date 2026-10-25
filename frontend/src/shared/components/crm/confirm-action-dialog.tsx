@@ -32,7 +32,7 @@ export interface ConfirmActionDialogProps {
 export type ConfirmActionOptions = Omit<ConfirmActionDialogProps, 'open' | 'onOpenChange'>;
 
 const variants = {
-  default: { icon: Info, accent: 'bg-primary/10 text-primary', button: 'bg-primary hover:bg-primary/90' },
+  default: { icon: Info, accent: 'bg-primary/10 text-primary', button: 'bg-primary hover:bg-[var(--primary-hover)]' },
   destructive: { icon: Trash2, accent: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400', button: 'bg-red-600 hover:bg-red-700' },
   success: { icon: CheckCircle2, accent: 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400', button: 'bg-green-700 hover:bg-green-800' },
   warning: { icon: AlertTriangle, accent: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400', button: 'bg-orange-700 hover:bg-orange-800' },

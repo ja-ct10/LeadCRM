@@ -310,17 +310,18 @@ describe('first-login permission initialization with the real AuthProvider and m
     const { ModuleAccessGuard } = await import('../module-access-guard');
     const { default: ChangePasswordPage } = await import('@/features/tenant/auth/ui/change-password-page');
     const { default: OnboardingPage } = await import('@/features/tenant/onboarding/ui/onboarding-page');
+    const { LogoutConfirmationProvider } = await import('../logout-confirmation-provider');
     const Probe = makeProbe(auth.useAuth);
     function Workspace() {
       return <guard.AuthGuard>{currentPathname === '/change-password' ? <ChangePasswordPage />
         : currentPathname === '/onboarding' ? <OnboardingPage />
           : <ModuleAccessGuard><p>CRM Dashboard</p></ModuleAccessGuard>}</guard.AuthGuard>;
     }
-    const tree = <auth.AuthProvider><Probe /><Workspace /></auth.AuthProvider>;
+    const tree = <auth.AuthProvider><LogoutConfirmationProvider><Probe /><Workspace /></LogoutConfirmationProvider></auth.AuthProvider>;
     const view = render(tree);
     return (path: string) => {
       currentPathname = path;
-      view.rerender(<auth.AuthProvider><Probe /><Workspace /></auth.AuthProvider>);
+      view.rerender(<auth.AuthProvider><LogoutConfirmationProvider><Probe /><Workspace /></LogoutConfirmationProvider></auth.AuthProvider>);
     };
   }
 
@@ -460,10 +461,12 @@ describe('first-login permission initialization with the real AuthProvider and m
 describe('Feature: auth-login-blank-screen-fix, Integration — auth-init failure surfaces recovery UI (real API)', () => {
   let auth: AuthModule;
   let guard: GuardModule;
+  let LogoutConfirmationProvider: typeof import('../logout-confirmation-provider').LogoutConfirmationProvider;
 
   beforeEach(async () => {
     resetAllMocks();
     ({ auth, guard } = await loadRealApiModules());
+    ({ LogoutConfirmationProvider } = await import('../logout-confirmation-provider'));
   });
 
   afterEach(() => {
@@ -476,10 +479,12 @@ describe('Feature: auth-login-blank-screen-fix, Integration — auth-init failur
     const { AuthGuard } = guard;
     render(
       <AuthProvider>
-        <Probe />
-        <AuthGuard>
-          <div data-testid="dashboard-content">CRM Dashboard</div>
-        </AuthGuard>
+        <LogoutConfirmationProvider>
+          <Probe />
+          <AuthGuard>
+            <div data-testid="dashboard-content">CRM Dashboard</div>
+          </AuthGuard>
+        </LogoutConfirmationProvider>
       </AuthProvider>,
     );
   }
@@ -500,6 +505,26 @@ describe('Feature: auth-login-blank-screen-fix, Integration — auth-init failur
     expect(screen.getByText('Try again')).toBeTruthy();
     // The protected content is NOT rendered while the error state is shown.
     expect(screen.queryByTestId('dashboard-content')).toBeNull();
+  });
+
+  it('confirms recovery-screen sign-out and keeps failed revocation retryable', async () => {
+    meApiMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    logoutApiMock.mockRejectedValueOnce(new Error('Server unavailable'));
+    renderApp();
+    await screen.findByText('Unable to continue to your workspace');
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(logoutApiMock).not.toHaveBeenCalled();
+    expect(captured?.authError).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+    await screen.findByText('Server unavailable');
+    expect(redirectTargets()).not.toContain('/login');
+    logoutApiMock.mockResolvedValueOnce({ success: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+    await waitFor(() => expect(redirectTargets()).toContain('/login'));
+    expect(logoutApiMock).toHaveBeenCalledTimes(2);
+    expect(captured?.authError).toBeNull();
   });
 
   it('retryAuthInit recovers to the authenticated state once /auth/me succeeds', async () => {

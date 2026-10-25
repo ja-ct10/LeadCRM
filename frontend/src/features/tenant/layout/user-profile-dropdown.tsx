@@ -17,12 +17,13 @@ import { useAuth } from '@/store/AuthContext';
 import { useLayout } from '@/features/tenant/layout/use-layout';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { toast } from 'sonner';
+import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
 import { cn } from '@/lib/utils';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 
 export function UserProfileDropdown(): React.ReactElement {
-  const { user, tenant, logout } = useAuth();
+  const { user, tenant } = useAuth();
+  const requestLogout = useLogoutConfirmation();
   const { navigate } = useLayout();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -105,14 +106,9 @@ export function UserProfileDropdown(): React.ReactElement {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
-  const handleLogout = async (): Promise<void> => {
+  const handleLogout = (): void => {
     setIsOpen(false);
-    try {
-      await logout();
-      toast.success('Signed out successfully');
-    } catch {
-      toast.error('Unable to sign out. Please try again.');
-    }
+    requestLogout();
   };
 
   const handleMenuClick = (path: string): void => {
@@ -253,7 +249,7 @@ export function UserProfileDropdown(): React.ReactElement {
             <div className="pt-1 pb-0.5">
               <button
                 role="menuitem"
-                onClick={() => requestNavigation(handleLogout)}
+                onClick={handleLogout}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer group"
               >
                 <LogOut size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />

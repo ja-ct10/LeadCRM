@@ -300,7 +300,7 @@ function ConvertLeadForm({ onClose, lead, onSuccess }: Omit<ConvertLeadDialogPro
               className={cn(
                 'min-h-[42px] px-5 py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center gap-1',
                 canGoNext()
-                  ? 'bg-primary text-white hover:bg-primary/90'
+                  ? 'bg-primary text-white hover:bg-[var(--primary-hover)]'
                   : 'bg-slate-100 dark:bg-white/[0.05] text-slate-400 cursor-not-allowed'
               )}
             >

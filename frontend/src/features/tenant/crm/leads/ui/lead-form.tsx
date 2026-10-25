@@ -424,7 +424,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         <button
           type="submit"
           disabled={isSubmitting || !canSubmit || customFields.blocked || productsLoading || !!productError}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
+          className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
           {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Lead'}
         </button>

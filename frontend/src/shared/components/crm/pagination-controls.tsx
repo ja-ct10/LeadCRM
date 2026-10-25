@@ -115,7 +115,7 @@ export function PaginationControls({
           id="page-size-select"
           value={pageSize}
           onChange={handlePageSizeChange}
-          className="h-7 px-2 text-[10px] sm:text-[12px] font-medium rounded-md border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer"
+          className="h-7 px-2 text-[10px] sm:text-[12px] font-medium rounded-md border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
           aria-label="Records per page"
         >
           {PAGE_SIZE_OPTIONS.map((size) => (
