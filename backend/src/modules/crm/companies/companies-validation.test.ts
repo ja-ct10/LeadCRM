@@ -6,9 +6,16 @@ vi.mock('../../../core/audit/audit.service', () => ({ writeAuditLog: vi.fn(), bu
 import { createCompany, updateCompany } from './companies.service';
 beforeEach(() => { vi.clearAllMocks(); repo.createCompany.mockResolvedValue({ id: 'account' }); repo.findCompanyById.mockResolvedValue({ id: 'account' }); repo.updateCompany.mockResolvedValue({ id: 'account' }); });
 it('creates and edits without obsolete fields, stripping legacy input before persistence', async () => {
-  const legacy = { name: 'Account', tags: [], country: 'Philippines', taxId: 'invalid', customerType: 'Prospect', customerSince: 'invalid' };
+  const legacy = { name: 'Account', country: 'Philippines', taxId: 'invalid', customerType: 'Prospect', customerSince: 'invalid' };
   await createCompany('tenant', 'user', legacy);
-  expect(repo.createCompany).toHaveBeenCalledWith('tenant', { name: 'Account', tags: [], address: undefined }, 'user');
+  expect(repo.createCompany).toHaveBeenCalledWith('tenant', { name: 'Account', address: undefined }, 'user');
   await updateCompany('account', 'tenant', 'user', legacy);
-  expect(repo.updateCompany).toHaveBeenCalledWith('account', 'tenant', { name: 'Account', tags: [], address: undefined }, 'user');
+  expect(repo.updateCompany).toHaveBeenCalledWith('account', 'tenant', { name: 'Account', address: undefined }, 'user');
+});
+
+it.each(['tags', 'internalNotes'])('rejects retired native %s before persistence', async field => {
+  await expect(createCompany('tenant', 'user', { name: 'Account', [field]: [] })).rejects.toThrow();
+  await expect(updateCompany('account', 'tenant', 'user', { [field]: [] })).rejects.toThrow();
+  expect(repo.createCompany).not.toHaveBeenCalled();
+  expect(repo.updateCompany).not.toHaveBeenCalled();
 });

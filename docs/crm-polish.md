@@ -88,6 +88,43 @@ Account `notes` column remains historical storage; the UI writes new notes throu
 Activity. Restart matching binaries and verify Account Activity Notes afterward.
 Recovery from a physical cutover uses the verified backup and compatible release.
 
+### Account tags and final column cutover
+
+Native Account `tags` is retired from requests, responses, tables, export, merge
+and creation paths. Custom fields and other modules' tags are unchanged. Existing
+empty-tag creation receipts retain the same canonical request hash.
+
+`20261227000000_retire_account_notes_and_tags` follows the original internal-notes
+retirement without changing its SQL. Normal `db:deploy` defers both drops. Deploy
+the matching frontend/backend/workers advertising `accounts-columns-retirement-v1`
+before physical cutover. Run the backend commands `db:accounts:columns:status`,
+`db:accounts:columns:verify`, then the separately approved
+`db:accounts:columns:retire`. Status and verify do not change database records.
+
+Set `CRM_ACCOUNT_COLUMNS_EXPECT_DATABASE`, `CRM_ACCOUNT_COLUMNS_VERIFY_API`,
+`CRM_ACCOUNT_COLUMNS_VERIFY_FRONTEND`, `CRM_ACCOUNT_COLUMNS_VERIFY_TOKEN` and
+`CRM_ACCOUNT_COLUMNS_VERIFY_COMMIT` using the exact database, authenticated Client
+Admin and full serving SHA. The API base ends in `/api/v1`. The same SHA must be
+provided as `CRM_ACCOUNT_COLUMNS_PRODUCTION_APPROVAL`,
+`CRM_ACCOUNT_COLUMNS_WRITERS_STOPPED`, `CRM_ACCOUNT_COLUMNS_BACKUP_VERIFIED` and
+`CRM_ACCOUNT_COLUMNS_FRONTEND_VERIFIED` only after those prerequisites are met.
+`DATABASE_URL` and `DIRECT_URL` must target the same server, port and database;
+the migration role may differ from the runtime role.
+
+The operator checks release identity, API/database identity, applied checksums,
+schema/ledger agreement, native tag values and executable references before any
+drop. It applies only the original notes retirement when pending and the final
+column retirement. The latter rejects nonempty tags and dependent objects under
+table locks, and preserves every surviving Account value. Stop on any mismatch;
+do not mark missing SQL as applied or bypass the guards. A retry verifies the
+physical schema against the completed migration receipts.
+
+Rehearse with `POSTGRES_TEST_BIN` pointing to an installed PostgreSQL bin directory
+and `node backend/scripts/test-account-columns-retirement.mjs`. This uses durable
+disposable loopback databases, synthetic release responses for the operator,
+actual Prisma migration deployment, and authenticated Account HTTP acceptance
+with both columns absent. It does not perform a hosted cutover.
+
 This implementation is verified using disposable databases. No hosted migration
 is performed by the implementation or its test runners.
 

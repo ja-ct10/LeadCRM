@@ -106,7 +106,7 @@ export function ContactsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: ContactsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('contacts');
   const router = useRouter();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 

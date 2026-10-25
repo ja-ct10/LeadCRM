@@ -11,7 +11,6 @@ export interface Account {
   email?: string;
   phone?: string;
   address?: string;
-  tags?: string[];
   notes?: string;
   createdAt: string;
   updatedAt?: string;

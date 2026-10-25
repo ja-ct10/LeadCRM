@@ -6,7 +6,7 @@ const {resolve}=require('node:path');
 const {createHash}=require('node:crypto');
 const {run,cutoverApproval,connectionIdentity,verifyRelease,verifyStructure,preservation,retirement,canonical}=require('./deploy-retired-relationships.cjs');
 const sha='a'.repeat(40);
-const env={DATABASE_URL:'postgresql://operator@127.0.0.1/fixture',CRM_RETIRED_RELATIONS_EXPECT_DATABASE:'fixture',
+const env={SOURCE_COMMIT:sha,DATABASE_URL:'postgresql://operator@127.0.0.1/fixture',CRM_RETIRED_RELATIONS_EXPECT_DATABASE:'fixture',
   CRM_RETIRED_RELATIONS_VERIFY_COMMIT:sha,CRM_RETIRED_RELATIONS_VERIFY_TOKEN:'fixture-token',
   CRM_RETIRED_RELATIONS_VERIFY_API:'http://127.0.0.1:4000/api/v1',CRM_RETIRED_RELATIONS_VERIFY_FRONTEND:'http://127.0.0.1:3000',
   CRM_RETIRED_RELATIONS_PRODUCTION_APPROVAL:sha,CRM_RETIRED_RELATIONS_WRITERS_STOPPED:sha,
@@ -51,6 +51,7 @@ test('retirement requires all exact-release attestations before database access'
   }
   assert.throws(()=>connectionIdentity({...env,DIRECT_URL:'postgresql://other@127.0.0.1/fixture'}),/DIRECT_DATABASE_MISMATCH/);
   assert.throws(()=>connectionIdentity({...env,DIRECT_URL:'postgresql://operator@elsewhere/fixture'}),/DIRECT_DATABASE_MISMATCH/);
+  assert.throws(()=>connectionIdentity({...env,DIRECT_URL:'postgresql://operator@127.0.0.1:6432/fixture'}),/DIRECT_DATABASE_MISMATCH/);
   assert.throws(()=>connectionIdentity({...env,CRM_RETIRED_RELATIONS_EXPECT_DATABASE:'production'}),/DATABASE_MISMATCH/);
 });
 test('verification checks serving builds, privileged actor and hidden snapshot payloads',async()=>{
@@ -95,4 +96,8 @@ test('structure rejects nullable archives, old scalar projections and partial so
   const base={database:'fixture',taskAccountPresent:true,smsCampaignLinkPresent:false,columns:[],guards:[],indexes:[],preserved:[]};
   assert.throws(()=>verifyStructure(base,'fixture'),/PARTIAL_RETIREMENT/);
   assert.throws(()=>verifyStructure({...base,smsCampaignLinkPresent:true,columns:[{table_name:'Task',column_name:'accountId'}]},'fixture'),/CANONICAL_CUTOVER_REQUIRED/);
+});
+
+test('local retirement source must match the serving release before database access',async()=>{
+  await assert.rejects(run(new Proxy({},{get(){throw Error('Database access forbidden');}}),'--retire',{...env,SOURCE_COMMIT:'b'.repeat(40)},{fetcher:healthy}),/RETIRED_RELATIONS_LOCAL_RELEASE_MISMATCH/);
 });

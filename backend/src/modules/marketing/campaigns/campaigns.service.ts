@@ -1,3 +1,5 @@
+import { creatorWhere } from '../../crm/access/record-visibility';
+import { crmActor } from '../../crm/access/crm-record-access.service';
 import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
@@ -138,7 +140,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
 
 export async function getCampaigns(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
-  const where: Prisma.CampaignWhereInput = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
+  const where: Prisma.CampaignWhereInput = { ...await creatorWhere(tenantId), isArchived: query.archived === 'true',
     ...(query.status ? { status: { in: z.array(z.nativeEnum(CampaignStatus)).parse(String(query.status).split(',')) } } : {}),
     ...(query.type ? { type: { in: z.array(z.nativeEnum(CampaignType)).parse(String(query.type).split(',')) } } : {}),
     AND: buildSearchClauses(query.search, ['name', 'subject']) };
@@ -152,7 +154,7 @@ export async function getCampaigns(tenantId: string, query: Record<string, unkno
   return paginate(orderPage(data.map(row => ({ ...row, reviewRequired: reviews.has(row.id) })), ids), total, { page, limit });
 }
 export async function getCampaignById(id: string, tenantId: string) {
-  const c = await prisma.campaign.findFirst({ where: { id, ...campaignScope(tenantId) } });
+  const c = await prisma.campaign.findFirst({ where: { id, ...await creatorWhere(tenantId) } });
   if (!c) throw new AppError('Campaign not found.', 404);
   const where = { ...campaignScope(tenantId), campaignId: id };
   const [deliveredCount, bouncedCount] = await Promise.all([
@@ -200,13 +202,13 @@ export async function updateCampaign(id: string, tenantId: string, userId: strin
   const dto = CampaignDraftSchema.partial().parse(input);
   const existing = await getCampaignById(id, tenantId);
   await validateReferences(tenantId, CampaignDraftSchema.parse({ name: existing.name, type: existing.type, audienceSource: existing.audienceSource, targetAudienceId: existing.targetAudienceId, emailTemplateId: existing.emailTemplateId, smsTemplateId: existing.smsTemplateId, ...dto }));
-  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : (dto.type ?? existing.type) === 'SMS' ? dto.body : prepareCampaignHtml(dto.body) } });
+  const changed = await prisma.campaign.updateMany({ where: { id, ...await creatorWhere(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : (dto.type ?? existing.type) === 'SMS' ? dto.body : prepareCampaignHtml(dto.body) } });
   if (!changed.count) throw new AppError('Only draft campaigns can be edited.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.updated', entityType: 'Campaign', entityId: id });
   return getCampaignById(id, tenantId);
 }
 export async function getCampaignMetrics(tenantId: string) {
-  const where = { ...campaignScope(tenantId), isArchived: false };
+  const where = { ...await creatorWhere(tenantId), isArchived: false };
   const [sum, active, email, sms] = await Promise.all([
     prisma.campaign.aggregate({ where, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
     prisma.campaign.count({ where: { ...where, status: 'SENDING', submissionFinishedAt: null } }),
@@ -263,7 +265,7 @@ async function campaignSender(tenantId: string, channel: 'EMAIL' | 'SMS', conten
   return { sender_name: identity.organizationName ?? '', sender_email: identity.organizationEmail ?? '' };
 }
 export async function scheduleCampaign(id: string, tenantId: string, userId: string, input: unknown) {
-  const { scheduledFor } = CampaignScheduleSchema.parse(input), due = new Date(scheduledFor), scope = campaignScope(tenantId);
+  const { scheduledFor } = CampaignScheduleSchema.parse(input), due = new Date(scheduledFor), scope = await creatorWhere(tenantId);
   await assertCampaignSender(tenantId, userId);
   await prisma.$transaction(async tx => {
     // The conditional update below serializes schedule changes with due-time claims.
@@ -291,28 +293,28 @@ export async function scheduleCampaign(id: string, tenantId: string, userId: str
 export async function cancelCampaignSchedule(id: string, tenantId: string, userId: string) {
   await assertCampaignSender(tenantId, userId);
   const current = await getCampaignById(id, tenantId);
-  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'SCHEDULED', updatedAt: current.updatedAt, scheduledFor: current.scheduledFor, scheduledById: current.scheduledById, submissionStartedAt: null, isArchived: false }, data: { status: 'DRAFT', scheduledFor: null, scheduledById: null, scheduleConfig: Prisma.DbNull } });
+  const changed = await prisma.campaign.updateMany({ where: { id, ...await creatorWhere(tenantId), status: 'SCHEDULED', updatedAt: current.updatedAt, scheduledFor: current.scheduledFor, scheduledById: current.scheduledById, submissionStartedAt: null, isArchived: false }, data: { status: 'DRAFT', scheduledFor: null, scheduledById: null, scheduleConfig: Prisma.DbNull } });
   if (!changed.count) throw new AppError('Only an unclaimed Scheduled campaign can be cancelled. Sending may already have started.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.schedule_cancelled', entityType: 'Campaign', entityId: id });
   return getCampaignById(id, tenantId);
 }
 
 async function prepareCampaign(id: string, tenantId: string, expected: ScheduledExpectation | undefined, submittedById: string) {
-  const scope = campaignScope(tenantId);
+  const scope = campaignScope(tenantId), owned = await creatorWhere(tenantId);
   const preparationStarted = performance.now();
   if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
-  const channel = await prisma.campaign.findFirst({ where: { id, ...scope }, select: { type: true } });
+  const channel = await prisma.campaign.findFirst({ where: { id, ...owned }, select: { type: true } });
   const smsDeviceId = channel?.type === 'SMS' ? await getSmsDeviceId() : null;
   if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
   const leaseId = randomUUID();
   const preparation = prisma.$transaction(async tx => {
     // The row lock also serializes draft edits and simultaneous Send Now requests.
-    const claim = await tx.campaign.updateMany({ where: { id, ...scope, status: expected ? 'SCHEDULED' : 'DRAFT', ...(expected ? { scheduledFor: expected.scheduledFor, scheduledById: expected.scheduledById, updatedAt: expected.updatedAt } : {}), submissionStartedAt: null, isArchived: false }, data: { status: 'SENDING', submissionStartedAt: new Date(), submissionLeaseId: leaseId, submissionLeaseUntil: new Date(Date.now() + CAMPAIGN_LEASE_MS) } });
+    const claim = await tx.campaign.updateMany({ where: { id, ...owned, status: expected ? 'SCHEDULED' : 'DRAFT', ...(expected ? { scheduledFor: expected.scheduledFor, scheduledById: expected.scheduledById, updatedAt: expected.updatedAt } : {}), submissionStartedAt: null, isArchived: false }, data: { status: 'SENDING', submissionStartedAt: new Date(), submissionLeaseId: leaseId, submissionLeaseUntil: new Date(Date.now() + CAMPAIGN_LEASE_MS) } });
     if (!claim.count) {
-      if (!await tx.campaign.findFirst({ where: { id, ...scope } })) throw new AppError('Campaign not found.', 404);
+      if (!await tx.campaign.findFirst({ where: { id, ...owned } })) throw new AppError('Campaign not found.', 404);
       throw new AppError('Campaign has already started or is not sendable.', 409);
     }
-    const campaign = await tx.campaign.findFirstOrThrow({ where: { id, ...scope } });
+    const campaign = await tx.campaign.findFirstOrThrow({ where: { id, ...owned } });
     if (campaign.type === 'EMAIL') assertBrevoConfigured();
     else if (campaign.type === 'SMS') assertSmsConfigured();
     else throw new AppError('Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.', 400);
@@ -346,7 +348,7 @@ async function prepareCampaign(id: string, tenantId: string, expected: Scheduled
       ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: { ...r.personalization, ...sender }, status: 'excluded', failureReason: r.reason })),
     ] });
     if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
-    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId, smsTrackingVersion: 0 } : {}), ...content } });
+    await tx.campaign.update({ where: { id, ...owned }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId, smsTrackingVersion: 0 } : {}), ...content } });
     return { recipients: sends, leaseId, smsDeviceId };
   }, { timeout: 30000 });
   activePreparations.add(preparation);
@@ -451,6 +453,10 @@ export async function drainCampaignSubmissions() {
   do { await Promise.allSettled([...activePreparations, ...activeSubmissions]); }
   while (activePreparations.size || activeSubmissions.size);
 }
+export function resumeCampaignSubmissions() {
+  if (activePreparations.size || activeSubmissions.size) throw new Error('CAMPAIGN_DRAIN_INCOMPLETE');
+  acceptingSubmissions = true;
+}
 // Service-level completion is useful to workers/tests; HTTP uses queueCampaign below.
 export async function sendCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
   await assertCampaignSender(tenantId, userId);
@@ -470,7 +476,7 @@ export async function queueCampaign(id: string, tenantId: string, userId: string
 
 export async function archiveCampaign(id: string, tenantId: string, userId: string) {
   const current = await getCampaignById(id, tenantId);
-  const result = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: current.status, scheduledFor: current.scheduledFor, scheduledById: current.scheduledById, OR: [{ submissionStartedAt: null }, { submissionFinishedAt: { not: null } }] }, data: { isArchived: true, ...(current.status === 'SCHEDULED' ? { status: 'DRAFT', scheduledFor: null, scheduledById: null, scheduleConfig: Prisma.DbNull } : {}) } });
+  const result = await prisma.campaign.updateMany({ where: { id, ...await creatorWhere(tenantId), status: current.status, scheduledFor: current.scheduledFor, scheduledById: current.scheduledById, OR: [{ submissionStartedAt: null }, { submissionFinishedAt: { not: null } }] }, data: { isArchived: true, ...(current.status === 'SCHEDULED' ? { status: 'DRAFT', scheduledFor: null, scheduledById: null, scheduleConfig: Prisma.DbNull } : {}) } });
   if (!result.count) throw new AppError('A sending campaign cannot be archived.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.archived', entityType: 'Campaign', entityId: id });
 }
@@ -493,7 +499,7 @@ export async function dispatchDueCampaigns(now = new Date()) {
       await assertCampaignSender(row.tenantId, row.scheduledById);
       const approved = CampaignScheduleConfigSchema.parse(row.scheduleConfig);
       const definition = AudiencePreviewSchema.parse({ source: approved.source, matchMode: approved.matchMode, conditions: approved.conditions });
-      const prepared = await prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, updatedAt: row.updatedAt, definition }, row.scheduledById);
+      const prepared = await crmActor.run({ tenantId: row.tenantId, userId: row.scheduledById, readRecords: true }, () => prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor!, scheduledById: row.scheduledById!, updatedAt: row.updatedAt, definition }, row.scheduledById!));
       dispatched++;
       void trackSubmission(row.id, row.tenantId, row.scheduledById, prepared).catch(() => console.error('[Campaigns] Scheduled submission interrupted; review persisted recipient outcomes.'));
     } catch (error) {

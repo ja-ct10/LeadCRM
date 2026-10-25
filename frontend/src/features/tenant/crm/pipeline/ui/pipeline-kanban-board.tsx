@@ -395,7 +395,7 @@ export function PipelineKanbanBoard({
   hasMoreByStage,
   highlightDealId,
 }: PipelineKanbanBoardProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('deals');
   const qualifiedStageId = pipeline.stages.find(stage => !stage.isWon && !stage.isLost &&
     stage.name.trim().toLowerCase() === SALES_PIPELINE_STAGES[2].toLowerCase())?.id;
   const boardRef = React.useRef<HTMLDivElement>(null);

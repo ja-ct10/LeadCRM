@@ -269,7 +269,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
   it('preserves an explicitly linked Contact and matches company whitespace without duplicating history', async () => {
     const company = `  Legacy   Company ${randomUUID()}  `;
-    const account = await prisma.account.create({ data: { tenantId, name: company, tags: [],   } });
+    const account = await prisma.account.create({ data: { tenantId, name: company,    } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Original', lastName: 'Person', phone: '+63 (927) 555-12-34', companyName: company, productInterests: [] } });
     const lead = await create(['Smart Lock'], { contactId: contact.id, email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
@@ -457,22 +457,26 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request('/administration/product-interests/field', 'POST', {})).status).toBe(200);
     expect((await request('/administration/product-interests')).body.meta.enabled).toBe(true);
   });
-  it.each(['Hot', 'Warm', 'Cold', 'Cancelled'])('creates and edits Leads and Contacts using %s at the HTTP boundary', async status => {
+  it.each(['Hot', 'Warm', 'Cold', 'Cancelled'])('requires Inquiry creation and preserves %s edits at the HTTP boundary', async status => {
     const products = await Promise.all([1250.75, 550].map(dealValue => prisma.productInterest.create({ data: { tenantId, category: 'Security', name: `Status ${status} ${dealValue}`, dealValue } })));
     const selectedIds = products.map(product => product.id);
-    const lead = await request('/crm/leads', 'POST', { email: 'manual@example.test', firstName: 'Manual', lastName: status, status, productInterest: selectedIds });
+    const leadInput = { email: 'manual@example.test', firstName: 'Manual', lastName: status, productInterest: selectedIds };
+    expect((await request('/crm/leads', 'POST', { ...leadInput, status })).status).toBe(400);
+    const lead = await request('/crm/leads', 'POST', { ...leadInput, status: 'Inquiry' });
     expect(lead.status).toBe(201);
-    expect(lead.body.data.status).toBe(status === 'Cancelled' ? 'Cancelled' : 'Inquiry');
+    expect(lead.body.data.status).toBe('Inquiry');
     expect(lead.body.data.productInterestIds).toEqual(selectedIds);
     const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.body.data.id } } } });
     expect(deals).toHaveLength(2);
     expect(deals.map(deal => deal.value).sort()).toEqual([550, 1250.75].sort());
     const editedLead = await request(`/crm/leads/${lead.body.data.id}`, 'PUT', { status });
-    expect(editedLead.status).toBe(status === 'Cancelled' ? 200 : 400);
-    if (status !== 'Cancelled') expect(editedLead.body.error).toContain('calculated');
-    const contact = await request('/crm/contacts', 'POST', { requestId: randomUUID(), email: 'manual@example.test', firstName: 'Manual', lastName: status, status });
+    expect(editedLead.status, JSON.stringify(editedLead.body)).toBe(200);
+    expect(editedLead.body.data.status).toBe(status);
+    const contactInput = { email: 'manual@example.test', firstName: 'Manual', lastName: status };
+    expect((await request('/crm/contacts', 'POST', { ...contactInput, requestId: randomUUID(), status })).status).toBe(400);
+    const contact = await request('/crm/contacts', 'POST', { ...contactInput, requestId: randomUUID(), status: 'Inquiry' });
     expect(contact.status).toBe(201);
-    expect(contact.body.data.status).toBe(status);
+    expect(contact.body.data.status).toBe('Inquiry');
     const edited = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { status: 'Cold' });
     expect(edited.status).toBe(200);
     expect(edited.body.data.status).toBe('Cold');

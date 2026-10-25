@@ -1,3 +1,4 @@
+import { archiveOwnerSql } from './archive-access';
 import { Prisma } from '@prisma/client';
 import type { ArchiveType } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -50,6 +51,7 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
           ${definition.deletedAt ? Prisma.sql`AND r."deletedAt" IS NULL` : Prisma.empty}
         ORDER BY a."createdAt" DESC, a."id" ASC LIMIT 1) history ON true`}
       WHERE r."tenantId" = ${tenantId} AND ${archiveCondition}
+        ${policy ? Prisma.sql`AND ${archiveOwnerSql(type, policy)}` : Prisma.empty}
         ${policy && crmModule ? Prisma.sql`AND ${crmPolicySqlWhere(policy, crmModule, 'r')}` : Prisma.empty}
         ${type === 'Task' && taskAssignees ? taskAssignees.length
           ? Prisma.sql`AND r."assignedUserId" IN (${Prisma.join(taskAssignees)})` : Prisma.sql`AND false` : Prisma.empty}

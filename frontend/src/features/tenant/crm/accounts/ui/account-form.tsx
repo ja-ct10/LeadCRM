@@ -34,7 +34,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   const isEdit = !!initialData;
   const defaultValues = useMemo((): AccountFormValues => ({
     name: initialData?.name || '', industry: initialData?.industry || '', size: (initialData?.size as AccountFormValues['size']) || '',
-    website: initialData?.website || '', tags: initialData?.tags || [], address: initialData?.address || '',
+    website: initialData?.website || '', address: initialData?.address || '',
   }), [initialData]);
   const { register, handleSubmit, formState: { errors, isSubmitting: isValidatingSubmission, isDirty }, setFocus, setError } = useForm<AccountFormValues>({
     resolver: zodResolver(isEdit ? UpdateAccountSchema : CreateAccountSchema) as never, defaultValues, mode: 'onBlur',
@@ -57,7 +57,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       if (!isEdit) requestId.current ??= crypto.randomUUID();
       await onSave({ ...(!isEdit ? { requestId: requestId.current } : {}), customFieldValues: customFields.payload(), name: data.name,
         industry: data.industry || (isEdit ? '' : undefined), size: data.size || (isEdit ? null : undefined),
-        website: data.website || (isEdit ? '' : undefined), tags: data.tags?.length ? data.tags : undefined,
+        website: data.website || (isEdit ? '' : undefined),
         address: data.address || (isEdit ? '' : undefined) });
     } catch (error) {
       applyCrmFieldErrors(error, setError, ['name', 'industry', 'size', 'website', 'address']);

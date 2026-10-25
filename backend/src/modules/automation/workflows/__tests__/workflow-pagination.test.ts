@@ -4,7 +4,10 @@ vi.mock('../../../../config/database.config', () => ({ default: {
   workflowExecutionRun: { groupBy: vi.fn(async () => []) },
 } }));
 import prisma from '../../../../config/database.config';
-import { listWorkflows } from '../workflows.repository';
+import { listWorkflows as listWorkflowRecords } from '../workflows.repository';
+import { tenantContext } from '../../../../core/tenant/tenant-context';
+const listWorkflows = (...args: Parameters<typeof listWorkflowRecords>) =>
+  tenantContext.run({ tenantId: args[0] }, async () => await listWorkflowRecords(...args));
 it('applies all selected filters and tenant scope to both count and page queries', async () => {
   const result = await listWorkflows('tenant-a', { page: 2, limit: 20, status: 'ACTIVE,DRAFT', trigger: 'lead.created,contact.created', search: 'Follow' });
   const where = { tenantId: 'tenant-a', isArchived: false, status: { in: ['ACTIVE', 'DRAFT'] }, trigger: { in: ['lead.created', 'contact.created'] }, AND: [{ OR: [{ name: { contains: 'Follow', mode: 'insensitive' } }] }] };

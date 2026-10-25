@@ -214,6 +214,7 @@ model User {
   groupMemberships TenantGroupMember[]
   marketingForms   MarketingForm[]
   activatedWorkflows Workflow[] @relation("WorkflowActivator")
+  createdWorkflows Workflow[] @relation("WorkflowCreator")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -393,7 +394,6 @@ model Account {
   size             String? // "1-10" | "11-50" | "51-200" | "200+"
   website          String?
   notes            String?   @db.Text
-  tags             String[] @default([])
   address          String?
   isArchived       Boolean   @default(false)
   deletedAt        DateTime?
@@ -1023,6 +1023,7 @@ model TargetAudienceCondition {
 // CAMPAIGN & TEMPLATE
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Campaign {
+  @@index([tenantId, createdById, isArchived])
   audienceSource String?
   createdById String?
   recipientCount Int @default(0)
@@ -1251,6 +1252,9 @@ model Template {
 // conditions and actions stored as typed JSON (never eval()'d)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Workflow {
+  createdById String?
+  createdBy User? @relation("WorkflowCreator", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@index([tenantId, createdById, isArchived])
   version     Int      @default(1)
   status      String   @default("DRAFT")
   activatedById String?

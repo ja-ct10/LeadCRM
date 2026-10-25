@@ -14,7 +14,6 @@ export function toBackendCreateOrg(data: Record<string, any>): Record<string, an
     industry: data.industry || undefined,
     size: data.size || undefined,
     website: data.website || undefined,
-    tags: Array.isArray(data.tags) ? data.tags : [],
     address: data.address || undefined,
   };
 }
@@ -33,7 +32,6 @@ export function toBackendUpdateOrg(data: Record<string, any>): Record<string, an
   if (data.industry !== undefined) result.industry = data.industry || undefined;
   if (data.size !== undefined) result.size = data.size || null;
   if (data.website !== undefined) result.website = data.website || undefined;
-  if (data.tags !== undefined) result.tags = Array.isArray(data.tags) ? data.tags : [];
   if (data.address !== undefined) result.address = data.address || undefined;
 
   return result;
@@ -62,7 +60,6 @@ export function toFrontendOrg(backendOrg: any): Record<string, any> {
     updatedAt: backendOrg.updatedAt || undefined,
     dealCount: backendOrg.dealCount,
     dealValue: backendOrg.dealValue,
-    tags: Array.isArray(backendOrg.tags) ? backendOrg.tags : [],
     createdAt: backendOrg.createdAt || new Date().toISOString(),
     isArchived: !!backendOrg.isArchived,
     address: backendOrg.address || '',

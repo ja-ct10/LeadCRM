@@ -64,7 +64,8 @@ function TaskView() {
     revalidateOnInvalidation: true, fetchFn: async signal => (await apiClient.get<{ data: { id: string } }>('/operations/tasks/task', { signal })).data });
   return <><output data-testid="task-rows">{tasks.tasks.map(task => task.id).join(',')}</output>
     <output data-testid="task-total">{tasks.summary?.total}</output>
-    <output data-testid="task-detail">{detail.data?.id}</output></>;
+    <output data-testid="task-detail">{detail.data?.id}</output>
+    <output data-testid="task-refresh">{tasks.refreshing || detail.isRefreshing ? 'refreshing' : 'settled'}</output></>;
 }
 beforeEach(() => {
   state.id = 'actor'; state.tenant = 'tenant'; state.denied = false; rows = [row()]; intercept = undefined;
@@ -85,20 +86,25 @@ it('retains Task rows, summaries and details on a failed content refresh, then e
     return Promise.resolve(response([{ id: 'task' }]));
   };
   render(<DataProvider><TaskView /></DataProvider>);
-  await waitFor(() => expect(screen.getByTestId('task-rows').textContent).toBe('task'));
-  expect(screen.getByTestId('task-total').textContent).toBe('1');
-  await waitFor(() => expect(screen.getByTestId('task-detail').textContent).toBe('task'));
+  await waitFor(() => {
+    expect(screen.getByTestId('task-rows').textContent).toBe('task');
+    expect(screen.getByTestId('task-total').textContent).toBe('1');
+    expect(screen.getByTestId('task-detail').textContent).toBe('task');
+  });
   revoked = true;
   act(() => source().emit('crm-change'));
   await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => path.includes('/operations/tasks/task'))).toHaveLength(2));
+  await waitFor(() => expect(screen.getByTestId('task-refresh').textContent).toBe('settled'));
   expect(screen.getByTestId('task-rows').textContent).toBe('task');
   expect(screen.getByTestId('task-total').textContent).toBe('1');
   expect(screen.getByTestId('task-detail').textContent).toBe('task');
   status = 403;
   act(() => source().emit('crm-change', '2'));
-  await waitFor(() => expect(screen.getByTestId('task-rows').textContent).toBe(''));
-  expect(screen.getByTestId('task-total').textContent).toBe('');
-  expect(screen.getByTestId('task-detail').textContent).toBe('');
+  await waitFor(() => {
+    expect(screen.getByTestId('task-rows').textContent).toBe('');
+    expect(screen.getByTestId('task-total').textContent).toBe('');
+    expect(screen.getByTestId('task-detail').textContent).toBe('');
+  });
 });
 
 it('updates Qualified stage, High priority badge and counts through crm-change without a manual refresh', async () => {

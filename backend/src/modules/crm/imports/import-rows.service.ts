@@ -123,7 +123,6 @@ async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId:
   const d = row.data;
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
     address: normalizeAccountImportRow(d).address, size: d.size || null,
-    tags: [],
   } })).id;
 }
 async function personDuplicates(tx: Tx, tenantId: string, data: Record<string, string>) {

@@ -27,7 +27,7 @@ function PermissionEditor() {
   const context = useAuth();
   return context.userCan('workflows', 'canView') ? <input aria-label="Workflow draft" defaultValue="" /> : null;
 }
-const show = () => render(<AuthProvider><Probe /></AuthProvider>);
+const show = (initialHasSessionCookie?: boolean) => render(<AuthProvider initialHasSessionCookie={initialHasSessionCookie}><Probe /></AuthProvider>);
 beforeEach(() => {
   cleanup(); vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear();
   mocks.me.mockRejectedValue(Object.assign(new Error('Session revoked'), { status: 401 }));
@@ -37,6 +37,77 @@ beforeEach(() => {
   mocks.permissions.mockResolvedValue({ data: { dashboard: { canView: true } } });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it('skips anonymous startup even in Strict Mode and does not reuse the hint on prop changes', async () => {
+  const view = render(<React.StrictMode><AuthProvider initialHasSessionCookie={false}><Probe /></AuthProvider></React.StrictMode>);
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  expect(auth.user).toBeNull();
+  expect(auth.tenant).toBeNull();
+  expect(auth.authError).toBeNull();
+  expect(auth.isPermissionsLoaded).toBe(true);
+  view.rerender(<React.StrictMode><AuthProvider initialHasSessionCookie><Probe /></AuthProvider></React.StrictMode>);
+  expect(mocks.me).not.toHaveBeenCalled();
+  expect(mocks.permissions).not.toHaveBeenCalled();
+});
+
+it.each([true, undefined])('validates and restores a possible session when the initial cookie hint is %s', async hint => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show(hint);
+  await waitFor(() => expect(auth.user?.id).toBe(user.id));
+  expect(mocks.me).toHaveBeenCalledOnce();
+  expect(auth.authError).toBeNull();
+});
+
+it('treats an expired cookie as signed out without logging or retrying', async () => {
+  const errorLog = vi.spyOn(console, 'error');
+  try {
+    show(true);
+    await waitFor(() => expect(auth.isLoading).toBe(false));
+    expect(auth.user).toBeNull();
+    expect(auth.authError).toBeNull();
+    expect(mocks.me).toHaveBeenCalledOnce();
+    expect(mocks.permissions).not.toHaveBeenCalled();
+    expect(errorLog).not.toHaveBeenCalled();
+  } finally { errorLog.mockRestore(); }
+});
+
+it.each(['restoreSession', 'retryAuthInit'] as const)('allows %s after anonymous startup was skipped', async action => {
+  show(false);
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  mocks.me.mockResolvedValue({ data: { user } });
+  await act(async () => { await auth[action](); });
+  expect(auth.user?.id).toBe(user.id);
+  expect(mocks.me).toHaveBeenCalledOnce();
+});
+
+it('preserves recovery for a transport failure with a possible cookie session', async () => {
+  mocks.me.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  show(true);
+  await waitFor(() => expect(auth.authError).toMatch(/network connection/i));
+  expect(auth.user).toBeNull();
+  mocks.me.mockResolvedValue({ data: { user } });
+  await act(async () => { await auth.retryAuthInit(); });
+  expect(auth.user?.id).toBe(user.id);
+  expect(auth.authError).toBeNull();
+  expect(mocks.me).toHaveBeenCalledTimes(2);
+});
+
+it('logs in and out normally after skipping anonymous startup', async () => {
+  show(false);
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  await act(async () => { await auth.login(user.email, 'password', true); });
+  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  expect(auth.user?.id).toBe(user.id);
+  expect(mocks.login).toHaveBeenCalledWith({ email: user.email, password: 'password', rememberMe: true });
+  expect(mocks.me).not.toHaveBeenCalled();
+  await act(async () => { await auth.logout(); });
+  expect(auth.user).toBeNull();
+  expect(auth.authError).toBeNull();
+  expect(auth.permissions).toEqual({});
+  expect(mocks.logout).toHaveBeenCalledOnce();
+  expect(mocks.me).not.toHaveBeenCalled();
+});
+
 it('deduplicates password-required signals, refreshes the canonical user and clears workspace data', async () => {
   const established = { ...user, mustChangePassword: false, onboardingCompletedAt: '2026-01-01' };
   mocks.me.mockResolvedValue({ data: { user: established } });
@@ -234,12 +305,13 @@ it('exposes Retry if canonical setup resynchronization fails', async () => {
 it.each(['grants', 'setup error'])('ignores late %s across onboarding transitions', async outcome => {
   mocks.me.mockResolvedValue({ data: { user } });
   show();
-  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  await waitFor(() => expect(auth.userCan('dashboard', 'canView')).toBe(true));
   let resolve!: (value: unknown) => void;
   let reject!: (error: unknown) => void;
   mocks.permissions.mockReturnValueOnce(new Promise((done, fail) => { resolve = done; reject = fail; }));
   let oldRequest!: Promise<void>;
   act(() => { oldRequest = auth.refreshPermissions(); });
+  expect(mocks.permissions).toHaveBeenCalledTimes(2);
   act(() => auth.applyAuthUser({ ...user, onboardingCompletedAt: null } as never, user.id));
   expect(auth.isPermissionsLoaded).toBe(false);
   mocks.permissions.mockResolvedValue({ data: {} });

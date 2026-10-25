@@ -24,6 +24,7 @@ const accountAddressRetirement = '20261202000000_retire_account_address_columns'
 const accountFieldPreservation = '20261207000000_account_field_preservation';
 const accountFieldRetirement = '20261208000000_retire_account_fields';
 const accountNotesRetirement = '20261210000000_retire_account_internal_notes';
+const accountColumnsRetirement = '20261227000000_retire_account_notes_and_tags';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const retiredRelationships = '20261226000000_retire_unused_relationship_tables';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
@@ -65,7 +66,7 @@ function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
   // CRM column retirement retains its separate verification gate. Other reviewed
   // transitions below can require a coordinated application release.
-  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement, accountNotesRetirement, retiredRelationships].filter(name => localNames.includes(name)
+  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement, accountNotesRetirement, retiredRelationships, accountColumnsRetirement].filter(name => localNames.includes(name)
     && !records.some(row => row.migration_name === name && finished(row)));
   if (target !== relationshipExpansion) return { through: target, exclude: deferred };
   const independent = [
@@ -168,8 +169,10 @@ function deploymentPlan(records, localNames) {
     '20261224000000_crm_group_status',
     // Coordinated feature retirement: snapshot and freeze old Task/SMS writers.
     '20261225000000_preserve_retired_relationships', retiredRelationships,
+    accountColumnsRetirement,
     // Removes obsolete CRM Group references without changing stored values or employee roles.
     '20261227000000_retire_crm_group_ownership',
+    '20261228000000_role_based_visibility',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
@@ -199,12 +202,13 @@ async function recoverRetirement(db) {
   console.log(JSON.stringify({ recovered: retirement, historical: counts.map(row => ({ module: row.module, jobs: Number(row.jobs), results: Number(row.results) })) }));
 }
 
-function runPrisma(args) {
-  const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), ...args], { cwd: resolve(__dirname, '..'), env: process.env, stdio: 'inherit', windowsHide: true });
+function runPrisma(args, options = {}) {
+  const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), ...args], { cwd: resolve(__dirname, '..'), env: options.env || process.env, stdio: 'inherit', windowsHide: true, ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}) });
+  if (result.error?.code === 'ETIMEDOUT') fail('PRISMA_ROLLOUT_TIMED_OUT');
   if (result.status !== 0) fail('PRISMA_ROLLOUT_FAILED');
 }
 
-function migrate(through, exclude = []) {
+function migrate(through, exclude = [], options = {}) {
   // Prisma has no deploy-to-version option. A temporary copy of the exact checked-in
   // history lets phase 1 stop before retirement without altering migration checksums.
   const parent = realpathSync(tmpdir()), stage = mkdtempSync(join(parent, 'leadcrm-import-migrations-'));
@@ -215,7 +219,7 @@ function migrate(through, exclude = []) {
     for (const name of readdirSync(join(root, 'migrations'))) {
       if (/^\d+_/.test(name) && name <= through && !exclude.includes(name)) cpSync(join(root, 'migrations', name), join(stage, 'migrations', name), { recursive: true });
     }
-    runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')]);
+    runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')], options);
   } finally {
     const target = realpathSync(stage);
     if (!target.startsWith(parent + sep) || !target.slice(parent.length + 1).startsWith('leadcrm-import-migrations-')) throw new Error('Unsafe temporary cleanup path');

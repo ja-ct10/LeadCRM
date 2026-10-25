@@ -7,7 +7,7 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { useCachedPage } from './use-cached-page';
 
 /** Assignment policy is resolved from all current server roles, separately from action grants. */
-export function useCrmRecordAccess(module?: string) {
+export function useCrmRecordAccess(module: string) {
   const { user, tenant } = useAuth();
   const query = useCachedPage<CrmRecordAccessPolicy>({ module: 'crm-record-access', params: {},
     disabled: USE_MOCK_DATA, revalidateOnInvalidation: true, intervalMs: 30000, pauseWhenHidden: true,

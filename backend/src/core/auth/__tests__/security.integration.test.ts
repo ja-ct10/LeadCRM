@@ -47,6 +47,8 @@ beforeAll(async () => {
   for (const name of readdirSync(resolve(__dirname, '../../../../prisma/migrations')).filter(name => name >= '20261007000000' && /^\d/.test(name)).sort()) {
     const migrationPath = resolve(__dirname, '../../../../prisma/migrations', name, 'migration.sql');
     if (!existsSync(migrationPath)) continue;
+    // Keep populated historical tags; their destructive operator cutover is unrelated to authentication.
+    if (name === '20261227000000_retire_account_notes_and_tags') continue;
     // This fixture first proves the older security cleanup preserves tokens.
     // The later unreachable-flow retirement requires those fixtures cleared.
     if (name === '20261031000000_retire_obsolete_infrastructure') await pg.exec('DELETE FROM "EmailVerificationToken"');
@@ -108,7 +110,9 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
     expect(columns).toContainEqual({ table_name: 'User', column_name: 'passwordChangedAt' });
     expect(columns).not.toContainEqual({ table_name: 'Contact', column_name: 'customerType' });
     expect(columns).toContainEqual({ table_name: 'Contact', column_name: 'customerSince' });
-    expect(await db.account.findUnique({ where: { id: 'migration-account' } })).toMatchObject({ name: 'Preserved Account', tags: ['keep'] });
+    expect(await db.account.findUnique({ where: { id: 'migration-account' } })).toMatchObject({ name: 'Preserved Account' });
+    // The current API model retires tags; preservation is asserted at the SQL boundary.
+    expect((await pg.query<{ tags: string[] }>(`SELECT tags FROM "Account" WHERE id='migration-account'`)).rows[0].tags).toEqual(['keep']);
     const history = await pg.query<{ products: unknown }>(`SELECT retired_values->'activeProducts' AS products FROM crm_history.account_retired_values WHERE account_id='migration-account'`);
     expect(history.rows.map(row => row.products)).toContainEqual(['CCTV']);
   });

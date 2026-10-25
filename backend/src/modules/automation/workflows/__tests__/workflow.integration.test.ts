@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vites
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../../../../shared/errors/app-error';
 import type { Server } from 'node:http';
-import type { WorkflowDraft, WorkflowAction } from '@leadcrm/shared';
+import { ACCOUNT_RETIREMENT_REASON, type WorkflowDraft, type WorkflowAction } from '@leadcrm/shared';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../../core/auth/auth-session';
@@ -65,7 +65,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const actions = [{ type:'send_email',config:{templateId:template.id,senderUserId:owner.id} }];
     const saved = await prisma.workflow.create({ data: { tenantId, name:`Template repair ${randomUUID()}`,trigger:'contact.updated',actions,isActive:false,status:'PAUSED' } });
     const read = await call(`/automation/workflows/${saved.id}`);
-    expect(read.body.data.repairReason).toContain('Account assignment, product fields and internal notes are retired');
+    expect(read.body.data.repairReason).toBe(ACCOUNT_RETIREMENT_REASON);
     expect(read.body.data.actions).toEqual(actions);
     expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive:true })).status).toBe(400);
     expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { description:'Template repair in progress' })).status).toBe(200);
@@ -81,10 +81,10 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const read = await call(`/automation/workflows/${saved.id}`);
     expect(read.status).toBe(200);
     expect(read.body.data).toMatchObject({ isActive: false, status: 'PAUSED', conditions, actions });
-    expect(read.body.data.repairReason).toContain('Account assignment, product fields and internal notes are retired');
+    expect(read.body.data.repairReason).toBe(ACCOUNT_RETIREMENT_REASON);
     const activate = await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive: true });
     expect(activate.status).toBe(400);
-    expect(activate.body.error).toContain('Account assignment, product fields and internal notes are retired');
+    expect(activate.body.error).toBe(ACCOUNT_RETIREMENT_REASON);
     expect((await prisma.workflow.findUniqueOrThrow({ where: { id: saved.id } })).actions).toEqual(actions);
     const draft = { name: `Invalid Account ${randomUUID()}`, trigger: 'account.updated', conditions, actions, isActive: false };
     expect((await call('/automation/workflows', 'POST', draft)).status).toBe(400);
@@ -941,7 +941,9 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await call(`/automation/workflows/${foreign.id}/test`, 'POST', { entityId: lead.id })).status).toBe(404);
   });
   it('filters history by current CRM View grants and never exposes dispatch or provider recovery data', async () => {
-    const workflow = await create([], { isActive: false });
+    const historyOwner = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Workflow Viewer' } });
+    const workflow = await prisma.workflow.create({ data: { tenantId, createdById: historyOwner.id,
+      name: 'Owned history fixture ' + randomUUID(), trigger: 'lead.created', actions: [], isActive: false } });
     const trigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'lead.created', entityType: 'lead', entityId: lead.id, eventId: randomUUID() } });
     const run = await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: trigger.id, entityType: 'lead', entityId: lead.id,
       status: 'interrupted', completedAt: new Date(), dispatchContext: { version: 1, eventContext: { privateBody: 'private-dispatch-evidence' } },

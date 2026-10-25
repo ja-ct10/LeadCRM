@@ -12,7 +12,10 @@ import { crmActor, installCrmRecordAccess } from '../../access/crm-record-access
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { ManualCreateDealSchema, UpdateDealSchema } from '../deals.dto';
 
-vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DEAL_ASSOCIATION_TEST_DATABASE_URL! } } }) }));
+const holder = vi.hoisted(() => ({ client: null as PrismaClient | null }));
+vi.mock('../../../../config/database.config', () => ({ default: new Proxy({}, { get: (_target, property) => {
+  const value = (holder.client as any)[property]; return typeof value === 'function' ? value.bind(holder.client) : value;
+} }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
 let presentation: typeof import('../deal-presentation');
 let service: typeof import('../deals.service'), batch: typeof import('../deal-batch.service');
@@ -27,7 +30,7 @@ beforeAll(async () => {
   pg = await PGlite.create(); await replayCrmMigrations(pg);
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
   process.env.DEAL_ASSOCIATION_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
-  db = (await import('../../../../config/database.config')).default;
+  db = new PrismaClient({ datasources: { db: { url: process.env.DEAL_ASSOCIATION_TEST_DATABASE_URL! } } }); holder.client = db;
   installProductProjections(db); installTenantScoping(db); installCrmRecordAccess(db);
   presentation = await import('../deal-presentation');
   service = await import('../deals.service'); batch = await import('../deal-batch.service');
@@ -36,7 +39,7 @@ beforeAll(async () => {
   await db.tenant.createMany({ data: [{ id: tenantId, name: 'Association', slug: tenantId, status: 'ACTIVE' }, { id: foreignTenant, name: 'Other', slug: foreignTenant, status: 'ACTIVE' }] });
   await db.user.createMany({ data: ['admin', 'agent', 'other-agent', 'denied'].map(id => ({ id, tenantId, firstName: id, lastName: 'Fixture', email: `${id}@example.test`, status: 'ACTIVE', role: id === 'admin' ? 'Client Admin' : id === 'denied' ? 'Custom' : 'Sales' })) });
   const role = await db.roleDefinition.create({ data: { tenantId, name: 'Sales', crmAssignmentRestricted: true } });
-  await db.rolePermission.createMany({ data: ['deals', 'leads', 'contacts'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true })) });
+  await db.rolePermission.createMany({ data: ['deals', 'leads', 'contacts'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canViewMy: true, canCreate: true, canEdit: true })) });
   await db.userRole.createMany({ data: ['agent', 'other-agent'].map(userId => ({ tenantId, roleId: role.id, userId })) });
   await db.account.createMany({ data: [{ id: 'account', tenantId, name: 'Linked company' }, { id: 'other-account', tenantId, name: 'Other company' }] });
   await db.pipeline.create({ data: { id: 'pipeline', tenantId, name: 'Sales Pipeline' } });
@@ -98,7 +101,9 @@ describe('manual Deal associations on disposable SQL', () => {
 
   it.each(['foreign-lead', 'missing', 'archived'])('rejects unavailable association %s without creating a Deal', async id => {
     const count = await db.deal.count();
-    await expect(scope(() => batch.createDealBatch(tenantId, 'admin', { ...input({ leadIds: [id] }), idempotencyKey: randomUUID() }))).rejects.toThrow('unavailable');
+    const creation = scope(() => batch.createDealBatch(tenantId, 'admin', { ...input({ leadIds: [id] }), idempotencyKey: randomUUID() }));
+    if (id === 'archived') await expect(creation).rejects.toThrow('unavailable');
+    else await expect(creation).rejects.toMatchObject({ statusCode: 404 });
     expect(await db.deal.count()).toBe(count);
   });
 
@@ -121,7 +126,7 @@ describe('manual Deal associations on disposable SQL', () => {
 
   it('enforces source View permission and restricted assignment without changing RBAC', async () => {
     await expect(scope(() => service.createDeal(tenantId, 'denied', ManualCreateDealSchema.parse(input())), 'denied')).rejects.toThrow('permission');
-    await expect(scope(() => service.createDeal(tenantId, 'other-agent', ManualCreateDealSchema.parse(input())), 'other-agent')).rejects.toThrow('another agent');
+    await expect(scope(() => service.createDeal(tenantId, 'other-agent', ManualCreateDealSchema.parse(input())), 'other-agent')).rejects.toMatchObject({ statusCode: 404 });
     const own = await scope(() => service.createDeal(tenantId, 'agent', ManualCreateDealSchema.parse(input())), 'agent');
     expect(own.assignedUserId).toBe('agent');
   });
@@ -187,7 +192,7 @@ describe('manual Deal associations on disposable SQL', () => {
     const saved = await scope(() => service.updateDeal(deal.id, tenantId, 'admin', { primaryAssociation: { type: 'contact', id: 'contact' } }));
     expect(saved.leadDeals.map(row => row.leadId)).toEqual(['lead', 'extra-lead']);
     expect(saved.contactId).toBe('contact');
-    await expect(scope(() => service.updateDeal(deal.id, tenantId, 'other-agent', { title: 'Denied' }), 'other-agent')).rejects.toThrow('assigned to you');
+    await expect(scope(() => service.updateDeal(deal.id, tenantId, 'other-agent', { title: 'Denied' }), 'other-agent')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

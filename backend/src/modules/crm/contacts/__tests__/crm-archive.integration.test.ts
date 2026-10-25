@@ -35,7 +35,7 @@ async function call(path: string, method = 'GET', cookie = adminCookie, body?: u
 async function create(module: Module, tenant = tenantId) {
   if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
   if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', productInterests: [] } });
-  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [],   } });
+  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account',    } });
 }
 
 beforeAll(async () => {
@@ -138,13 +138,16 @@ describe.sequential('Product recovery through the existing Settings archive API'
       [{ module: 'products', canView: true }],
     ]) {
       const staff = await productActor(grants, owner.tenantId);
+      const ownProduct = await db.productInterest.create({ data: { tenantId: owner.tenantId, name: randomUUID(), dealValue: 0, active: false } });
+      await db.auditLog.create({ data: { tenantId: owner.tenantId, userId: staff.userId, action: 'product_interests.remove', entityType: 'ProductInterest', entityId: ownProduct.id } });
       const canView = grants.some(grant => grant.module === 'archived_data') && grants.some(grant => grant.module === 'products');
       expect((await staff.request('archived-data?type=Product')).status).toBe(canView ? 200 : 403);
       const all = await staff.request('archived-data');
-      if (all.status === 200) expect(all.body.data).toEqual(canView ? [expect.objectContaining({ id: product.id, canRestore: false })] : []);
-      expect((await staff.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(403);
+      if (all.status === 200) expect(all.body.data).toEqual(canView ? [expect.objectContaining({ id: ownProduct.id, canRestore: false })] : []);
+      expect((await staff.request(`archived-data/Product/${ownProduct.id}/restore`, 'PATCH')).status).toBe(403);
     }
     const restorer = await productActor([{ module: 'archived_data', canView: true, canRestore: true }, { module: 'products', canView: true }], owner.tenantId);
+    await db.auditLog.create({ data: { tenantId: owner.tenantId, userId: restorer.userId, action: 'product_interests.remove', entityType: 'ProductInterest', entityId: product.id } });
     expect((await restorer.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(200);
   });
 
@@ -478,11 +481,11 @@ it('creates, edits and imports Contacts with persisted Account, Product Interest
   const agent = await db.user.create({ data: { tenantId, email: 'contact-agent@example.test', firstName: 'Contact', lastName: 'Agent', role: role.name, userRoles: { create: { roleId: role.id } } } });
   const account = await db.account.create({ data: { tenantId, name: 'Contact association fixture' } });
   const product = await db.productInterest.create({ data: { tenantId, name: 'Contact fixture product', dealValue: 1500 } });
-  const payload = { requestId: randomUUID(), firstName: 'Association', lastName: 'Contact', email: 'contact-associations@example.test', accountId: account.id, assignedUserId: agent.id, productInterestIds: [product.id], status: 'Hot' };
+  const payload = { requestId: randomUUID(), firstName: 'Association', lastName: 'Contact', email: 'contact-associations@example.test', accountId: account.id, assignedUserId: agent.id, productInterestIds: [product.id], status: 'Inquiry' };
   const created = await call('contacts', 'POST', adminCookie, payload);
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const id = created.body.data.id;
-  expect(await db.contact.findUniqueOrThrow({ where: { id }, include: { productLinks: true, contactDeals: true } })).toMatchObject({ accountId: account.id, assignedUserId: agent.id, status: 'HOT', productLinks: [{ productInterestId: product.id, interested: true }], contactDeals: [{ dealId: expect.any(String) }] });
+  expect(await db.contact.findUniqueOrThrow({ where: { id }, include: { productLinks: true, contactDeals: true } })).toMatchObject({ accountId: account.id, assignedUserId: agent.id, status: 'INQUIRY', productLinks: [{ productInterestId: product.id, interested: true }], contactDeals: [{ dealId: expect.any(String) }] });
   const edited = await call(`contacts/${id}`, 'PUT', adminCookie, { status: 'Cold', notes: 'Notes still supported', accountId: account.id, assignedUserId: agent.id });
   expect(edited.status, JSON.stringify(edited.body)).toBe(200);
   expect(await db.contact.findUniqueOrThrow({ where: { id } })).toMatchObject({ accountId: account.id, assignedUserId: agent.id, status: 'COLD', notes: 'Notes still supported' });

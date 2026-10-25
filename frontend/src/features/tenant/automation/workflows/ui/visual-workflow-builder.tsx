@@ -729,17 +729,18 @@ export default function WorkflowBuilder({
     >
       <header className="space-y-3 border-b border-[var(--border)] bg-[var(--card)] p-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
             <Button
               variant="ghost"
               size="sm"
+              className="shrink-0"
               aria-label="Back to workflows"
               disabled={busy}
               onClick={() => requestNavigation(onClose)}
             >
               <ArrowLeft size={18} />
             </Button>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1 sm:flex-initial">
               <button
                 type="button"
                 onClick={() => select('details')}
@@ -747,20 +748,24 @@ export default function WorkflowBuilder({
               >
                 {draft.name || 'New workflow'}
               </button>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                <StatusBadge label={savedStatus === 'ACTIVE' ? 'Active' : savedStatus === 'PAUSED' ? 'Paused' : 'Draft'} variant={savedStatus === 'ACTIVE' ? 'success' : savedStatus === 'PAUSED' ? 'warn' : 'neutral'} />{savedVersion ? ` · v${savedVersion}` : ''}{' '}
-                ·{' '}
-                {dirty
-                  ? 'Unsaved changes'
-                  : savedId
-                    ? 'All changes saved'
-                    : 'Not saved yet'}
+              <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-[var(--muted-foreground)] sm:block">
+                <span className="inline-flex shrink-0 items-center whitespace-nowrap sm:inline">
+                  <StatusBadge label={savedStatus === 'ACTIVE' ? 'Active' : savedStatus === 'PAUSED' ? 'Paused' : 'Draft'} variant={savedStatus === 'ACTIVE' ? 'success' : savedStatus === 'PAUSED' ? 'warn' : 'neutral'} />{savedVersion ? ` · v${savedVersion}` : ''}
+                </span>{' '}
+                <span className="whitespace-nowrap">
+                  ·{' '}
+                  {dirty
+                    ? 'Unsaved changes'
+                    : savedId
+                      ? 'All changes saved'
+                      : 'Not saved yet'}
+                </span>
               </p>
             </div>
           </div>
           {savedId && <WorkflowVersionHistory workflowId={savedId} version={savedVersion} dirty={dirty} options={options} onRestore={readOnly ? undefined : onRestoreVersion} />}
           {!readOnly && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -773,6 +778,7 @@ export default function WorkflowBuilder({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="order-last col-span-2 sm:order-none"
                   disabled={busy}
                   onClick={() => void pause()}
                 >
@@ -790,6 +796,7 @@ export default function WorkflowBuilder({
               {canActivate && (
                 <Button
                   size="sm"
+                  className="col-span-2"
                   disabled={busy}
                   onClick={() => void submit(true)}
                 >
@@ -804,10 +811,11 @@ export default function WorkflowBuilder({
           )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex gap-1">
+          <div className="flex w-full min-w-0 flex-wrap gap-1 sm:w-auto sm:flex-nowrap">
             <Button
               variant={view === 'builder' ? 'secondary' : 'ghost'}
               size="sm"
+              className="px-2 sm:px-3"
               onClick={() => setView('builder')}
             >
               <PanelLeft size={15} />
@@ -816,6 +824,7 @@ export default function WorkflowBuilder({
             <Button
               variant={view === 'activity' ? 'secondary' : 'ghost'}
               size="sm"
+              className="px-2 sm:px-3"
               onClick={() => setView('activity')}
             >
               <Activity size={15} />
@@ -824,16 +833,18 @@ export default function WorkflowBuilder({
             <Button
               variant="ghost"
               size="sm"
+              className="ml-auto shrink-0 sm:ml-0"
               onClick={() => select('details')}
               aria-label="Workflow details"
             >
               <Settings2 size={15} />
             </Button>
           </div>
-          <div className="flex gap-1">
+          <div className="flex w-full min-w-0 flex-wrap gap-1 sm:w-auto sm:flex-nowrap">
             <Button
               size="sm"
               variant="ghost"
+              className="shrink-0"
               disabled={locked || !history.past.length}
               onClick={() => undo()}
               aria-label="Undo"
@@ -843,6 +854,7 @@ export default function WorkflowBuilder({
             <Button
               size="sm"
               variant="ghost"
+              className="shrink-0"
               disabled={locked || !history.future.length}
               onClick={() => undo(true)}
               aria-label="Redo"
@@ -852,6 +864,7 @@ export default function WorkflowBuilder({
             <Button
               size="sm"
               variant="outline"
+              className="ml-auto shrink-0 sm:ml-0"
               disabled={busy || !savedId || dirty || !trigger}
               title={
                 !savedId || dirty

@@ -3,8 +3,8 @@ import { mayReadContactAccount, presentContactAccount } from '../contacts-v2/con
 import prisma from '../../../config/database.config';
 import { salesContext } from '../leads/sales-context';
 
-async function presentLead<T extends { account?: unknown; companyName?: string | null; companyFromAccount?: boolean }>(tenantId: string, lead: T) {
-  return presentContactAccount(lead, await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId));
+async function presentLead<T extends { account?: unknown; accountId?: string | null; companyName?: string | null; companyFromAccount?: boolean }>(tenantId: string, lead: T) {
+  return presentContactAccount(lead, await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId, lead.accountId));
 }
 import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -88,7 +88,7 @@ export async function convertContact(id: string, tenantId: string, userId: strin
       newAccount: dto.newAccount, skipAccountCreation: dto.skipAccountCreation });
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;
-    const canReadAccount = await mayReadContactAccount(tx, tenantId);
+    const canReadAccount = await mayReadContactAccount(tx, tenantId, converted.lead.accountId);
     return { lead: presentContactAccount(converted.lead, canReadAccount), contact: presentContactAccount({ ...converted.contact, status: normalizeCrmStatus(converted.contact.status) }, canReadAccount), account: canReadAccount ? account : null, deal };
   });
 }

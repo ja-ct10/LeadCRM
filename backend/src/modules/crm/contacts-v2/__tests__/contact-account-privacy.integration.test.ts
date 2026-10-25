@@ -95,7 +95,7 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
     expect(await prisma.lead.findUniqueOrThrow({ where: { id: lead.body.data.id } })).toMatchObject({ convertedAt: null, contactId: null });
     expect(await prisma.contact.count({ where: { tenantId, email: lead.body.data.email } })).toBe(0);
     expect.soft(detail.body.data.account).toBeNull();
-    await prisma.rolePermission.createMany({ data: ['campaigns', 'deals'].map(module => ({ tenantId, roleId, module, canView: true, canViewAll: module === 'deals' })) });
+    await prisma.rolePermission.createMany({ data: ['campaigns', 'deals'].map(module => ({ tenantId, roleId, module, canView: true, ...(module === 'deals' ? { canViewAll: true } : {}) })) });
     const companies = await request('/marketing/audiences/companies?source=CONTACTS');
     expect(companies.status, JSON.stringify(companies.body)).toBe(200);
     expect(companies.body.data).not.toContain(secret);

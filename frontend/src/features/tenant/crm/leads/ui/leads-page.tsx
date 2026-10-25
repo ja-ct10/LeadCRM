@@ -61,7 +61,7 @@ export default function LeadsPage(): React.ReactElement {
   const canImport = useHasPermission('leads.import');
   const canEdit = useHasPermission('leads.edit');
   const canDelete = useHasPermission('leads.archive');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('leads');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('leads');
 
   // ── Column Preferences ────────────────────────────────────────────────
@@ -436,7 +436,7 @@ export default function LeadsPage(): React.ReactElement {
                 onClear: () => setSelectedIds(new Set()),
                 actions: (
                   canDelete && (
-                    <Button variant="outline" disabled={[...selectedIds].some(id => !recordAccess.canMutate(leads.find(record => record.id === id)))}
+                    <Button variant="outline" disabled={[...selectedIds].some(id => !recordAccess.canMutate(leads.find(record => record.id === id), 'canArchive'))}
                       onClick={() => confirmArchive([...selectedIds], `${selectedIds.size} leads`)}
                     >
                       Archive

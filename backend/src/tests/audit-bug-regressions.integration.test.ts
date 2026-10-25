@@ -59,7 +59,7 @@ describe.skipIf(!disposable).sequential('audit bug regressions through current p
       contactDeals: { create: [{ contactId, position: 0 }, { contactId: ownContactId, position: 1 }] } } })).id;
     const definition = { name: 'Sample access', trigger: 'lead.created', conditions: { operator: 'AND', conditions: [{ field: 'lead.email', operator: 'equals', value: 'private-lead@example.test' }] },
       actions: [{ type: 'update_field', config: { field: 'firstName', value: 'Would change' } }], isActive: false };
-    workflowId = (await prisma.workflow.create({ data: { tenantId, ...definition, draftDefinition: definition } })).id;
+    workflowId = (await prisma.workflow.create({ data: { tenantId, createdById: staffId, ...definition, draftDefinition: definition } })).id;
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   }, 30000);
@@ -82,13 +82,16 @@ describe.skipIf(!disposable).sequential('audit bug regressions through current p
     await grant(source === 'LEADS' ? 'leads' : 'contacts', { canView: false });
     expect((await call('/marketing/audiences/preview', 'POST', { source, conditions: [] })).status).toBe(403);
   });
-  it('allows an unrestricted CRM grant but continues excluding foreign tenants', async () => {
+  it('keeps Campaign ownership restrictions with unrestricted CRM grants and permits Client Admin tenant reads', async () => {
     await prisma.roleDefinition.update({ where: { id: roleId }, data: { crmAssignmentRestricted: false } });
     try {
       await grant('leads', { canView: true, canViewAll: true });
       const result = await call('/marketing/audiences/preview', 'POST', { source: 'LEADS', conditions: [] });
-      expect(result.status).toBe(200); expect(result.body.data.meta.total).toBe(2);
-      expect(JSON.stringify(result.body)).not.toContain('foreign@example.test');
+      expect(result.status).toBe(200); expect(result.body.data.meta.total).toBe(1);
+      expect(result.body.data.recipients.map((row: { id: string }) => row.id)).toEqual([ownLeadId]);
+      const admin = await call('/marketing/audiences/preview', 'POST', { source: 'LEADS', conditions: [] }, adminToken);
+      expect(admin.status).toBe(200); expect(admin.body.data.meta.total).toBe(2);
+      expect(JSON.stringify(admin.body)).not.toContain('foreign@example.test');
     } finally { await prisma.roleDefinition.update({ where: { id: roleId }, data: { crmAssignmentRestricted: true } }); }
   });
   it.each(['LEADS', 'CONTACTS'] as const)('limits immediate %s sends even without an HTTP actor', async source => {

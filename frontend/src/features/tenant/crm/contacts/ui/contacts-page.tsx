@@ -47,7 +47,7 @@ export default function ContactsPage(): React.ReactElement {
   const canImport = useHasPermission('contacts.import');
   const canEdit   = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.archive');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('contacts');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   const highlightId = getParam('highlight') || undefined;
@@ -324,7 +324,7 @@ export default function ContactsPage(): React.ReactElement {
     <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
         exportAction={<ExportCsvButton module="contacts" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
-      bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...contactSelectedIds].some(id => !recordAccess.canMutate(filteredContacts.find(record => record.id === id)))} onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
+      bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...contactSelectedIds].some(id => !recordAccess.canMutate(filteredContacts.find(record => record.id === id), 'canArchive'))} onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
       moduleId="contacts"
       title="Contacts"
         description="Manage customer and business contact information."

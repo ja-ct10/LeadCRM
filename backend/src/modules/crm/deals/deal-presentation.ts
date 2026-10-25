@@ -4,31 +4,36 @@ import { mayReadContactAccount, presentContactAccount } from '../contacts-v2/con
 import { DealAddressSourceSchema, resolveDealAddress } from '@leadcrm/shared';
 import { loadDealAddressOptions } from './deal-address';
 import { dealStaleness } from './deal-staleness';
-import { crmReadWhere, mayReadCrmModule } from '../access/crm-record-access.service';
+import { crmActor, crmReadWhere, mayReadCrmModule } from '../access/crm-record-access.service';
 
 /** Apply source-module visibility to Deal responses, including nested Contacts. */
 export async function presentDealResponse<T>(tenantId: string, response: T, now = new Date()): Promise<T> {
+  const actor = crmActor.getStore();
+  if (actor && !actor.readRecords) return crmActor.run({ ...actor, readRecords: true, readPolicy: undefined }, () => presentDealResponse(tenantId, response, now));
   const db = salesContext.getStore() ?? prisma;
   const permitted = await mayReadContactAccount(db, tenantId);
   const ids = new Set<string>();
-  const leadIds = new Set<string>(), contactIds = new Set<string>();
+  const related = { leadId: new Set<string>(), contactId: new Set<string>(), accountId: new Set<string>() };
   function collect(value: unknown): void {
     if (Array.isArray(value)) { value.forEach(collect); return; }
     if (!value || typeof value !== 'object' || value instanceof Date) return;
     const record = value as Record<string, unknown>;
     if (typeof record.id === 'string' && 'pipelineId' in record && 'stageId' in record) ids.add(record.id);
-    if (typeof record.leadId === 'string') leadIds.add(record.leadId);
-    if (typeof record.contactId === 'string') contactIds.add(record.contactId);
+    for (const key of ['leadId', 'contactId', 'accountId'] as const) if (typeof record[key] === 'string') related[key].add(record[key]);
+    for (const [key, field] of [['leadIds', 'leadId'], ['contactIds', 'contactId']] as const) {
+      const values = record[key];
+      if (Array.isArray(values)) for (const id of values) if (typeof id === 'string') related[field].add(id);
+    }
     Object.values(record).forEach(collect);
   }
   collect(response);
-  const [leads, contacts] = await Promise.all([
-    leadIds.size && await mayReadCrmModule(db, tenantId, 'leads')
-      ? db.lead.findMany({ where: { tenantId, id: { in: [...leadIds] }, AND: [await crmReadWhere(db, tenantId, 'leads')] }, select: { id: true } }) : [],
-    contactIds.size && await mayReadCrmModule(db, tenantId, 'contacts')
-      ? db.contact.findMany({ where: { tenantId, id: { in: [...contactIds] }, AND: [await crmReadWhere(db, tenantId, 'contacts')] }, select: { id: true } }) : [],
+  const [leads, contacts, accounts] = await Promise.all([
+    related.leadId.size && await mayReadCrmModule(db, tenantId, 'leads') ? db.lead.findMany({ where: { tenantId, id: { in: [...related.leadId] }, AND: [await crmReadWhere(db, tenantId, 'leads')] }, select: { id: true } }) : [],
+    related.contactId.size && await mayReadCrmModule(db, tenantId, 'contacts') ? db.contact.findMany({ where: { tenantId, id: { in: [...related.contactId] }, AND: [await crmReadWhere(db, tenantId, 'contacts')] }, select: { id: true } }) : [],
+    permitted && related.accountId.size ? db.account.findMany({ where: { tenantId, id: { in: [...related.accountId] } }, select: { id: true } }) : [],
   ]);
-  const visibleLeads = new Set(leads.map(lead => lead.id)), visibleContacts = new Set(contacts.map(contact => contact.id));
+  const visible = { leadId: new Set(leads.map(row => row.id)), contactId: new Set(contacts.map(row => row.id)), accountId: new Set(accounts.map(row => row.id)) };
+  const relationKey = new Map<string, keyof typeof visible>([['lead', 'leadId'], ['contact', 'contactId'], ['account', 'accountId'], ['organization', 'accountId'], ['leadDeals', 'leadId'], ['contactDeals', 'contactId']]);
   const deals = ids.size ? await db.deal.findMany({ where: { tenantId, id: { in: [...ids] } }, select: {
     id: true, address: true, addressSource: true, accountId: true,
     stageChangedAt: true, createdAt: true, isArchived: true, deletedAt: true,
@@ -42,25 +47,19 @@ export async function presentDealResponse<T>(tenantId: string, response: T, now 
   const contexts = new Map(deals.map(deal => [deal.id, resolveDealAddress(deal.address, deal.addressSource, options.get(deal.id) ?? [])]));
   const staleness = new Map(deals.map(deal => [deal.id, dealStaleness(deal, now)]));
   const stageChanges = new Map(deals.map(deal => [deal.id, (deal.stageHistories[0]?.movedAt ?? deal.createdAt).toISOString()]));
-  function visit(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(visit);
+  function visit(value: unknown, key?: string): unknown {
+    const relation = relationKey.get(key ?? '');
+    if (Array.isArray(value)) return value.filter(entry => !relation || !entry?.[relation] || visible[relation].has(entry[relation])).map(entry => visit(entry));
     if (!value || typeof value !== 'object' || value instanceof Date) return value;
     const source = value as Record<string, unknown>;
-    const record = 'companyFromAccount' in source ? presentContactAccount(source, permitted) : source;
+    if (relation && typeof source.id === 'string' && !visible[relation].has(source.id)) return null;
+    const record = 'companyFromAccount' in source ? presentContactAccount(source, permitted && (!source.accountId || visible.accountId.has(String(source.accountId)))) : source;
     const presented = Object.fromEntries(Object.entries(record).map(([key, entry]) => {
-      if (!permitted && (key === 'organization' || key === 'account')) return [key, null];
-      const visible = key.startsWith('lead') ? visibleLeads : visibleContacts;
-      if (key === 'leadDeals' || key === 'contactDeals') {
-        const idKey = key === 'leadDeals' ? 'leadId' : 'contactId';
-        return [key, Array.isArray(entry) ? entry.filter(link => visible.has(link[idKey])).map(visit) : entry];
+      if (key === 'leadIds' || key === 'contactIds') {
+        const scope = visible[key === 'leadIds' ? 'leadId' : 'contactId'];
+        return [key, Array.isArray(entry) ? entry.filter(id => scope.has(id)) : entry];
       }
-      if (key === 'leadIds' || key === 'contactIds') return [key, Array.isArray(entry) ? entry.filter(id => visible.has(id)) : entry];
-      if (key === 'leadId' || key === 'contactId') return [key, typeof entry === 'string' && visible.has(entry) ? entry : null];
-      if (key === 'lead' || key === 'contact') {
-        const id = entry && typeof entry === 'object' ? (entry as Record<string, unknown>).id : null;
-        return [key, typeof id === 'string' && visible.has(id) ? visit(entry) : null];
-      }
-      return [key, visit(entry)];
+      return [key, Object.prototype.hasOwnProperty.call(visible, key) && typeof entry === 'string' && !visible[key as keyof typeof visible].has(entry) ? null : visit(entry, key)];
     }));
     // Singular compatibility fields follow the first remaining visible participant.
     for (const type of ['lead', 'contact'] as const) {

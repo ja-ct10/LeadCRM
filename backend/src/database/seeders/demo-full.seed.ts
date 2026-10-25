@@ -29,12 +29,12 @@ export async function seedDemoFullData() {
   // ── Organizations ──────────────────────────────────────────────────
   console.log('[Seed:Full] Seeding organizations...');
   const orgs = await Promise.all([
-    prisma.account.upsert({ where: { id: 'df-org-1' }, update: {}, create: { id: 'df-org-1', tenantId: tId,  name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: "BGC, Taguig, Philippines", tags: ['enterprise', 'IT'],  } }),
-    prisma.account.upsert({ where: { id: 'df-org-2' }, update: {}, create: { id: 'df-org-2', tenantId: tId,  name: 'Nexwave Digital Corp', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: "Ortigas, Pasig, Philippines", tags: ['startup', 'software'] } }),
-    prisma.account.upsert({ where: { id: 'df-org-3' }, update: {}, create: { id: 'df-org-3', tenantId: tId,  name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: "Makati CBD, Philippines", tags: ['telecom', 'enterprise'],  } }),
-    prisma.account.upsert({ where: { id: 'df-org-4' }, update: {}, create: { id: 'df-org-4', tenantId: tId,  name: 'BrightPath BPO Services', industry: 'Business Process Outsourcing', size: '51-200', address: "Cebu City, Philippines", tags: ['bpo', 'outsourcing'] } }),
-    prisma.account.upsert({ where: { id: 'df-org-5' }, update: {}, create: { id: 'df-org-5', tenantId: tId,  name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: "Davao City, Philippines", tags: ['energy', 'green'] } }),
-    prisma.account.upsert({ where: { id: 'df-org-6' }, update: {}, create: { id: 'df-org-6', tenantId: tId,  name: 'SecureNet Security', industry: 'Security Services', size: '51-200', address: "Quezon City, Philippines", tags: ['security', 'B2B'],  } }),
+    prisma.account.upsert({ where: { id: 'df-org-1' }, update: {}, create: { id: 'df-org-1', tenantId: tId,  name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: "BGC, Taguig, Philippines",  } }),
+    prisma.account.upsert({ where: { id: 'df-org-2' }, update: {}, create: { id: 'df-org-2', tenantId: tId,  name: 'Nexwave Digital Corp', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: "Ortigas, Pasig, Philippines" } }),
+    prisma.account.upsert({ where: { id: 'df-org-3' }, update: {}, create: { id: 'df-org-3', tenantId: tId,  name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: "Makati CBD, Philippines",  } }),
+    prisma.account.upsert({ where: { id: 'df-org-4' }, update: {}, create: { id: 'df-org-4', tenantId: tId,  name: 'BrightPath BPO Services', industry: 'Business Process Outsourcing', size: '51-200', address: "Cebu City, Philippines" } }),
+    prisma.account.upsert({ where: { id: 'df-org-5' }, update: {}, create: { id: 'df-org-5', tenantId: tId,  name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: "Davao City, Philippines" } }),
+    prisma.account.upsert({ where: { id: 'df-org-6' }, update: {}, create: { id: 'df-org-6', tenantId: tId,  name: 'SecureNet Security', industry: 'Security Services', size: '51-200', address: "Quezon City, Philippines",  } }),
   ]);
   console.log(`[Seed:Full] ${orgs.length} organizations seeded.`);
 

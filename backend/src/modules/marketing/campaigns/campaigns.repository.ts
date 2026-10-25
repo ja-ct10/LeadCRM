@@ -1,9 +1,9 @@
+import { creatorWhere } from '../../crm/access/record-visibility';
 import prisma from '../../../config/database.config';
-import { campaignScope } from './audiences.service';
 
 export async function findCampaignReport(id: string, tenantId: string) {
-  return prisma.$transaction(tx => tx.campaign.findFirst({
-    where: { id, ...campaignScope(tenantId) },
+  return prisma.$transaction(async tx => tx.campaign.findFirst({
+    where: { id, ...await creatorWhere(tenantId, tx) },
     include: {
       targetAudience: { select: { name: true } },
       campaignContacts: { where: { tenantId }, orderBy: { id: 'asc' }, include: {

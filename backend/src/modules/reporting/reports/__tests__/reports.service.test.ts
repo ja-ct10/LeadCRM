@@ -1,3 +1,4 @@
+import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { beforeEach, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({ lead: { groupBy: vi.fn() }, task: { count: vi.fn() }, campaign: { findMany: vi.fn() } }));
 vi.mock('../../../../config/database.config', () => ({ default: db }));
@@ -21,6 +22,6 @@ it('returns zero counts for an empty workspace', async () => {
   expect(await getContactStatusBreakdown('tenant')).toEqual([]);
 });
 it('bounds campaign summary and excludes archived campaigns', async () => {
-  db.campaign.findMany.mockResolvedValue([]); await getCampaignSummary('tenant');
+  db.campaign.findMany.mockResolvedValue([]); await tenantContext.run({ tenantId: 'tenant' }, () => getCampaignSummary('tenant'));
   expect(db.campaign.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId: 'tenant', isArchived: false }, take: 10, orderBy: { sentAt: 'desc' } });
 });

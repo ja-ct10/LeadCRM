@@ -31,7 +31,7 @@ describe('shared CSV contract', () => {
     expect(() => mapImportCsv(retired, csv([{ name: 'Company' }]))).toThrow('Unsupported CRM import module');
   });
   it('rejects retired Account product and assignment mappings', () => {
-    for (const field of ['productInterest', 'productInterests', 'activeProducts', 'productInterestIds', 'assignedUserId']) {
+    for (const field of ['productInterest', 'productInterests', 'activeProducts', 'productInterestIds', 'assignedUserId', 'tags', 'internalNotes']) {
       expect(() => mapImportCsv('accounts', csv([{ name: 'Company', [field]: 'Legacy value' }]))).toThrow('Unsupported import field');
     }
   });

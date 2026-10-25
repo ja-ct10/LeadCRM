@@ -103,7 +103,14 @@ beforeAll(async () => {
   // This disposable historical fixture separately authorizes Account retirement.
   // Production uses deploy-account-fields-retirement.cjs release and backup checks.
   await pg.exec(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${'a'.repeat(40)}'`);
-  await replayCrmMigrations(pg, undefined, '20261208000000_retire_account_fields');
+  await replayCrmMigrations(pg, '20261210000000_retire_account_internal_notes', '20261208000000_retire_account_fields');
+  await pg.exec(`COMMENT ON TABLE crm_history.account_legacy_notes IS 'leadcrm-account-notes-compatible-v1:${'a'.repeat(40)}'`);
+  await replayCrmMigrations(pg, '20261226000000_retire_unused_relationship_tables', '20261210000000_retire_account_internal_notes');
+  await pg.exec(`COMMENT ON TABLE "TaskAccount" IS 'leadcrm-retired-relationships-v1:${'a'.repeat(40)}';
+    COMMENT ON TABLE "SmsCampaignLink" IS 'leadcrm-retired-relationships-v1:${'a'.repeat(40)}'`);
+  await replayCrmMigrations(pg, '20261227000000_retire_account_notes_and_tags', '20261226000000_retire_unused_relationship_tables');
+  await pg.exec(`COMMENT ON COLUMN "Account".tags IS 'leadcrm-account-columns-v1:${'a'.repeat(40)}'`);
+  await replayCrmMigrations(pg, undefined, '20261227000000_retire_account_notes_and_tags');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
 }, 180000);

@@ -1,3 +1,4 @@
+import { creatorWhere } from '../../crm/access/record-visibility';
 import { WorkflowRevisionWriteSchema, WorkflowRevisionTokenSchema } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { Prisma } from '@prisma/client';
@@ -64,7 +65,7 @@ export async function getWorkflows(tenantId: string, query: Record<string, unkno
 }
 export async function getWorkflowById(id: string, tenantId: string) {
   requireScope(tenantId);
-  const workflow = await repo.findWorkflowById(id, tenantId);
+  const workflow = await repo.findVisibleWorkflowById(id, tenantId);
   if (!workflow) throw new NotFoundError('Workflow');
   return compatibleWorkflow(workflow, tenantId);
 }
@@ -102,7 +103,7 @@ export async function createWorkflow(tenantId: string, userId: string, dto: unkn
   await validateConditionReferences(draft, tenantId);
   if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
   if (draft.isActive) { await validateWorkflow(draft, tenantId); await assertWorkflowPermissions(draft, tenantId, userId); }
-  const workflow = await repo.createWorkflow(tenantId, sanitizeDraft(draft), draft.isActive ? userId : undefined);
+  const workflow = await repo.createWorkflow(tenantId, sanitizeDraft(draft), draft.isActive ? userId : undefined, userId);
   await writeAuditLog({ tenantId, userId, action: 'workflow.created', entityType: 'Workflow', entityId: workflow.id });
   return workflow;
 }
@@ -252,7 +253,7 @@ export async function validateDraft(tenantId: string, userId: string, input: unk
   const parsed = WorkflowValidationSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
   const { workflowId, ...draft } = parsed.data;
-  const existing = workflowId ? await repo.findWorkflowById(workflowId, tenantId) : null;
+  const existing = workflowId ? await getWorkflowById(workflowId, tenantId) : null;
   if (workflowId && (!existing || existing.isArchived)) throw new NotFoundError('Workflow');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   await validateWorkflow(draft, tenantId, existing && existing.status !== 'DRAFT' ? existing.conditions : undefined);
@@ -272,7 +273,7 @@ export async function duplicateWorkflow(id: string, tenantId: string, userId: st
   const names = (await repo.workflowNames(tenantId)).map(row => row.name);
   // Duplication preserves repairable references without activating or copying runs.
   const draft = parseDraft({ name: suggestWorkflowCopyName(original.name, names), description: original.description, trigger: original.trigger, conditions: original.conditions, actions: original.actions, isActive: false });
-  const copy = await repo.createWorkflow(tenantId, sanitizeDraft(draft));
+  const copy = await repo.createWorkflow(tenantId, sanitizeDraft(draft), undefined, userId);
   await writeAuditLog({ tenantId, userId, action: 'workflow.duplicated', entityType: 'Workflow', entityId: copy.id, metadata: { sourceId: id } });
   return copy;
 }
@@ -292,7 +293,7 @@ export async function saveWorkflowDraft(id: string, tenantId: string, userId: st
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   const sanitized = sanitizeDraft({ ...draft, isActive: false }, existing.conditions);
   return prisma.$transaction(async tx => {
-    const changed = await tx.workflow.updateMany({ where: { id, tenantId, isArchived: false, draftRevision: expectedDraftRevision, version: expectedVersion },
+    const changed = await tx.workflow.updateMany({ where: { id, ...await creatorWhere(tenantId, tx, 'Workflow'), isArchived: false, draftRevision: expectedDraftRevision, version: expectedVersion },
       data: { draftDefinition: sanitized as unknown as Prisma.InputJsonValue, draftRevision: { increment: 1 } } });
     if (!changed.count) throw new ConflictError('This workflow changed in another editor. Reload before saving your draft.');
     await tx.auditLog.create({ data: { tenantId, userId, action: 'workflow.draft_saved', entityType: 'Workflow', entityId: id } });
@@ -313,7 +314,7 @@ export async function publishWorkflowDraft(id: string, tenantId: string, userId:
   return prisma.$transaction(async tx => {
     const published = await tx.workflowPublication.findFirst({ where: { workflowId: id, tenantId }, select: { id: true } });
     const version = published ? expectedVersion + 1 : expectedVersion;
-    const changed = await tx.workflow.updateMany({ where: { id, tenantId, isArchived: false, version: expectedVersion, draftRevision: expectedDraftRevision },
+    const changed = await tx.workflow.updateMany({ where: { id, ...await creatorWhere(tenantId, tx, 'Workflow'), isArchived: false, version: expectedVersion, draftRevision: expectedDraftRevision },
       data: { name: active.name, description: active.description ?? null, trigger: active.trigger, conditions: active.conditions == null ? Prisma.DbNull : active.conditions as unknown as Prisma.InputJsonValue,
         actions: active.actions as unknown as Prisma.InputJsonValue, isActive: true, status: 'ACTIVE', activatedById: userId, version,
         draftDefinition: Prisma.DbNull, draftRevision: { increment: 1 } } });
@@ -333,6 +334,7 @@ export async function workflowPublications(id: string, tenantId: string) {
 }
 export async function restoreWorkflowPublication(id: string, tenantId: string, userId: string, version: unknown, input: unknown) {
   requireScope(tenantId);
+  await getWorkflowById(id, tenantId);
   const target = z.coerce.number().int().min(1).parse(version), tokens = WorkflowRevisionTokenSchema.parse(input);
   const revision = await prisma.workflowPublication.findFirst({ where: { tenantId, workflowId: id, version: target } });
   if (!revision) throw new NotFoundError('Published workflow version');

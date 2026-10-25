@@ -26,10 +26,11 @@ async function verifyRelease(env, fetcher = fetch) {
   let url; try { url = new URL(env.CRM_ACCOUNT_NOTES_VERIFY_API); } catch { fail('ACCOUNT_NOTES_API_REQUIRED'); }
   if (!['https:','http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.protocol==='http:' && !['127.0.0.1','localhost'].includes(url.hostname)) fail('ACCOUNT_NOTES_API_REQUIRED');
   const base = url.href.replace(/\/$/,'');
-  const request = async path => { const response=await fetcher(base+path,{headers:{Authorization:`Bearer ${env.CRM_ACCOUNT_NOTES_VERIFY_TOKEN}`},redirect:'error',signal:AbortSignal.timeout(15000)}); if(!response.ok)fail('ACCOUNT_NOTES_RELEASE_CHECK_FAILED');return response.json(); };
+  const request = async path => { const response=await fetcher(base+path,{headers:{Authorization:`Bearer ${env.CRM_ACCOUNT_NOTES_VERIFY_TOKEN}`,Cookie:`leadcrm_token=${env.CRM_ACCOUNT_NOTES_VERIFY_TOKEN}`},redirect:'error',signal:AbortSignal.timeout(15000)}); if(!response.ok)fail('ACCOUNT_NOTES_RELEASE_CHECK_FAILED');return response.json(); };
   const health = await request('/health');
   if(health.commit!==sha || !health.capabilities?.includes('accounts-activity-notes-v1'))fail('ACCOUNT_NOTES_RELEASE_NOT_SERVING');
-  const me = (await request('/auth/me')).data;
+  const identity = (await request('/auth/me')).data;
+  const me = identity?.user ?? identity;
   if (!me?.id || !me.tenantId || me.role !== 'Client Admin') fail('ACCOUNT_NOTES_ADMIN_VERIFICATION_REQUIRED');
   const result=await request('/crm/accounts?limit=1');
   if(!Array.isArray(result.data) || result.data.some(row=>row.tenantId !== me.tenantId || fields.some(key=>key in row)))fail('ACCOUNT_NOTES_API_STILL_EXPOSES_FIELDS');
@@ -44,26 +45,30 @@ async function run(db, mode, env=process.env, dependencies={}) {
   const expected=env.CRM_ACCOUNT_NOTES_EXPECT_DATABASE;
   for (const connection of [env.DATABASE_URL, env.DIRECT_URL || env.DATABASE_URL]) {
     let database;try{database=decodeURIComponent(new URL(connection).pathname.slice(1));}catch{fail('ACCOUNT_NOTES_DATABASE_REQUIRED');}
-    if(!expected || expected!==database)fail('ACCOUNT_NOTES_DATABASE_MISMATCH');
+    if(!['postgres:','postgresql:'].includes(new URL(connection).protocol)||!expected || expected!==database)fail('ACCOUNT_NOTES_DATABASE_MISMATCH');
   }
   const primary = new URL(env.DATABASE_URL), direct = new URL(env.DIRECT_URL || env.DATABASE_URL);
-  if(primary.hostname !== direct.hostname || primary.username !== direct.username) fail('ACCOUNT_NOTES_DIRECT_DATABASE_MISMATCH');
+  if(primary.hostname !== direct.hostname || (primary.port||'5432') !== (direct.port||'5432')) fail('ACCOUNT_NOTES_DIRECT_DATABASE_MISMATCH');
   if(mode==='--status')return status(db);
   if(mode==='--retire')cutoverApproval(env);
   const sha=await verifyRelease(env,dependencies.fetcher);
   const local=readdirSync(resolve(__dirname,'../prisma/migrations')).filter(name=>/^\d+_/.test(name));
   const records=await db.$queryRawUnsafe('SELECT migration_name,finished_at,rolled_back_at,checksum FROM "_prisma_migrations"');
   verifyAppliedHistory(records,local);
+  if(records.some(row=>!row.finished_at&&!row.rolled_back_at))fail('ACCOUNT_NOTES_FAILED_MIGRATION_REQUIRES_RECOVERY');
   if(!records.some(row=>row.migration_name===preservation&&row.finished_at&&!row.rolled_back_at))fail('ACCOUNT_NOTES_PRESERVATION_REQUIRED');
   const current=await status(db);
-  if(mode==='--verify'||!current.retiredColumns.length&&current.preservationPresent)return {commit:sha,...current};
+  const applied=records.some(row=>row.migration_name===retirement&&row.finished_at&&!row.rolled_back_at);
+  if(applied===!!current.retiredColumns.length)fail('ACCOUNT_NOTES_RETIREMENT_LEDGER_MISMATCH');
+  if(mode==='--verify'||applied&&current.preservationPresent)return {commit:sha,...current};
   if(current.retiredColumns.length!==fields.length||!current.preservationPresent)fail('ACCOUNT_NOTES_PARTIAL_RETIREMENT');
   // Approval attests that writers are paused and a restore-tested backup exists.
   await db.$executeRawUnsafe('SELECT crm_history.reconcile_account_notes()');
   await db.$executeRawUnsafe(`COMMENT ON TABLE crm_history.account_legacy_notes IS 'leadcrm-account-notes-compatible-v1:${sha}'`);
   try{
     const plan=deploymentPlan(records,local);
-    await (dependencies.migrate??migrate)(plan.through,plan.exclude.filter(name=>name!==retirement));
+    const exclude=[...new Set([...plan.exclude.filter(name=>name!==retirement),...local.filter(name=>name!==retirement&&!records.some(row=>row.migration_name===name&&row.finished_at&&!row.rolled_back_at))])];
+    await (dependencies.migrate??migrate)(retirement,exclude);
     const after=await status(db);
     if(after.retiredColumns.length||!after.preservationPresent)fail('ACCOUNT_NOTES_RETIREMENT_POSTCHECK_FAILED');
     return {commit:sha,preservationVerified:true,...after};

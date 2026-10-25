@@ -153,6 +153,8 @@ export interface WorkflowOptions {
   smsConfigured?: boolean;
 }
 export interface Workflow extends WorkflowDraft {
+  /** Original server-owned creator; null for unverifiable historical rows. */
+  createdById?: string | null;
   draftDefinition?: WorkflowDraft | null;
   draftRevision?: number;
   repairReason?: string;

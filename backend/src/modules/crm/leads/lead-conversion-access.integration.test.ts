@@ -19,7 +19,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
   async function person(name: string, clientAdmin = false) {
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: clientAdmin ? 'Client Admin' : name,
       crmAssignmentRestricted: !clientAdmin, isSystemRole: clientAdmin, permissions: { create: ['leads', 'contacts', 'accounts', 'deals'].map(module =>
-        ({ module, ...EMPTY_PERMISSION_FLAGS, canView: true, canEdit: true, canCreate: true, canArchive: true })) } } });
+        ({ module, ...EMPTY_PERMISSION_FLAGS, canView: true, canViewAll: true, canEdit: true, canCreate: true, canArchive: true })) } } });
     const user = await prisma.user.create({ data: { tenantId, role: role.name, email: `${randomUUID()}@camxian.com`, firstName: name, lastName: 'QA',
       mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
     return { ...user, roleId: role.id, token: (await issueAuthSession(user)).token };
@@ -35,7 +35,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     productsNormalized: true, productLinks: { create: { productInterestId: productId, position: 0 } }, ...extra,
   } });
   const account = (extra: Partial<Prisma.AccountUncheckedCreateInput> = {}) => prisma.account.create({ data: {
-    tenantId, name: `Existing ${randomUUID()}`,  industry: 'Technology', address: 'Makati', notes: 'Preserve this Account', tags: ['existing'],
+    tenantId, name: `Existing ${randomUUID()}`,  industry: 'Technology', address: 'Makati', notes: 'Preserve this Account',
       ...extra,
   } });
   const contact = (accountId: string | null, extra: Partial<Prisma.ContactUncheckedCreateInput> = {}) => prisma.contact.create({ data: {
@@ -153,7 +153,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     const source = await lead(); const before = await snapshot();
     const result = await convert(source.id, { contactId: target.id, accountId: existing.id });
     expect(result.status).toBe(403);
-    expect(result.body.error).toMatchObject({ code: 'CRM_ASSIGNMENT_REQUIRED', message: expect.stringContaining('updating the existing Contact') });
+    expect(result.body.error).toBe('Cannot convert this Lead: updating the existing Contact requires Contact edit access. Access denied');
     expect(await snapshot()).toEqual(before);
   });
   it.each(['participant', 'account'])('denies a necessary other-agent Deal %s change and atomically rolls back', async operation => {
@@ -167,7 +167,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     const before = await snapshot();
     const result = await convert(source.id, { accountId: existing.id, ...(target ? { contactId: target.id } : {}) });
     expect(result.status).toBe(403);
-    expect(result.body.error).toMatchObject({ code: 'CRM_ASSIGNMENT_REQUIRED', message: expect.stringContaining(operation === 'participant' ? 'adding the Contact to a related Deal' : 'setting the Account on a related Deal') });
+    expect(result.body.error).toBe('Cannot convert this Lead: ' + (operation === 'participant' ? 'adding the Contact to a related Deal' : 'setting the Account on a related Deal') + ' requires Deal edit access. Access denied');
     expect(await snapshot()).toEqual(before);
   });
   it('rolls back a newly created Account and Contact when a later Deal link is denied', async () => {

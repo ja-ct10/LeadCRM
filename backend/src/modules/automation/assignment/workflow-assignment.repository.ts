@@ -1,3 +1,4 @@
+import { groupWhere } from '../../crm/access/record-visibility';
 import type { Prisma } from '@prisma/client';
 import type { WorkflowAssignmentPurpose, WorkflowAssignmentTarget, WorkflowAssignmentPoolOption, WorkflowEntity } from '@leadcrm/shared';
 import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
@@ -29,7 +30,7 @@ export async function assignmentOptions(client: Client, tenantId: string, access
     assignmentCandidates(client, tenantId, 'task_assignee'),
     access.roles ? client.roleDefinition.findMany({ where: { tenantId, isArchived: false }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, userRoles: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } }) : [],
-    access.groups ? client.tenantGroup.findMany({ where: { tenantId }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    access.groups ? client.tenantGroup.findMany({ where: await groupWhere(tenantId, client), orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, members: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } }) : [],
   ]);
   const ownerIds = new Set(owners.filter(user => user.role !== 'Client Admin').map(user => user.id));

@@ -133,7 +133,7 @@ export function LeadsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: LeadsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('leads');
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const router = useRouter();

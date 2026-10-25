@@ -70,7 +70,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
   const data = useData();
   const { user, tenant } = useAuth();
   const hasEditPermission = useHasPermission('deals.edit'), hasArchivePermission = useHasPermission('deals.archive');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('deals');
   const canTask = useHasPermission('tasks.create'), canLead = useHasPermission('leads.view'), canContact = useHasPermission('contacts.view');
   const canEmailLead = useHasPermission('leads.edit') && canLead && hasEditPermission, canEmailContact = useHasPermission('contacts.edit') && canContact && hasEditPermission;
   const { dialogProps, confirm } = useConfirmDialog();

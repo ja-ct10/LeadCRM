@@ -3,6 +3,7 @@
 'use strict';
 const { readdirSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { deploymentPlan, migrate, verifyAppliedHistory } = require('./deploy-crm-imports.cjs');
 const preservation='20261225000000_preserve_retired_relationships';
 const retirement='20261226000000_retire_unused_relationship_tables';
@@ -16,7 +17,7 @@ function connectionIdentity(env){
     if(!['postgres:','postgresql:'].includes(url.protocol))fail('RETIRED_RELATIONS_DATABASE_REQUIRED');
     if(!expected||decodeURIComponent(url.pathname.slice(1))!==expected)fail('RETIRED_RELATIONS_DATABASE_MISMATCH');return url;};
   const primary=parse(env.DATABASE_URL),direct=parse(env.DIRECT_URL||env.DATABASE_URL);
-  if(primary.hostname!==direct.hostname||decodeURIComponent(primary.username)!==decodeURIComponent(direct.username))fail('RETIRED_RELATIONS_DIRECT_DATABASE_MISMATCH');
+  if(primary.hostname!==direct.hostname||decodeURIComponent(primary.username)!==decodeURIComponent(direct.username)||(primary.port||'5432')!==(direct.port||'5432'))fail('RETIRED_RELATIONS_DIRECT_DATABASE_MISMATCH');
   return expected;
 }
 function cutoverApproval(env){
@@ -31,6 +32,10 @@ function endpoint(value,code){
   if(!['https:','http:'].includes(url.protocol)||url.username||url.password||url.search||url.hash
     ||url.protocol==='http:'&&!['127.0.0.1','localhost','[::1]'].includes(url.hostname))fail(code);
   return url;
+}
+function verifyLocalRelease(env,sha){
+  const source=env.SOURCE_COMMIT||spawnSync('git',['rev-parse','HEAD'],{cwd:resolve(__dirname,'../..'),encoding:'utf8',windowsHide:true}).stdout?.trim();
+  if(source!==sha)fail('RETIRED_RELATIONS_LOCAL_RELEASE_MISMATCH');
 }
 async function verifyRelease(env,fetcher=fetch){
   const sha=env[prefix+'VERIFY_COMMIT'],token=env[prefix+'VERIFY_TOKEN'];
@@ -97,6 +102,7 @@ async function run(db,mode,env=process.env,dependencies={}){
   if(mode==='--retire')cutoverApproval(env);
   if(mode==='--status')return status(db);
   const release=await verifyRelease(env,dependencies.fetcher);
+  verifyLocalRelease(env,release.commit);
   const local=readdirSync(resolve(__dirname,'../prisma/migrations')).filter(name=>/^\d+_/.test(name));
   const records=await db.$queryRawUnsafe('SELECT migration_name,finished_at,rolled_back_at,checksum FROM "_prisma_migrations"');
   verifyAppliedHistory(records,local);
@@ -130,7 +136,7 @@ async function run(db,mode,env=process.env,dependencies={}){
     END $$;`);
   }
 }
-module.exports={run,status,verifyStructure,verifyRelease,connectionIdentity,cutoverApproval,preservation,retirement,canonical};
+module.exports={run,status,verifyStructure,verifyRelease,verifyLocalRelease,connectionIdentity,cutoverApproval,preservation,retirement,canonical};
 if(require.main===module){
   require('dotenv').config({quiet:true});
   const {PrismaClient}=require('@prisma/client');

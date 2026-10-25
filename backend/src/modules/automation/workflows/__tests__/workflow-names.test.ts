@@ -9,7 +9,10 @@ vi.mock('../../../../config/database.config', () => {
   return { default: client };
 });
 import prisma from '../../../../config/database.config';
-import { createWorkflow, updateWorkflow } from '../workflows.repository';
+import { createWorkflow, updateWorkflow as updateWorkflowRecord } from '../workflows.repository';
+import { tenantContext } from '../../../../core/tenant/tenant-context';
+const updateWorkflow = (...args: Parameters<typeof updateWorkflowRecord>) =>
+  tenantContext.run({ tenantId: args[1] }, async () => await updateWorkflowRecord(...args));
 
 const draft: WorkflowDraft = { name: 'Lead Follow-up', trigger: 'lead.created', actions: [], isActive: false };
 

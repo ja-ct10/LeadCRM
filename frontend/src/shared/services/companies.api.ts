@@ -9,7 +9,6 @@ export interface Company {
   industry?: string;
   size?: string;
   website?: string;
-  tags: string[];
   address?: string;
   isArchived: boolean;
   assignedUserId?: string;

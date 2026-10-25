@@ -57,7 +57,7 @@ export async function notificationTestPostgres() {
  // A config file avoids pg_ctl's platform-dependent shell quoting of an empty
  // string. All clients use TCP; runners need no access to /var/run/postgresql.
  appendFileSync(join(directory, 'postgresql.conf'), "\nunix_socket_directories = ''\n");
- run('pg_ctl',['-D',directory,'-l',log,'-o',`-h 127.0.0.1 -p ${port} -c timezone=UTC -c max_connections=30`,'-w','start']);
+ run('pg_ctl',['-D',directory,'-l',log,'-o',`-h 127.0.0.1 -p ${port} -c timezone=UTC -c max_connections=30 -c max_wal_size=128MB -c min_wal_size=32MB`,'-w','start']);
  started = true;
  const psql = (database,args) => run('psql',['-X','-h','127.0.0.1','-p',String(port),'-U','postgres','-d',database,'-v','ON_ERROR_STOP=1',...args]);
  let durability;

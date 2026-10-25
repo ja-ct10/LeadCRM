@@ -103,7 +103,7 @@ export function DealsDataGrid({
   viewMode = 'clip',
   currencyConfig,
 }: DealsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('deals');
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Deal> = useMemo(() => ({

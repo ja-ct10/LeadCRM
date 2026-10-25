@@ -22,7 +22,6 @@ export interface Company {
   industry?: string;
   size?: CompanySize;
   website?: string;
-  tags?: string[];
   address?: string;
   notes?: string;
   createdAt: string;
@@ -40,7 +39,6 @@ export interface CreateCompanyRequest {
   industry?: string;
   size?: CompanySize;
   website?: string;
-  tags?: string[];
   address?: string;
   notes?: string;
 }
