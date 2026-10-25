@@ -27,13 +27,16 @@ test('Deal Industry retirement on populated disposable native PostgreSQL', { tim
     }
     const tenantId = 'industry-a';
     await db.user.create({ data: { id: 'industry-actor', tenantId, email: 'industry@example.test', firstName: 'Test', lastName: 'Actor', role: 'Client Admin' } });
-    await db.lead.create({ data: { id: 'industry-lead', tenantId, firstName: 'Linked', lastName: 'Lead', accountId: 'account-a' } });
-    await db.contact.create({ data: { id: 'industry-contact', tenantId, firstName: 'Linked', lastName: 'Contact', accountId: 'account-a' } });
+    await db.$executeRawUnsafe(`INSERT INTO "Lead" (id,"tenantId","firstName","lastName","accountId") VALUES ('industry-lead',$1,'Linked','Lead','account-a')`, tenantId);
+    await db.$executeRawUnsafe(`INSERT INTO "Contact" (id,"tenantId","firstName","lastName","accountId","updatedAt","productInterests") VALUES ('industry-contact',$1,'Linked','Contact','account-a',now(),'{}')`, tenantId);
     await db.productInterest.create({ data: { id: 'industry-product', tenantId, name: 'Historical uncategorized Product', dealValue: 1234 } });
     const values = ['Legacy Deal value', null, '', '  ', 'Other value', 'Third value', null];
     for (const [index, value] of values.entries()) {
       const suffix = index < 4 ? 'a' : 'b';
-      await db.deal.create({ data: { id: `industry-deal-${index}`, tenantId: `industry-${suffix}`, title: `Deal ${index}`, pipelineId: `pipeline-${suffix}`, stageId: `stage-${suffix}`, accountId: `account-${suffix}`, value: 1234, ...(index === 0 ? { productInterestId: 'industry-product', productInterestIds: ['industry-product'], productInterests: ['Historical uncategorized Product'] } : {}) } });
+      await db.$executeRawUnsafe(`INSERT INTO "Deal" (id,"tenantId",title,"pipelineId","stageId","accountId",value,"updatedAt",tags,"productInterests","productInterestIds","productInterestId")
+        VALUES ($1,$2,$3,$4,$5,$6,1234,now(),'{}',$7::text[],$8::text[],$9)`,
+        `industry-deal-${index}`, `industry-${suffix}`, `Deal ${index}`, `pipeline-${suffix}`, `stage-${suffix}`, `account-${suffix}`,
+        index === 0 ? ['Historical uncategorized Product'] : [], index === 0 ? ['industry-product'] : [], index === 0 ? 'industry-product' : null);
       await db.$executeRawUnsafe('UPDATE public."Deal" SET industry = $1 WHERE id = $2', value, `industry-deal-${index}`);
     }
     await db.leadDeal.create({ data: { tenantId, leadId: 'industry-lead', dealId: 'industry-deal-0' } });
@@ -42,7 +45,7 @@ test('Deal Industry retirement on populated disposable native PostgreSQL', { tim
     await db.contactProductInterest.create({ data: { tenantId, contactId: 'industry-contact', productInterestId: 'industry-product', interested: true, activeProduct: true } });
     await db.dealStageHistory.create({ data: { tenantId, dealId: 'industry-deal-0', newStageId: 'stage-a', movedById: 'industry-actor', note: 'Preserve this stage history' } });
     await db.activity.create({ data: { tenantId, createdById: 'industry-actor', dealId: 'industry-deal-0', type: 'note', title: 'Historical note', description: 'Keep this history' } });
-    await db.workflow.create({ data: { id: 'industry-workflow', tenantId, name: 'Preserved workflow', trigger: 'deal.updated', actions: [], status: 'PAUSED' } });
+    await db.workflow.create({ select: { id: true }, data: { id: 'industry-workflow', tenantId, name: 'Preserved workflow', trigger: 'deal.updated', actions: [], status: 'PAUSED' } });
     const trigger = await db.workflowTriggerRecord.create({ data: { tenantId, workflowId: 'industry-workflow', triggerType: 'deal.updated', entityType: 'deal', entityId: 'industry-deal-0' } });
     const definition = { trigger: 'deal.updated', conditions: { operator: 'AND', conditions: [{ field: 'deal.industry', operator: 'equals', value: 'Legacy' }] }, actions: [] };
     const tables = await db.$queryRawUnsafe(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`);
@@ -80,14 +83,14 @@ test('Deal Industry retirement on populated disposable native PostgreSQL', { tim
       { conditions: { operator: 'AND', conditions: [{ field: 'event.changedFields', operator: 'contains', value: 'industry' }] } },
       { actions: [{ type: 'send_email', config: { body: '{{ industry }}' } }] },
     ]) await t.test('blocks active Workflow ' + JSON.stringify(data), () => blocked('Workflow',
-      () => db.workflow.update({ where: { id: 'industry-workflow' }, data: { isActive: true, status: 'ACTIVE', ...data } }),
-      () => db.workflow.update({ where: { id: 'industry-workflow' }, data: { isActive: false, status: 'PAUSED', actions: [], conditions: { operator: 'AND', conditions: [] } } })));
+      () => db.workflow.update({ select: { id: true }, where: { id: 'industry-workflow' }, data: { isActive: true, status: 'ACTIVE', ...data } }),
+      () => db.workflow.update({ select: { id: true }, where: { id: 'industry-workflow' }, data: { isActive: false, status: 'PAUSED', actions: [], conditions: { operator: 'AND', conditions: [] } } })));
     await t.test('blocks current published workflow definitions', () => blocked('WorkflowPublication', async () => {
-      await db.workflow.update({ where: { id: 'industry-workflow' }, data: { isActive: true, status: 'ACTIVE' } });
+      await db.workflow.update({ select: { id: true }, where: { id: 'industry-workflow' }, data: { isActive: true, status: 'ACTIVE' } });
       await db.workflowPublication.create({ data: { tenantId, workflowId: 'industry-workflow', version: 1, definition } });
     }, async () => {
       await db.workflowPublication.deleteMany();
-      await db.workflow.update({ where: { id: 'industry-workflow' }, data: { isActive: false, status: 'PAUSED' } });
+      await db.workflow.update({ select: { id: true }, where: { id: 'industry-workflow' }, data: { isActive: false, status: 'PAUSED' } });
     }));
     for (const status of ['queued', 'running']) await t.test(`blocks ${status} snapshots even after their Workflow was paused`, () => blocked('WorkflowExecutionRun',
       () => db.workflowExecutionRun.create({ data: { id: 'unfinished-run', tenantId, workflowId: 'industry-workflow', triggerId: trigger.id, entityType: 'deal', entityId: 'industry-deal-0', status, definitionSnapshot: definition } }),
@@ -104,7 +107,7 @@ test('Deal Industry retirement on populated disposable native PostgreSQL', { tim
     await t.test('preserves completed snapshots, old publications, paused rules and Account Industry references', async () => {
       await db.workflowExecutionRun.create({ data: { tenantId, workflowId: 'industry-workflow', triggerId: trigger.id, entityType: 'deal', entityId: 'industry-deal-0', status: 'completed', completedAt: new Date(), definitionSnapshot: definition } });
       await db.workflowPublication.create({ data: { tenantId, workflowId: 'industry-workflow', version: 0, definition } });
-      await db.workflow.update({ where: { id: 'industry-workflow' }, data: { conditions: definition.conditions } });
+      await db.workflow.update({ select: { id: true }, where: { id: 'industry-workflow' }, data: { conditions: definition.conditions } });
       await db.template.create({ data: { tenantId, name: 'Account template', type: 'Email', content: '{{ account.industry }}' } });
       assert.deepEqual((await inspectDealIndustry(db)).dependencies, []);
       const beforeRows = await snapshot(), beforeSchema = await schema();

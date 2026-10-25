@@ -6,7 +6,10 @@ import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 import { installTenantScoping } from '../../../../core/tenant/tenant-prisma';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 
-vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DEAL_NORMALIZATION_TEST_DATABASE_URL! } } }) }));
+const holder = vi.hoisted(() => ({ client: null as PrismaClient | null }));
+vi.mock('../../../../config/database.config', () => ({ default: new Proxy({}, { get: (_target, property) => {
+  const value = (holder.client as any)[property]; return typeof value === 'function' ? value.bind(holder.client) : value;
+} }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
 let update: typeof import('../deals.repository').updateDeal;
 let contactList: typeof import('../../contacts-v2/contacts-v2.repository').findAllContacts;
@@ -14,7 +17,7 @@ beforeAll(async () => {
   pg = await PGlite.create(); await replayCrmMigrations(pg);
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
   process.env.DEAL_NORMALIZATION_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
-  db = (await import('../../../../config/database.config')).default;
+  db = new PrismaClient({ datasources: { db: { url: process.env.DEAL_NORMALIZATION_TEST_DATABASE_URL! } } }); holder.client = db;
   installTenantScoping(db);
   update = (await import('../deals.repository')).updateDeal;
   contactList = (await import('../../contacts-v2/contacts-v2.repository')).findAllContacts;

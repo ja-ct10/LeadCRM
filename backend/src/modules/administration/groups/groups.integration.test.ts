@@ -60,7 +60,7 @@ it.skipIf(!disposable)('rejects nonempty deletion from actual rows, keeps member
   expect((await request(`/${id}/members`, 'POST', { userId })).status).toBe(200);
   expect(await scoped(() => prisma.tenantGroupMember.count({ where: { groupId: id, tenantId } }))).toBe(1);
   const denied = await request(`/${id}`, 'DELETE'); expect(denied.status).toBe(409); expect(denied.body.error).toBe('Remove all members from this group before deleting it.');
-  const rows = (await request('')).body.data; expect(rows.find((group: { id: string }) => group.id === id).members[0].user).toMatchObject({ firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin' });
+  const rows = (await request('')).body.data; expect(rows.find((group: { id: string }) => group.id === id).members.find((member: { userId: string }) => member.userId === userId).user).toMatchObject({ firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin' });
   expect((await request(`/${id}/members/${userId}`, 'DELETE')).status).toBe(200);
   expect((await request(`/${id}`, 'DELETE')).status).toBe(200);
 });
@@ -84,13 +84,17 @@ it.skipIf(!disposable)('allows group viewers to view group members but reserves 
   await scoped(() => prisma.rolePermission.create({ data: { tenantId, roleId: viewerRole.id, module: 'groups', canView: true } }));
   const staff = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Sales' } });
   await scoped(() => assignRoleToUser(staff.id, viewerRole.id, tenantId));
+  const nonmember = await request('', 'GET', undefined, deniedToken);
+  expect(nonmember.body.data.some((group: { id: string }) => group.id === id)).toBe(false);
+  expect((await request(`/${id}/members`, 'POST', { userId: staff.id })).status).toBe(200);
   const visible = await request('', 'GET', undefined, deniedToken);
   expect(visible.status, JSON.stringify(visible.body)).toBe(200);
-  expect(visible.body.data.find((group: { id: string }) => group.id === id).members[0].user)
+  expect(visible.body.data.find((group: { id: string }) => group.id === id).members.find((member: { userId: string }) => member.userId === userId).user)
     .toMatchObject({ firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin' });
   expect((await request(`/${id}/members`, 'POST', { userId }, deniedToken)).status).toBe(403);
   expect((await request(`/${id}/members/${userId}`, 'DELETE', undefined, deniedToken)).status).toBe(403);
   expect((await request(`/${id}/members/${userId}`, 'DELETE')).status).toBe(200);
+  expect((await request(`/${id}/members/${staff.id}`, 'DELETE')).status).toBe(200);
   expect((await request(`/${id}`, 'DELETE')).status).toBe(200);
 });
 

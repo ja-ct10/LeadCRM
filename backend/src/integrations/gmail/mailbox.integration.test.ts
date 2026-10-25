@@ -441,11 +441,11 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
     const c = await customer();
     await prisma.contactDeal.create({ data: { tenantId, dealId: c.deals[0].id, contactId: contact.id, position: 0 } });
-    const workflow = await prisma.workflow.create({ data: { tenantId, name: `Contact preview ${randomUUID()}`, trigger: 'contact.status_changed', actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted } }] } });
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Preview reader ${randomUUID()}`, permissions: { create: [{ module: 'workflows', canView: true }, { module: 'contacts', canView: true }] } } });
     const viewer = await prisma.user.create({ data: { tenantId, firstName: 'Preview', lastName: 'Reader', email: `${randomUUID()}@camxian.com`, role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
     await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: viewer.id } });
     const viewerToken = (await issueAuthSession(viewer)).token;
+    const workflow = await prisma.workflow.create({ data: { tenantId, createdById: viewer.id, name: `Contact preview ${randomUUID()}`, trigger: 'contact.status_changed', actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted } }] } });
     expect((await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: contact.id }, viewerToken)).status).toBe(403);
     const allowed = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: contact.id });
     expect(allowed.status).toBe(200); expect(allowed.body.data.actions[0].message).toContain(c.deals[0].id);

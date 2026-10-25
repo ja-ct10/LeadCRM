@@ -28,7 +28,7 @@ test('Deal engagement migration preserves populated native PostgreSQL records', 
       await db.leadDeal.create({ data: { tenantId: id, leadId: `lead-${id}`, dealId: `deal-${id}` } });
       await db.dealStageHistory.create({ data: { tenantId: id, dealId: `deal-${id}`, newStageId: `won-${id}`, movedById: `actor-${id}`, note: 'Original Closed Won evidence' } });
     }
-    await db.workflow.create({ data: { id: 'workflow', tenantId: 'one', name: 'Historical customer condition', trigger: 'lead.status_changed', status: 'PAUSED', actions: [],
+    await db.workflow.create({ select: { id: true }, data: { id: 'workflow', tenantId: 'one', name: 'Historical customer condition', trigger: 'lead.status_changed', status: 'PAUSED', actions: [],
       conditions: { operator: 'AND', conditions: [{ field: 'lead.status', operator: 'equals', value: 'Closed' }] } } });
     await db.activity.create({ data: { tenantId: 'one', createdById: 'actor-one', dealId: 'deal-one', type: 'note', title: 'Original Closed Won note' } });
     const financial = await db.$queryRawUnsafe('SELECT id, "stageId", value, "wonConfirmedAt" FROM "Deal" ORDER BY id');
@@ -44,15 +44,15 @@ test('Deal engagement migration preserves populated native PostgreSQL records', 
     assert.equal((await db.stage.findUnique({ where: { id: 'won-one' } })).name, 'Closed Deal');
     assert.equal((await db.stage.findUnique({ where: { id: 'lost-one' } })).name, 'Cancelled');
     assert.equal((await db.stage.findUnique({ where: { id: 'won-two' } })).name, 'Closed Won');
-    assert.equal((await db.lead.findUnique({ where: { id: 'lead-one' } })).status, 'Closed Deal');
-    assert.equal((await db.contact.findUnique({ where: { id: 'contact-one' } })).status, 'CLOSED_DEAL');
-    assert.equal((await db.workflow.findUnique({ where: { id: 'workflow' } })).conditions.conditions[0].value, 'Closed Deal');
+    assert.equal((await db.lead.findUnique({ select: { status: true, manualCancellation: true }, where: { id: 'lead-one' } })).status, 'Closed Deal');
+    assert.equal((await db.contact.findUnique({ select: { status: true }, where: { id: 'contact-one' } })).status, 'CLOSED_DEAL');
+    assert.equal((await db.workflow.findUnique({ select: { conditions: true }, where: { id: 'workflow' } })).conditions.conditions[0].value, 'Closed Deal');
     assert.deepEqual(await db.$queryRawUnsafe('SELECT id, "stageId", value, "wonConfirmedAt" FROM "Deal" ORDER BY id'), financial);
     assert.deepEqual(await db.dealStageHistory.findMany({ orderBy: { id: 'asc' } }), history);
     assert.deepEqual(await db.leadDeal.findMany({ orderBy: { id: 'asc' } }), links);
-    await db.lead.update({ where: { id: 'lead-one' }, data: { status: 'Cancelled', manualCancellation: false } });
+    await db.lead.update({ select: { id: true }, where: { id: 'lead-one' }, data: { status: 'Cancelled', manualCancellation: false } });
     pg.executeSql(name, sql);
-    assert.equal((await db.lead.findUnique({ where: { id: 'lead-one' } })).manualCancellation, false);
+    assert.equal((await db.lead.findUnique({ select: { status: true, manualCancellation: true }, where: { id: 'lead-one' } })).manualCancellation, false);
     assert.equal((await db.activity.findFirst({ where: { dealId: 'deal-one' } })).title, 'Original Closed Won note');
     const after = await inspectDealEngagement(db); assert.deepEqual(after.blockers, []);
     const output = resolve(root, 'data/outputs/system-audit/deal-engagement'); mkdirSync(output, { recursive: true });

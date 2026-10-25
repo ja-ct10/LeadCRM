@@ -1,4 +1,5 @@
-﻿import prisma from '../../../config/database.config';
+import { creatorWhere } from '../../crm/access/record-visibility';
+import prisma from '../../../config/database.config';
 
 /** Lead count by status */
 export async function getContactStatusBreakdown(tenantId: string, assignedUserId?: string) {
@@ -28,7 +29,7 @@ export async function getTaskCompletion(tenantId: string, assignedUserId?: strin
 /** Campaign engagement summary */
 export async function getCampaignSummary(tenantId: string) {
   const campaigns = await prisma.campaign.findMany({
-    where:   { tenantId, isArchived: false },
+    where:   { ...await creatorWhere(tenantId), isArchived: false },
     orderBy: { sentAt: 'desc' },
     take:    10,
     select: { id: true, name: true, type: true, status: true, sentCount: true, openedCount: true, clickedCount: true, engagement: true, sentAt: true },

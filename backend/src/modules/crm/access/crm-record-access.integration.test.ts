@@ -186,14 +186,14 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
         .rejects.toMatchObject({ statusCode: 403 });
     } finally { await prisma.rolePermission.updateMany({ where: { tenantId, roleId: a.roleId, module: 'leads' }, data: { canEdit: true } }); }
   });
-  it('Archived Data retains tenant-wide rows but grants restore only for current direct assignment', async () => {
+  it('Archived Data requires personal archive ownership plus current record access', async () => {
     const archived = await Promise.all([a, b].map((actor, index) => prisma.lead.create({ data: { tenantId, firstName: `Archived ${index}`,
-      lastName: 'QA', email: `archive-${index}@example.test`, assignedUserId: actor.id, isArchived: true, deletedAt: new Date() } })));
+      lastName: 'QA', email: `archive-${index}@example.test`, assignedUserId: actor.id, isArchived: true, deletedBy: actor.id, deletedAt: new Date() } })));
     for (const sortBy of ['name', 'archivedAt']) {
       const result: any = await scoped(a, () => archivedList({ userId: a.id, tenantId, role: a.role }, ArchiveQuerySchema.parse({ type: 'Lead', sortBy })));
       expect(result.data.find((row: any) => row.id === archived[0].id)?.canRestore).toBe(true);
-      expect(result.data.find((row: any) => row.id === archived[1].id)?.canRestore).toBe(false);
-      expect(result.meta.total).toBe(2);
+      expect(result.data.some((row: any) => row.id === archived[1].id)).toBe(false);
+      expect(result.meta.total).toBe(1);
     }
   });
   it('closing an assigned Deal rolls back when its status cascade would edit another-agent Contact', async () => {
@@ -366,7 +366,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
   it.each(Object.keys(delegates).filter(module => module !== 'accounts'))('%s archive and restore retain ownership and operation permission checks', async module => {
     const id = records[module].own.id;
     expect((await call(`/${module}/${id}/archive`, a, 'PATCH')).status).toBe(200);
-    expect((await call(`/${module}/${id}/restore`, b, 'PATCH')).status).toBe(403);
+    expect((await call(`/${module}/${id}/restore`, b, 'PATCH')).status).toBe(404);
     expect((await call(`/${module}/${id}/restore`, viewer, 'PATCH')).status).toBe(403);
     expect((await call(`/${module}/${id}/restore`, a, 'PATCH')).status).toBe(200);
   });

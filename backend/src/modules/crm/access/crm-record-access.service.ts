@@ -1,3 +1,4 @@
+import { archiveModels, archivedState, archiveReadWhere, assertArchiveOwner } from '../../administration/archived-data/archive-access';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { hasModulePermission, hasCrmRecordAssignmentAccess, canReassignCrmRecord, isWorkspaceAccessible, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
@@ -43,7 +44,11 @@ export function runAuthorizedWorkflow<T>(tenantId: string, executionId: string, 
 }
 export const authorizedWorkflowScope = (tenantId: string) => system.getStore()?.tenantId === tenantId ? system.getStore() : undefined;
 
-export async function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy> {
+export function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy> {
+  // Authorization metadata must never depend on the data visibility it resolves.
+  return internal.run(true, () => resolveActorPolicy(db, actor));
+}
+async function resolveActorPolicy(db: Tx, actor: Actor): Promise<ReadPolicy> {
   const user = await db.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId }, include: {
     groupMemberships: { where: { tenantId: actor.tenantId }, select: { groupId: true } },
     tenant: { select: { status: true } }, userRoles: { where: { tenantId: actor.tenantId, role: { tenantId: actor.tenantId, isArchived: false } },
@@ -169,9 +174,10 @@ export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: str
   // active when middleware executes the lock statement.
   await internal.run(true, async () => await tx.$queryRaw(Prisma.sql`SELECT "id" FROM ${Prisma.raw('"' + tables[module] + '"')} WHERE "tenantId" = ${actor.tenantId} AND "id" = ${id} FOR UPDATE`));
   const model = tables[module][0].toLowerCase() + tables[module].slice(1);
-  const record = await (tx as any)[model].findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, tenantId: true, ...(['leads', 'contacts'].includes(module) ? { status: true } : {}), ...(module === 'accounts' ? {} : { assignedUserId: true }) } });
+  const record = await (tx as any)[model].findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, tenantId: true, isArchived: true, ...(['leads', 'contacts'].includes(module) ? { status: true } : {}), ...(module === 'accounts' ? {} : { assignedUserId: true }) } });
   if (!record) throw new AppError('Record not found.', 404);
   const policy = await resolveCrmActor(tx, actor);
+  if (record.isArchived && !authority) await assertArchiveOwner(tx, tables[module], id, policy);
   const initializing = transaction.getStore()?.created.has(`${module}:${id}`);
   if (initializing) return; // creation's validated initialization, including automatic Deal creation
   if (authority && (policy.clientAdmin || hasModulePermission(policy.permissions, module, operation === 'archive' ? 'canArchive' : 'canEdit'))) return;
@@ -325,6 +331,20 @@ export function installCrmRecordAccess(prisma: PrismaClient): void {
   prisma.$use(async (params, next) => {
     const actor = crmActor.getStore();
     if (!actor || internal.getStore() || !params.model) return next(params);
+    const archiveType = archiveModels[params.model as keyof typeof archiveModels];
+    const db = transaction.getStore()?.tx ?? prisma;
+    // Direct archived reads share the same owner boundary as the recovery screen.
+    // Tenant-wide suppression evidence and authorized automation retain their scopes.
+    if (archiveType && actor.readRecords && !statusEvidence.getStore() && !system.getStore() && reads.has(params.action)) {
+      const where = params.args?.where ?? {};
+      const activeOnly = archiveType === 'User' ? where.status === 'ACTIVE'
+        : archiveType === 'Product' ? where.active === true : where.isArchived === false;
+      if (!activeOnly) {
+        const policy = await internal.run(true, () => (actor.readPolicy ??= resolveCrmActor(db, actor)));
+        params.args ??= {};
+        params.args.where = and(where, await archiveReadWhere(db, archiveType, policy));
+      }
+    }
     if (actor.readRecords && !statusEvidence.getStore() && reads.has(params.action) && hasReadTarget(params.model, params.args ?? {})) {
       const policy = await (actor.readPolicy ??= resolveCrmActor(transaction.getStore()?.tx ?? prisma, actor));
       params.args ??= {};
@@ -336,7 +356,8 @@ export function installCrmRecordAccess(prisma: PrismaClient): void {
     const module = modules[params.model], parents = childParents[params.model];
     const args = params.args ?? {};
     for (const data of [args.data, args.create, args.update].filter(Boolean).flat()) rejectNestedRecordWrites(params.model, data);
-    if (!module && !parents) return next(params);
+    const archiveWrite = archiveType && !system.getStore() && !['create', 'createMany'].includes(params.action);
+    if (!module && !parents && !archiveWrite) return next(params);
     const context = transaction.getStore();
     if (!context) {
       if (params.runInTransaction) throw new AppError('CRM mutations require an interactive transaction.', 403);
@@ -364,18 +385,54 @@ export function installCrmRecordAccess(prisma: PrismaClient): void {
       }
     }
     if (module && singular && !rows.length && params.action !== 'upsert') throw new AppError('Record not found.', 404);
+    let archiveRows = archiveWrite ? await internal.run(true, () => delegate.findMany({
+      where, select: { id: true, ...(archiveType === 'User' ? { status: true } : archiveType === 'Product' ? { active: true } : { isArchived: true }) },
+    })) as Array<Args> : [];
+    if (archiveWrite && archiveRows.length) {
+      await internal.run(true, async () => await tx.$queryRaw(Prisma.sql`SELECT "id"
+        FROM ${Prisma.raw('"' + params.model + '"')} WHERE "tenantId" = ${actor.tenantId}
+          AND "id" IN (${Prisma.join(archiveRows.map(row => row.id))}) ORDER BY "id" FOR UPDATE`));
+      archiveRows = await internal.run(true, () => delegate.findMany({
+        where: { tenantId: actor.tenantId, id: { in: archiveRows.map(row => row.id) } },
+        select: { id: true, ...(archiveType === 'User' ? { status: true } : archiveType === 'Product' ? { active: true } : { isArchived: true }) },
+      })) as Array<Args>;
+    }
+    if (archiveWrite && archiveRows.some(row => archivedState(archiveType, row))) {
+      const policy = await internal.run(true, () => resolveCrmActor(tx, actor));
+      for (const row of archiveRows) if (archivedState(archiveType, row)) await assertArchiveOwner(tx, archiveType, row.id, policy);
+      const patch = args.data ?? args.update ?? {};
+      const unarchive = archiveType === 'User' ? patch.status !== undefined && patch.status !== 'INACTIVE'
+        : archiveType === 'Product' ? patch.active === true : patch.isArchived === false;
+      if (unarchive && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'archived_data', 'canRestore')) {
+        throw new AppError('Access denied', 403);
+      }
+    }
     for (const row of rows) {
       if (module) {
         const data = args.data ?? args.update ?? {};
         const archived = typeof data.isArchived === 'object' ? data.isArchived?.set : data.isArchived;
         const operation = archived === true ? 'archive' : archived === false && row.isArchived ? 'restore' : 'edit';
         await assertCrmRecordMutation(tx, module, row.id, operation, data);
-      } else for (const [key, parent] of parents!) if (row[key]) await assertCrmRecordMutation(tx, parent, row[key]);
+      } else for (const [key, parent] of parents ?? []) if (row[key]) await assertCrmRecordMutation(tx, parent, row[key]);
     }
     if (parents) for (const data of [args.data, args.create, args.update].filter(Boolean).flat()) {
       for (const [key, parent] of parents) if (data[key]) await assertCrmRecordMutation(tx, parent, data[key]);
     }
     const result = await next(params);
+    if (archiveWrite && archiveRows.length && !['Lead', 'Contact', 'Account', 'Task'].includes(archiveType)) {
+      // These types lack native ownership or the existing transactional Task history.
+      const after = await internal.run(true, () => delegate.findMany({
+        where: { tenantId: actor.tenantId, id: { in: archiveRows.map(row => row.id) } },
+        select: { id: true, ...(archiveType === 'User' ? { status: true } : archiveType === 'Product' ? { active: true } : { isArchived: true }) },
+      })) as Array<Args>;
+      for (const row of after) {
+        const before = archiveRows.find(previous => previous.id === row.id)!;
+        if (archivedState(archiveType, before) === archivedState(archiveType, row)) continue;
+        await tx.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.userId,
+          action: archivedState(archiveType, row) ? 'archive.archived' : 'archive.restored',
+          entityType: archiveType, entityId: row.id, createdAt: new Date(), changeset: { before, after: row } } });
+      }
+    }
     if (module && ['create', 'upsert'].includes(params.action) && !rows.length && result?.id) context.created.add(`${module}:${result.id}`);
     return result;
   });

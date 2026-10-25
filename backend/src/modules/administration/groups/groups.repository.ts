@@ -1,3 +1,4 @@
+import { groupWhere } from '../../crm/access/record-visibility';
 // Groups repository — thin DB layer, all queries scoped to tenantId.
 // Business logic lives in groups.service.ts.
 
@@ -50,7 +51,7 @@ export function groupHeadCandidateIds(members: Array<{ userId: string; user: Par
 
 export async function findAllGroups(tenantId: string) {
   return prisma.tenantGroup.findMany({
-    where:   { tenantId },
+    where:   await groupWhere(tenantId),
     select:  groupSelect(tenantId),
     orderBy: { name: 'asc' },
   });
@@ -58,7 +59,7 @@ export async function findAllGroups(tenantId: string) {
 
 export async function findGroupById(id: string, tenantId: string) {
   return prisma.tenantGroup.findFirst({
-    where:  { id, tenantId },
+    where:  { id, ...await groupWhere(tenantId) },
     select: groupSelect(tenantId),
   });
 }
@@ -72,7 +73,7 @@ export async function createGroup(tenantId: string, name: string) {
 
 export async function updateGroup(id: string, tenantId: string, name: string) {
   return prisma.tenantGroup.update({
-    where:  { id, tenantId },
+    where:  { id, ...await groupWhere(tenantId) },
     data:   { name },
     select: groupSelect(tenantId),
   });
@@ -80,8 +81,8 @@ export async function updateGroup(id: string, tenantId: string, name: string) {
 
 export async function deleteEmptyGroup(id: string, tenantId: string) {
   // The predicate and serializable transaction protect against concurrent additions.
-  return prisma.$transaction(tx => tx.tenantGroup.deleteMany({
-    where: { id, tenantId, systemKey: null, members: { none: {} } },
+  return prisma.$transaction(async tx => tx.tenantGroup.deleteMany({
+    where: { id, ...await groupWhere(tenantId, tx), systemKey: null, members: { none: {} } },
   }), { isolationLevel: 'Serializable' });
 }
 

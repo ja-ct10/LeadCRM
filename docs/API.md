@@ -784,3 +784,31 @@ The [retired relationship rollout](retired-relationships.md) removes TaskAccount
 New SMS sends original personalized URLs, records `smsTrackingVersion: 0` and returns unavailable click totals/rates as `null`. Historical SMS reports retain frozen counts and destinations. Existing public `/public/sms-links/:token` and frontend `/s/:token` redirects remain supported without click writes. The private `smsLinkHistory` snapshot and opaque tokens are not included in report recipients. Sender settings return `trackingOrigin: null`. Provider delivery tracking and email engagement remain independent.
 
 Stop old backend processes, then apply `20261116000000_user_groups`, `20261117000000_campaign_submission_recovery`, `20261118000000_group_revisions` and `20261119000000_notification_utc_timestamps` after the existing migration history and before starting the updated backend. These preserve legacy Department values as same-tenant Group memberships, add durable interrupted submission handling, reuse the access-revision stream for Group synchronization and make new notification timestamps explicitly UTC. See [rollout](../README.md#forward-rollout) and the [polish plan](plans/system-polish.md).
+
+## Creator, membership, and archive visibility
+
+Campaign and interactive Workflow requests require original creator ownership for
+staff and remain tenant-wide for Client Admin. Workflow creation/duplication
+records server-owned `createdById`; unknown historical creators remain admin-only.
+Campaign audiences intersect existing CRM access with current Lead/Contact
+Assigned Agent for staff, including preview and scheduled dispatch. Saved audience
+definitions remain shared within the tenant; no client-supplied creator or
+recipient IDs establish authorization.
+
+Team Management and Workflow builder Group lookups return only actual member Groups to staff. Creation does not
+add membership. Membership/Head administration retains its existing Client Admin
+checks; Groups do not grant customer ownership or CRM permissions.
+
+Archived Data additionally requires the archiver plus existing source-module and
+record permissions for staff, including Campaign/Workflow creator access, source archived queries and direct restore
+or reactivation paths. Existing `deletedBy` metadata is authoritative where
+available. Other types use per-record archive lifecycle audits; new
+`archive.archived`/`archive.restored` transitions commit with the record mutation
+and take precedence over legacy best-effort logs. Historical records with no
+unambiguous ownership remain visible only to authorized Client Admins. A repeated
+archive call does not transfer ownership.
+
+Apply `20261228000000_role_based_visibility` after the existing migrations before
+running matching API/workers. It adds immutable nullable Workflow creator metadata,
+backfills only proven same-tenant creation/duplication audits, and indexes creator
+queries. It does not infer creators from activators or assignees.

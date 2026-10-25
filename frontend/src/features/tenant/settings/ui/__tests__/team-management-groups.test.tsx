@@ -390,3 +390,14 @@ it('refreshes after a save conflict and requires a new eligible selection', asyn
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Group Head' }).textContent).toContain('Select a group member'));
   expect(within(dialog).getByRole('button', { name: 'Assign Head' }).hasAttribute('disabled')).toBe(true);
 });
+
+it('does not retain a created group outside the staff creator membership scope', async () => {
+  mocks.role = 'Sales'; mount(); await screen.findByText('Sales');
+  mocks.create.mockResolvedValue({ data: { ...group(false), id: 'new-group', name: 'Invisible creation' } });
+  fireEvent.click(screen.getByRole('button', { name: 'New Group' }));
+  fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Invisible creation' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Group' }));
+  await waitFor(() => expect(mocks.getAll).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText('Invisible creation')).toBeNull();
+  expect(mocks.addMembers).not.toHaveBeenCalled();
+});

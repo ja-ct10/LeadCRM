@@ -47,12 +47,15 @@ beforeAll(async () => {
   for (const name of readdirSync(resolve(__dirname, '../../../../prisma/migrations')).filter(name => name >= '20261007000000' && /^\d/.test(name)).sort()) {
     const migrationPath = resolve(__dirname, '../../../../prisma/migrations', name, 'migration.sql');
     if (!existsSync(migrationPath)) continue;
+    // Keep populated historical tags; their destructive operator cutover is unrelated to authentication.
+    if (name === '20261227000000_retire_account_notes_and_tags') continue;
     // This fixture first proves the older security cleanup preserves tokens.
     // The later unreachable-flow retirement requires those fixtures cleared.
     if (name === '20261031000000_retire_obsolete_infrastructure') await pg.exec('DELETE FROM "EmailVerificationToken"');
     // This in-memory fixture exercises the new code directly, without a hosted deployment.
     if (name === '20261102000000_retire_relationship_compatibility') await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
     if (name === '20261112000000_retire_lead_nonform_columns') await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
+    if (name === '20261210000000_retire_account_internal_notes') await pg.exec(`COMMENT ON TABLE crm_history.account_legacy_notes IS 'leadcrm-account-notes-compatible-v1:${'a'.repeat(40)}'`);
     if (name === '20261208000000_retire_account_fields') await pg.exec(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${'a'.repeat(40)}'`);
     if (name === cleanupMigration) {
       await pg.query(`UPDATE "User" SET "passwordHash"=$1, "mfaEnabled"=true, "mfaSecretEncrypted"='old-secret', "passwordChangedAt"=NOW() WHERE id='migration-user'`, [hashSync(initialPassword, 4)]);
@@ -68,6 +71,7 @@ beforeAll(async () => {
       for (const table of preservedTables) snapshots.set(table, await snapshot(table));
     }
     await pg.exec(readFileSync(migrationPath, 'utf8'));
+    await pg.query('INSERT INTO "_prisma_migrations" (migration_name, finished_at) VALUES ($1, now())', [name]);
     if (name === cleanupMigration) {
       for (const table of preservedTables) expect(await snapshot(table)).toEqual(snapshots.get(table));
     }
@@ -98,7 +102,9 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
     expect(columns).toContainEqual({ table_name: 'User', column_name: 'passwordChangedAt' });
     expect(columns).not.toContainEqual({ table_name: 'Contact', column_name: 'customerType' });
     expect(columns).toContainEqual({ table_name: 'Contact', column_name: 'customerSince' });
-    expect(await db.account.findUnique({ where: { id: 'migration-account' } })).toMatchObject({ name: 'Preserved Account', tags: ['keep'] });
+    expect(await db.account.findUnique({ where: { id: 'migration-account' } })).toMatchObject({ name: 'Preserved Account' });
+    // The current API model retires tags; preservation is asserted at the SQL boundary.
+    expect((await pg.query<{ tags: string[] }>(`SELECT tags FROM "Account" WHERE id='migration-account'`)).rows[0].tags).toEqual(['keep']);
     const history = await pg.query<{ products: unknown }>(`SELECT retired_values->'activeProducts' AS products FROM crm_history.account_retired_values WHERE account_id='migration-account'`);
     expect(history.rows.map(row => row.products)).toContainEqual(['CCTV']);
   });

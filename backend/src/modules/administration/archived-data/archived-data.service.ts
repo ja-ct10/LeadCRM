@@ -8,7 +8,7 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import type { PermissionKey } from '../../../shared/constants/permissions';
 import { loadArchiveDatePage } from './archive-date-page';
-import { resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
 import { restoreTask } from '../../operations/tasks/tasks.service';
 import { salesTransaction } from '../../crm/leads/lead-automation.service';
 import { assertProductCatalogCapacity, assertProductCatalogEnabled } from '../product-interests/product-interests.service';
@@ -50,7 +50,10 @@ function source<T>(count: () => Promise<number>, load: (skip: number, take: numb
   return { count, load: async (skip: number, take: number) => (await load(skip, take)).map(identify) };
 }
 
-export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
+export function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
+  return crmActor.run({ userId: actor.userId, tenantId: actor.tenantId, readRecords: true }, () => listScoped(actor, query));
+}
+async function listScoped(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
   await assertPermissions(actor, ['archived_data.view']);
   const where = scope(actor);
   const searchWhere = (fields: string[], literal = false) => query.search?.trim() ? {
@@ -128,7 +131,10 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   return { data: await applyAssignmentRestorePolicy(actor, data), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
 }
 
-export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestoreParamsSchema>) {
+export function restore(actor: Actor, params: z.infer<typeof ArchiveRestoreParamsSchema>) {
+  return crmActor.run({ userId: actor.userId, tenantId: actor.tenantId }, () => restoreScoped(actor, params));
+}
+async function restoreScoped(actor: Actor, params: z.infer<typeof ArchiveRestoreParamsSchema>) {
   await assertPermissions(actor, ['archived_data.restore', permissions[params.type][0]]);
   const where = { ...scope(actor), id: params.id };
   let result: { count: number };
