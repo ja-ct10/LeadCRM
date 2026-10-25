@@ -96,7 +96,8 @@ beforeAll(async () => {
   http = createServer((await import('../../../app')).default);
   await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${(http.address() as { port: number }).port}/api/v1`;
-}, 60_000);
+// Migration replay and the first API import share this budget on slower local checkouts.
+}, 180_000);
 afterAll(async () => { if (http) await new Promise<void>(resolve => http.close(() => resolve())); await db?.$disconnect(); await socket?.stop(); await pg?.close(); });
 
 describe.sequential('security flows on migrated PostgreSQL', () => {
