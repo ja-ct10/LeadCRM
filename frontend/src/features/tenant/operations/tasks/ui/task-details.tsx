@@ -35,8 +35,8 @@ import type { TaskLinks } from './task-editor';
 const idle: InlineEditState = { field: null, dirty: false, busy: false };
 
 /** Adapts Task fields to the shared CRM editor; Task mutations stay in the existing pipeline. */
-export function TaskDetails({ task: initialTask, taskId, readOnly = false, links = {}, preserveContextLinks = false, onClose }: {
-  task?: TaskRecord; taskId?: string; readOnly?: boolean; links?: TaskLinks; preserveContextLinks?: boolean; onClose: () => void;
+export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', readOnly = false, links = {}, preserveContextLinks = false, onClose }: {
+  task?: TaskRecord; taskId?: string; initialMode?: 'view' | 'edit'; readOnly?: boolean; links?: TaskLinks; preserveContextLinks?: boolean; onClose: () => void;
 }) {
   const { user } = useAuth();
   const { updateTask, deleteTask, users } = useData();
@@ -74,10 +74,11 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
   }, [detail.data, inline.field, busy, saveConflict]);
   useEffect(() => {
     if (!mutable) { setEditing(false); setInline(idle); setCreating(false); setConfirmArchive(false); }
-  }, [mutable]);
+    else if (initialMode === 'edit') setEditing(true);
+  }, [mutable, initialMode]);
   useEffect(() => {
     if (editing) body.current?.querySelector<HTMLButtonElement>('button[aria-label^="Edit "]:not(:disabled)')?.focus();
-  }, [editing]);
+  }, [editing, ready]);
 
   const mutate = async (updates: UpdateTaskDto) => {
     if (!saved || !mutable || mutationPending.current || conflict || detail.error) throw new Error(conflict ? 'Reload the saved Task before saving.' : 'This task cannot be modified.');

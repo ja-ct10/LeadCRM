@@ -1099,6 +1099,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await scoped(async () => {
       const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Campaign sender ${randomUUID()}` } });
       const permission = await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'campaigns', canView: true, canSend: true } });
+      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'contacts', canView: true, canViewAll: true } });
       const actor = await prisma.user.create({ data: { tenantId, role: role.name, email: `${randomUUID()}@camxian.com`, firstName: 'Scheduling', lastName: 'Actor', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date(), userRoles: { create: { tenantId, roleId: role.id } } } });
       const denied = await scheduleDraft();
       await scheduleCampaign(denied.id, tenantId, actor.id, { scheduledFor: new Date(Date.now() + 60000).toISOString() });

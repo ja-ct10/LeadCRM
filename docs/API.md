@@ -423,6 +423,8 @@ All paths are relative to `/api/v1`. Protected operations require a ready worksp
 
 Campaign sends use Brevo email or TextBee SMS, not the removed placeholder scheduler. Durable leases/recipient attempt markers let recovery finalize expired submissions as `INTERRUPTED`. Known unsent recipients are failed; uncertain provider outcomes remain reviewable without an automatic resend. No new recovery endpoint is exposed.
 
+Audience previews and sends also require the selected Lead/Contact source's current CRM View permission and record scope. Counts and personalization exclude inaccessible records and related CRM values. Scheduled dispatch rechecks the scheduling user's current access; tenant-wide suppression and unsubscribe checks remain internal and authoritative.
+
 The variable catalog returns existing `CrmFieldCatalogEntry` metadata; field presence does not authorize recipient values or provide related Account/Deal binding. Send and schedule validate variables against the effective Lead/Contact source. Email settings return configured Brevo `senderName` and `senderEmail`; SMS settings return tenant `organizationName` and validated `organizationEmail`. These public identities contain no provider credentials. Template tokens remain `sender_name` and `sender_email`. See the [variable consistency report](campaign-workflow-variable-consistency-report.md) for availability and verification details.
 
 The SMS footer is editable text in the existing `body` field. The composer seeds

@@ -30,7 +30,7 @@ it('locks, rechecks and soft-deletes in one transaction, retaining permissions a
   expect(state.tx.userRole.count.mock.invocationCallOrder[0]).toBeLessThan(state.tx.roleDefinition.update.mock.invocationCallOrder[0]);
   expect(state.tx.roleDefinition.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'role', tenantId: 'tenant', isArchived: false }, data: { isArchived: true } });
   expect(state.audit).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor', entityType: 'RoleDefinition', entityId: 'role', action: 'role.deleted',
-    before: { name: 'Staff', isArchived: false }, after: { name: 'Staff', isArchived: true } });
+    before: { name: 'Staff', isArchived: false }, after: { name: 'Staff', isArchived: true } }, state.tx);
   expect(state.tx.roleDefinition.delete).not.toHaveBeenCalled();
   expect(state.tx.rolePermission.deleteMany).not.toHaveBeenCalled();
   expect(state.tx.userRole.deleteMany).not.toHaveBeenCalled();

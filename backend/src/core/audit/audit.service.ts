@@ -1,4 +1,5 @@
 import prisma from '../../config/database.config';
+import type { Prisma } from '@prisma/client';
 import { salesContext } from '../../modules/crm/leads/sales-context';
 
 export interface AuditParams {
@@ -21,14 +22,15 @@ export interface AuditParams {
  * CRM transaction audit entries commit with their source and propagate failures.
  * Standalone audit callers retain best-effort logging.
  */
-export async function writeAuditLog(params: AuditParams): Promise<void> {
+export async function writeAuditLog(params: AuditParams, db?: Prisma.TransactionClient): Promise<void> {
+  const transaction = db ?? salesContext.getStore();
   const changeset =
     params.before || params.after
       ? { before: params.before ?? null, after: params.after ?? null }
       : undefined;
 
   try {
-    await (salesContext.getStore() ?? prisma).auditLog.create({
+    await (transaction ?? prisma).auditLog.create({
       data: {
         tenantId:   params.tenantId,
         userId:     params.userId,
@@ -44,7 +46,7 @@ export async function writeAuditLog(params: AuditParams): Promise<void> {
       },
     });
   } catch (err) {
-    if (salesContext.getStore()) throw err;
+    if (transaction) throw err;
     // Log internally but never surface to caller
     console.error('[AuditLog] Failed to write audit entry:', err);
   }

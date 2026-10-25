@@ -1,5 +1,4 @@
 import { creatorWhere } from '../../crm/access/record-visibility';
-import { crmActor } from '../../crm/access/crm-record-access.service';
 import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
@@ -26,6 +25,7 @@ import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import { buildSearchClauses } from '../../../shared/helpers/search';
+import { crmActor } from '../../crm/access/crm-record-access.service';
 
 export async function getCampaignReport(id: string, tenantId: string) {
   const report = await findCampaignReport(id, tenantId);
@@ -237,15 +237,19 @@ async function validateCampaignVariables(tenantId: string, definition: AudienceI
   const unavailable = campaignVariableKeys(subject + '\n' + body).filter(key => !available.has(key));
   if (unavailable.length) throw new AppError(`Repair unavailable campaign variables: ${unavailable.map(key => '{{' + key + '}}').join(', ')}.`, 400);
 }
-async function resolveCampaignRecipients(tenantId: string, definition: AudienceInput, tx: Prisma.TransactionClient, channel: 'EMAIL' | 'SMS', subject: string, body: string) {
-  const requiredVariables = new Set(campaignVariableKeys(subject + '\n' + body));
-  const resolved = await resolveAudience(tenantId, { source: definition.source, matchMode: definition.matchMode, conditions: definition.conditions }, tx, channel, undefined, requiredVariables);
-  const unresolved = resolved.records.filter(record => !record.reason && record.unresolvedVariables?.length);
-  if (unresolved.length) {
-    const reasons = new Set(unresolved.flatMap(record => record.unresolvedVariables ?? []).map(value => value.endsWith(':multiple-deals') ? 'multiple linked Deals' : value.endsWith(':missing-account') ? 'missing linked Accounts' : 'missing linked Deals'));
-    throw new AppError(`Resolve recipient relationships for campaign variables before scheduling or sending. ${[...reasons].join(' and ')} make ${unresolved.length} recipient message${unresolved.length === 1 ? '' : 's'} unresolved.`, 400);
-  }
-  return resolved;
+async function resolveCampaignRecipients(tenantId: string, definition: AudienceInput, tx: Prisma.TransactionClient, channel: 'EMAIL' | 'SMS', subject: string, body: string, userId: string) {
+  // Workers have no HTTP actor. Resolve current recipient access on the same
+  // transaction connection, while suppression remains tenant-authoritative.
+  return crmActor.run({ tenantId, userId, readRecords: false }, async () => {
+    const requiredVariables = new Set(campaignVariableKeys(subject + '\n' + body));
+    const resolved = await resolveAudience(tenantId, { source: definition.source, matchMode: definition.matchMode, conditions: definition.conditions }, tx, channel, undefined, requiredVariables);
+    const unresolved = resolved.records.filter(record => !record.reason && record.unresolvedVariables?.length);
+    if (unresolved.length) {
+      const reasons = new Set(unresolved.flatMap(record => record.unresolvedVariables ?? []).map(value => value.endsWith(':multiple-deals') ? 'multiple linked Deals' : value.endsWith(':missing-account') ? 'missing linked Accounts' : 'missing linked Deals'));
+      throw new AppError(`Resolve recipient relationships for campaign variables before scheduling or sending. ${[...reasons].join(' and ')} make ${unresolved.length} recipient message${unresolved.length === 1 ? '' : 's'} unresolved.`, 400);
+    }
+    return resolved;
+  });
 }
 async function campaignSender(tenantId: string, channel: 'EMAIL' | 'SMS', content: string, tx: Prisma.TransactionClient) {
   if (channel === 'EMAIL') {
@@ -278,7 +282,7 @@ export async function scheduleCampaign(id: string, tenantId: string, userId: str
     }
     await validateCampaignVariables(tenantId, configuration, content.subject, content.body, tx);
     await campaignSender(tenantId, row.type as 'EMAIL' | 'SMS', content.subject + '\n' + content.body, tx);
-    await resolveCampaignRecipients(tenantId, configuration, tx, row.type as 'EMAIL' | 'SMS', content.subject, content.body);
+    await resolveCampaignRecipients(tenantId, configuration, tx, row.type as 'EMAIL' | 'SMS', content.subject, content.body, userId);
     const changed = await tx.campaign.updateMany({ where: { id, ...scope, status: row.status, updatedAt: row.updatedAt, scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, submissionStartedAt: null, isArchived: false }, data: { status: 'SCHEDULED', scheduledFor: due, scheduledById: userId, scheduleConfig: { source: configuration.source, matchMode: configuration.matchMode, conditions: configuration.conditions, timezone: 'Asia/Manila' }, ...content } });
     if (!changed.count) throw new AppError('The campaign changed while scheduling. Reload its current state.', 409);
   });
@@ -294,7 +298,7 @@ export async function cancelCampaignSchedule(id: string, tenantId: string, userI
   return getCampaignById(id, tenantId);
 }
 
-async function prepareCampaign(id: string, tenantId: string, expected?: ScheduledExpectation, submittedById?: string) {
+async function prepareCampaign(id: string, tenantId: string, expected: ScheduledExpectation | undefined, submittedById: string) {
   const scope = campaignScope(tenantId), owned = await creatorWhere(tenantId);
   const preparationStarted = performance.now();
   if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
@@ -318,7 +322,7 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, ...content, audienceSource: definition.source });
     await validateCampaignVariables(tenantId, definition, content.subject, content.body, tx);
     const sender = await campaignSender(tenantId, campaign.type, content.subject + '\n' + content.body, tx);
-    const resolved = await resolveCampaignRecipients(tenantId, definition, tx, campaign.type, content.subject, content.body);
+    const resolved = await resolveCampaignRecipients(tenantId, definition, tx, campaign.type, content.subject, content.body, submittedById);
     const eligible = resolved.records.filter(r => !r.reason);
     if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions.', 400);
     if (campaign.type === 'EMAIL') {

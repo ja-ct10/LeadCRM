@@ -134,9 +134,9 @@ Heavy checks ran sequentially after parallel attempts exceeded available local
 memory. Tests ran outside the filesystem sandbox after its temporary-file rename
 restriction prevented Vitest from starting.
 
-Browser evidence: [results](../../data/outputs/record-email-attachments-browser/results.json),
-[320px Files](../../data/outputs/record-email-attachments-browser/files-320.png),
-[320px image preview](../../data/outputs/record-email-attachments-browser/image-preview-320.png).
+Browser evidence: results (historical artifact unavailable in this checkout; path: `../../data/outputs/record-email-attachments-browser/results.json`),
+320px Files (historical artifact unavailable in this checkout; path: `../../data/outputs/record-email-attachments-browser/files-320.png`),
+320px image preview (historical artifact unavailable in this checkout; path: `../../data/outputs/record-email-attachments-browser/image-preview-320.png`).
 
 The browser fixture uses the real shared Files UI and production styles with
 simulated attachment bytes. Backend tests use a disposable local database and

@@ -70,6 +70,7 @@ export default function TaskBoard() {
   const [editor, setEditor] = useState<{
     task?: TaskRecord;
     taskId?: string;
+    initialMode?: 'view' | 'edit';
     readOnly?: boolean;
   } | null>(null);
   const [selected, setSelected] = useState<string[]>([]),
@@ -477,7 +478,7 @@ export default function TaskBoard() {
                 selected={selected}
                 onSelect={setSelected}
                 onOpen={(task) => setEditor({ task })}
-                onEdit={(task) => setEditor({ task })}
+                onEdit={(task) => setEditor({ task, initialMode: 'edit' })}
                 onArchive={(task) => setArchiveIds([task.id])}
                 onStatus={(task) => void change(task)}
                 onSort={next => { setSort({ field: next.sortBy ?? "createdAt", direction: next.sortOrder ?? "desc" }); setPage(1); }}
@@ -687,9 +688,10 @@ export default function TaskBoard() {
       />
       {editor && (
         <TaskEditor
-          key={data.identity + (editor.task?.id ?? editor.taskId ?? "new") + editor.readOnly}
+          key={data.identity + (editor.task?.id ?? editor.taskId ?? "new") + editor.readOnly + editor.initialMode}
           task={editor.task}
           taskId={editor.taskId}
+          initialMode={editor.initialMode}
           readOnly={editor.readOnly}
           onClose={() => setEditor(null)}
         />

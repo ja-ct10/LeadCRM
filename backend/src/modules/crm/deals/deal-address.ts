@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { dealAddressKey, type DealAddressOption, type DealAddressSource } from '@leadcrm/shared';
-import { mayReadCrmModule } from '../access/crm-record-access.service';
+import { mayReadCrmModule, crmReadWhere } from '../access/crm-record-access.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 
 export interface AddressRelationships { id: string; accountId?: string | null; leadIds?: string[]; contactIds?: string[] }
@@ -12,8 +12,8 @@ export async function loadDealAddressOptions(db: Prisma.TransactionClient, tenan
   const active = { tenantId, isArchived: false, deletedAt: null };
   const select = { id: true, firstName: true, lastName: true, address: true, accountId: true };
   const [leads, contacts] = await Promise.all([
-    leadsVisible ? db.lead.findMany({ where: { ...active, id: { in: [...new Set(deals.flatMap(deal => deal.leadIds ?? []))] } }, select }) : [],
-    contactsVisible ? db.contact.findMany({ where: { ...active, id: { in: [...new Set(deals.flatMap(deal => deal.contactIds ?? []))] } }, select }) : [],
+    leadsVisible ? db.lead.findMany({ where: { ...active, AND: [await crmReadWhere(db, tenantId, 'leads')], id: { in: [...new Set(deals.flatMap(deal => deal.leadIds ?? []))] } }, select }) : [],
+    contactsVisible ? db.contact.findMany({ where: { ...active, AND: [await crmReadWhere(db, tenantId, 'contacts')], id: { in: [...new Set(deals.flatMap(deal => deal.contactIds ?? []))] } }, select }) : [],
   ]);
   const accountIds = [...new Set([...deals.map(deal => deal.accountId), ...leads.map(lead => lead.accountId), ...contacts.map(contact => contact.accountId)].filter((id): id is string => !!id))];
   const accounts = accountsVisible ? await db.account.findMany({ where: { ...active, id: { in: accountIds } }, select: { id: true, name: true, address: true } }) : [];
