@@ -49,7 +49,7 @@ it.each([375, 1440])('supports configuration and placement at %spx with mobile-o
   expect(!!screen.queryByLabelText('Drag to reorder action')).toBe(width >= 768);
   if (width < 768) expect(screen.getByText(/Tap each step to configure it/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /Configure action: 1. Create Task/ }));
-  expect(screen.getByRole('button', { name: 'Done' }).style.backgroundColor).toBe('var(--primary)');
+  expect(screen.getByRole('button', { name: 'Done' }).classList.contains('bg-primary')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   if (width < 768) fireEvent.click(screen.getByRole('button', { name: 'Add steps' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add Send SMS' }));

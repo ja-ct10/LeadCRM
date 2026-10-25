@@ -296,7 +296,7 @@ it('shows the create subtitle, visual required indicators and an adjacent primar
   expect(group.parentElement).toBe(add.parentElement);
   expect(group.parentElement?.classList.contains('flex')).toBe(true);
   expect(group.classList.contains('flex-1')).toBe(true);
-  expect(add.style.backgroundColor).toBe('var(--primary)');
+  expect(add.classList.contains('bg-primary')).toBe(true);
   expect(form.queryByLabelText('Add a new group name')).toBeNull();
   expect(form.queryByRole('button', { name: 'Add Group' })).toBeNull();
   fireEvent.click(add);
@@ -304,7 +304,7 @@ it('shows the create subtitle, visual required indicators and an adjacent primar
   const create = form.getByRole('button', { name: 'Add group' });
   expect(create.textContent).toBe('');
   expect(create.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-  expect(create.style.backgroundColor).toBe('var(--primary)');
+  expect(create.classList.contains('bg-primary')).toBe(true);
   expect(create).toHaveProperty('disabled', true);
   expect(form.queryByRole('button', { name: 'Add and select' })).toBeNull();
 });
@@ -562,7 +562,7 @@ it('creates a group from the labeled management form and clears its input after 
   const groups = within(screen.getByRole('dialog', { name: 'Manage Fields Groups' }));
   const input = groups.getByLabelText('Add a new group name');
   expect(input.getAttribute('placeholder')).toBe('New group name');
-  expect(groups.getByRole('button', { name: 'Add' }).style.backgroundColor).toBe('var(--primary)');
+  expect(groups.getByRole('button', { name: 'Add' }).classList.contains('bg-primary')).toBe(true);
   const layout = mocks.data.leads.layout;
   mocks.patch.mockResolvedValueOnce({ data: { layout: { ...layout, revision: 1, groups: [...layout.groups, customGroup] }, fields: [] } });
   fireEvent.change(input, { target: { value: customGroup.label } });

@@ -215,7 +215,7 @@ it('uses red Group deletion and primary Add Members while leaving the member X a
   expect(removeGroup.classList.contains('hover:bg-destructive/10')).toBe(true);
   expect(removeGroup.title).toContain('Remove all members');
   await openGroup();
-  expect(screen.getByRole('button', { name: 'Add Members' }).style.backgroundColor).toBe('var(--primary)');
+  expect(screen.getByRole('button', { name: 'Add Members' }).classList.contains('bg-primary')).toBe(true);
   const removeMember = screen.getByRole('button', { name: 'Remove Julie Ann Tiron' });
   expect(removeMember.querySelector('.lucide-x')).toBeTruthy();
   expect(removeMember.classList.contains('text-destructive')).toBe(false);

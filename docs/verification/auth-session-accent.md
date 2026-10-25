@@ -12,7 +12,7 @@ Authentication, cookie signing, tenant isolation, RBAC and the shared appearance
 
 ## Automated verification
 
-Final focused runs cover **181 frontend tests in 16 files**, **83 backend regression tests in 6 files**, and **4 session HTTP integration tests**, all passing. Overlapping reruns are counted once, using the latest result for each file.
+Initial focused runs cover **181 frontend tests in 16 files**, **83 backend regression tests in 6 files**, and **4 session HTTP integration tests**, all passing. Overlapping reruns are counted once, using the latest result for each file.
 
 Frontend coverage includes Login/Remember Me, invalid and failed login, logout cancellation/error/retry/double-click, public Help redirection, dirty-editor guards, first-login routing, auth restoration and stale responses, inactivity/wake/cross-tab handling, blocked browser storage, API auth events, reusable confirmations/checkboxes, appearance persistence/prepaint/portals, compiled CSS and all seven accent fill/hover contrast checks.
 
@@ -21,6 +21,8 @@ Backend coverage includes existing login/account/session revocation and middlewa
 Commands use `npm --prefix frontend test -- <target files> --pool=threads --maxWorkers=1 --hookTimeout=60000` and `npm --prefix backend test -- <target files> --pool=threads --maxWorkers=1`. HTTP fixtures require loopback networking. Reports are retained locally under `data/outputs/auth-accent-verification/`.
 
 `npm run lint` passed all three workspaces, including backend test typechecking. `npm run build` passed shared, backend and frontend, including 180 generated static pages. The final patch also passed `git diff --check`.
+
+Merge verification in [PR #203](https://github.com/reymarkjpanes/LeadCRM/pull/203) additionally runs the complete isolated frontend/backend inventory on Ubuntu. Its first frontend run identified isolated password/onboarding fixtures missing the confirmation provider, plus button tests asserting the former inline fill/brightness implementation. The fixtures now mount the production provider; the button tests check semantic accent utilities, and compiled-CSS coverage verifies the configured hover fill. Their existing domain and security assertions are retained. The follow-up local run passed all **206 tests in 10 affected files**, plus frontend typechecking. Full CI results are recorded on the PR.
 
 ## Browser verification
 

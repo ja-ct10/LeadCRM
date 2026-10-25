@@ -5,12 +5,15 @@ const complete = vi.hoisted(() => vi.fn());
 const applyAuthUser = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { completeOnboarding: complete } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, applyAuthUser, logout: vi.fn() }) }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/onboarding', useRouter: () => ({ replace: vi.fn() }) }));
 import OnboardingPage from '../ui/onboarding-page';
+import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
+function show() { return render(<LogoutConfirmationProvider><OnboardingPage /></LogoutConfirmationProvider>); }
 beforeEach(() => { cleanup(); vi.clearAllMocks(); });
 it('requires explicit acknowledgment and applies the server response once', async () => {
   const user = { id: 'u', onboardingCompletedAt: '2026-01-01' };
   complete.mockResolvedValue({ data: { user } });
-  render(<OnboardingPage />);
+  show();
   expect(complete).not.toHaveBeenCalled();
   expect(screen.queryByText(/subscription|company setup|pricing/i)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
@@ -19,7 +22,7 @@ it('requires explicit acknowledgment and applies the server response once', asyn
 });
 it('stays on onboarding and displays a failed save', async () => {
   complete.mockRejectedValue(new Error('Network unavailable'));
-  render(<OnboardingPage />);
+  show();
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
   await screen.findByRole('alert');
   expect(applyAuthUser).not.toHaveBeenCalled();
@@ -27,7 +30,7 @@ it('stays on onboarding and displays a failed save', async () => {
 it('visits all eight steps and only persists completion on Finish', async () => {
   const user = { id: 'u', onboardingCompletedAt: '2026-01-01' };
   complete.mockResolvedValue({ data: { user } });
-  render(<OnboardingPage />);
+  show();
   for (let step = 1; step < 8; step++) {
     expect(screen.getByText(`Step ${step} of 8`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -42,7 +45,7 @@ it('visits all eight steps and only persists completion on Finish', async () => 
 it('submits a double click only once while completion is pending', async () => {
   let resolve!: (value: unknown) => void;
   complete.mockImplementation(() => new Promise(r => { resolve = r; }));
-  render(<OnboardingPage />);
+  show();
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
   expect(complete).toHaveBeenCalledOnce();

@@ -30,7 +30,7 @@ describe('workflow polish controls', () => {
     expect(field.getAttribute('aria-required')).toBe('true');
     expect(field.closest('label')?.querySelector('.text-red-500')?.textContent).toBe('*');
     expect(screen.getByLabelText('Condition 1 value').closest('label')?.querySelector('.text-red-500')?.textContent).toBe('*');
-    expect(screen.getByRole('button', { name: 'Add condition' }).style.backgroundColor).toBe('var(--primary)');
+    expect(screen.getByRole('button', { name: 'Add condition' }).classList.contains('bg-primary')).toBe(true);
     fireEvent.click(remove);
     expect(JSON.parse(screen.getByTestId('conditions').textContent!).conditions.map((rule: { value: string }) => rule.value)).toEqual(['First', 'Middle', 'Last'].filter((_, i) => i !== index - 1));
     expect(screen.getByLabelText('Condition 2 value')).toBeTruthy();

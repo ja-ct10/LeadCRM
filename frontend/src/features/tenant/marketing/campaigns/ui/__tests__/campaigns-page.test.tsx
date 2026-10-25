@@ -424,7 +424,7 @@ it.each(['Email', 'SMS'] as const)('uses the shared primary New %s Template butt
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
   await screen.findByRole('heading', { name: `No ${type} Templates Found` });
   const button = screen.getByRole('button', { name: `New ${type} Template` });
-  expect(button.style.backgroundColor).toBe('var(--primary)');
+  expect(button.classList.contains('bg-primary')).toBe(true);
   expect(button.className).toContain('text-white');
   expect(button.className).toContain('h-9');
   expect(button.className).toContain('rounded-xl');
