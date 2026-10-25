@@ -27,7 +27,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_polis
     for (let index = 0; index < 30; index++) {
       const task = await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: staff.id, title: `Archived ${index}`, dueDate: new Date('2026-01-01'), isArchived: true } }));
       taskIds.push(task.id);
-      await prisma.auditLog.create({ data: { tenantId, userId: adminId, action: 'task.archived', entityType: 'Task', entityId: task.id, createdAt: new Date(Date.UTC(2026, 0, index + 1)) } });
+      await prisma.auditLog.create({ data: { tenantId, userId: index === 0 ? staff.id : adminId, action: 'task.archived', entityType: 'Task', entityId: task.id, createdAt: new Date(Date.UTC(2026, 0, index + 1)) } });
     }
     unknownDateTask = (await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: staff.id, title: 'Archived without audit', dueDate: new Date('2026-01-01'), isArchived: true } }))).id;
     roleId = (await scope(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Retired role', isArchived: true } }))).id;
@@ -53,7 +53,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_polis
     const match = await read('?search=Literal%20100%25_match'); expect(match.status).toBe(200);
     expect(match.body.meta.total).toBe(1); expect(match.body.data[0].id).toBe(leadId);
     const staff = await read('?limit=50', staffToken); expect(staff.status).toBe(200);
-    expect(staff.body.meta.total).toBe(31); expect(staff.body.data.every((row: { type: string; canRestore: boolean }) => row.type === 'Task' && !row.canRestore)).toBe(true);
+    expect(staff.body.meta.total).toBe(1); expect(staff.body.data.map((row: { id: string }) => row.id)).toEqual([taskIds[0]]); expect(staff.body.data.every((row: { type: string; canRestore: boolean }) => row.type === 'Task' && !row.canRestore)).toBe(true);
     expect((await read('?type=Role', staffToken)).status).toBe(400);
     expect((await read('?type=Product', staffToken)).status).toBe(403);
   });

@@ -118,7 +118,9 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     await mutate(async () => {
       if (modal === 'create' && canCreate && parsed.success) {
         const created = (await groupsApi.create(parsed.data)).data;
-        setGroups(previous => [...previous, created]); setLoaded(true); setActiveId(created.id); setMemberSearch('');
+        if (canManageMembers) { setGroups(previous => [...previous, created]); setLoaded(true); setActiveId(created.id); }
+        else { reloadPending.current = true; setActiveId(null); }
+        setMemberSearch('');
         // Creation is committed even if an optional member operation fails.
         setModal('members');
         if (canManageMembers && selectedIds.length) await addMembers(created.id, selectedIds);
@@ -158,7 +160,8 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   };
   const duplicate = (group: TenantGroup) => mutate(async () => {
     const created = (await groupsApi.create(`${group.name.slice(0, 93)} (Copy)`)).data;
-    setGroups(previous => [...previous, created]);
+    if (canManageMembers) setGroups(previous => [...previous, created]);
+    else reloadPending.current = true;
     if (canManageMembers && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
     toast.success('Group duplicated');
   });

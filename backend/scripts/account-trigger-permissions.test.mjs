@@ -24,6 +24,7 @@ test('Account HTTP creation with separate migration and runtime roles', { timeou
     const database = `leadcrm_account_trigger_${Date.now()}`;
     const bootstrapUrl = await cluster.database(database, { migrate: false });
     const names = readdirSync(join(root, 'backend/prisma/migrations')).filter(name => /^\d+_/.test(name)).sort();
+    // Exercise current runtime/schema while withholding only the permission correction.
     // Match production: address retirement is applied; other guarded retirements
     // remain pending, including the legacy Account note and assignment columns.
     const plan = deploymentPlan(['20261028000000_retire_legacy_crm_imports', '20261202000000_retire_account_address_columns']
@@ -34,7 +35,7 @@ test('Account HTTP creation with separate migration and runtime roles', { timeou
       CREATE TABLE "_prisma_migrations" (id varchar(36) PRIMARY KEY, checksum varchar(64) NOT NULL,
         finished_at timestamptz, migration_name varchar(255) NOT NULL, logs text, rolled_back_at timestamptz,
         started_at timestamptz NOT NULL DEFAULT now(), applied_steps_count integer NOT NULL DEFAULT 0);\n`;
-    for (const name of names.filter(name => name < correction && !plan.exclude.includes(name))) {
+    for (const name of names.filter(name => name !== correction && !plan.exclude.includes(name))) {
       const sql = readFileSync(join(root, 'backend/prisma/migrations', name, 'migration.sql'), 'utf8');
       source += `${sql}\nINSERT INTO "_prisma_migrations" (id,checksum,migration_name,finished_at,applied_steps_count)
         VALUES ('${randomUUID()}','${createHash('sha256').update(sql).digest('hex')}','${name}',now(),1);\n`;
@@ -93,7 +94,7 @@ test('Account HTTP creation with separate migration and runtime roles', { timeou
       const code = await new Promise((done, fail) => { child.on('exit', done); child.on('error', fail); });
       assert.equal(code, 0, output);
       const after = await owner.$queryRawUnsafe('SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name');
-      const reviewed = names.filter(name => name >= correction && !plan.exclude.includes(name));
+      const reviewed = names.filter(name => name === correction);
       assert.deepEqual(after.filter(row => !before.some(prior => prior.migration_name === row.migration_name)), reviewed.map(migration_name => ({ migration_name })));
       const [trigger] = await owner.$queryRawUnsafe(`SELECT p.prosecdef, p.proconfig, r.rolname AS owner,
         has_function_privilege('${runtimeRole}',p.oid,'EXECUTE') AS runtime_execute

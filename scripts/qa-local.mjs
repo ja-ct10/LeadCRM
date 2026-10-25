@@ -202,7 +202,7 @@ async function execute(section) {
   }
   else if (section === 'migrations') {
     await check('Prisma validation', [resolve(root, 'node_modules/prisma/build/index.js'), 'validate', '--schema', resolve(root, 'backend/prisma/schema.prisma')]);
-    try { await check('Rollout and migration regression tests', ['--test', ...walk(resolve(root, 'backend/scripts')).filter(file => /\.test\.(cjs|mjs)$/.test(file))]); }
+    try { await check('Rollout and migration regression tests', ['--test', '--test-concurrency=1', ...walk(resolve(root, 'backend/scripts')).filter(file => /\.test\.(cjs|mjs)$/.test(file))]); }
     catch (error) { recordFailure('Rollout regression', error); }
     await check('Contact preservation and retirement fixtures', ['backend/scripts/test-contact-retirement.mjs']);
     await importHistory();

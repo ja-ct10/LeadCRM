@@ -1,3 +1,4 @@
+import { INVALID_LOGIN_CODE, INVALID_LOGIN_MESSAGE } from '@leadcrm/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -77,7 +78,7 @@ describe.sequential('durable sixth-attempt login lockout', () => {
     const compare = vi.spyOn(cryptoHelpers, 'comparePassword');
     for (let attempt = 1; attempt <= 5; attempt++) {
       const denied = await login();
-      expect(denied.status).toBe(401); expect(denied.body.error).toBe('Invalid email or password.');
+      expect(denied.status).toBe(401); expect(denied.body.error).toEqual({ code: INVALID_LOGIN_CODE, message: INVALID_LOGIN_MESSAGE });
       expect(denied.cookies).toEqual([]);
       expect(await state()).toMatchObject({ failedAttempts: attempt, lockedUntil: null });
     }
@@ -134,7 +135,7 @@ describe.sequential('durable sixth-attempt login lockout', () => {
     const address = 'missing@camxian.com';
     for (let i = 0; i < 5; i++) {
       const denied = await login('incorrect', i % 2 ? ` ${address.toUpperCase()} ` : address);
-      expect(denied.status).toBe(401); expect(denied.body.error).toBe('Invalid email or password.');
+      expect(denied.status).toBe(401); expect(denied.body.error).toEqual({ code: INVALID_LOGIN_CODE, message: INVALID_LOGIN_MESSAGE });
     }
     expect((await login(password, address)).body.error.code).toBe('AUTH_LOGIN_LOCKED');
     expect((await state(address)).failedAttempts).toBe(5); expect(await db.session.count()).toBe(0);
@@ -400,6 +401,11 @@ describe.sequential('password reminders, authorized CSV and Product metadata', (
   it('requires category, persists description and value, and leaves existing Deal snapshots intact', async () => {
     const cookie = await manager(), endpoint = '/administration/product-interests';
     expect((await call(endpoint, { name: 'QA Product', dealValue: 25000 }, cookie)).status).toBe(400);
+    for (const name of ['Security', 'New Inline Category']) {
+      const category = await fetch(base + endpoint + '/categories', { method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ action: 'add', name }) });
+      expect(category.status, await category.text()).toBe(200);
+    }
     const created = await call(endpoint, { name: 'QA Product', category: 'Security', description: 'A product description', dealValue: 25000 }, cookie);
     expect(created.status).toBe(200); const product = created.body.data.find((row: any) => row.name === 'QA Product');
     expect(product).toMatchObject({ category: 'Security', description: 'A product description', dealValue: 25000 });

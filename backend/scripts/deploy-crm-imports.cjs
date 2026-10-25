@@ -172,6 +172,7 @@ function deploymentPlan(records, localNames) {
     accountColumnsRetirement,
     // Removes obsolete CRM Group references without changing stored values or employee roles.
     '20261227000000_retire_crm_group_ownership',
+    '20261228000000_role_based_visibility',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

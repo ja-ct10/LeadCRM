@@ -11,7 +11,7 @@ import {
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
-import { crmActor, resolveCrmActor, taskReadWhere, taskAssigneeInScope, authorizedWorkflowScope, crmReadWhere, mayReadCrmModule } from '../../crm/access/crm-record-access.service';
+import { isCrmTransactionConflict, crmActor, resolveCrmActor, taskReadWhere, taskAssigneeInScope, authorizedWorkflowScope, crmReadWhere, mayReadCrmModule } from '../../crm/access/crm-record-access.service';
 import { eligibleAssignedAgents, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -86,10 +86,7 @@ export async function withTaskTransaction<T>(
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2034"
-    ) {
+    if (isCrmTransactionConflict(error)) {
       throw new ConflictError(
         "This task changed while you were editing. Refresh and try again.",
       );

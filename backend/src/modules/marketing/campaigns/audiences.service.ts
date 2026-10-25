@@ -1,3 +1,4 @@
+import { recipientWhere } from '../../crm/access/record-visibility';
 import { crmActor } from '../../crm/access/crm-record-access.service';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -22,7 +23,7 @@ export function campaignScope(tenantId: string) {
 /** CRM scalar fields used by audience matching; never a paginated UI cache. */
 async function companyValues(tenantId: string, source: AudienceInput['source'], db: Prisma.TransactionClient = prisma) {
   const permitted = await mayReadContactAccount(db, tenantId);
-  const where = { ...campaignScope(tenantId), isArchived: false, deletedAt: null };
+  const where = { ...await recipientWhere(tenantId, db), isArchived: false, deletedAt: null };
   const [leads, contacts] = await Promise.all([
     source === 'CONTACTS' ? [] : db.lead.findMany({ where, distinct: ['companyName', 'companyFromAccount'], select: { companyName: true, companyFromAccount: true } }),
     source === 'LEADS' ? [] : db.contact.findMany({ where, distinct: ['companyName', 'accountId', 'companyFromAccount'], select: { companyName: true, companyFromAccount: true, account: { select: { name: true } } } }),
@@ -310,6 +311,7 @@ export function resolveAudience(...args: Parameters<typeof resolveScopedAudience
 }
 async function resolveScopedAudience(tenantId: string, input: unknown, db: Prisma.TransactionClient = prisma, channel: 'EMAIL' | 'SMS' = 'EMAIL', page?: { page: number; limit: number }, requiredVariables?: RequiredCampaignVariables) {
   const dto = AudiencePreviewSchema.parse(input), scope = campaignScope(tenantId);
+  const recipients = await recipientWhere(tenantId, db);
   const canReadAccount = await mayReadContactAccount(db, tenantId);
   const fields = await validateAudienceReferences(tenantId, dto, db);
   const campaignFields = await campaignFieldsForAudienceSource(tenantId, dto.source, db);
@@ -344,7 +346,7 @@ async function resolveScopedAudience(tenantId: string, input: unknown, db: Prism
   if (dto.source !== 'LEADS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.contact.findMany({ where: { ...scope, ...audiencePredicate(dto, false, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...contactRecipientProjection, customFieldValues: { ...contactRecipientProjection.customFieldValues, where: { tenantId, module: 'contacts' } }, companyName: true, notes: true, doNotContact: true, productLinks: { ...contactRecipientProjection.productLinks, select: { ...contactRecipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
+      const rows = await db.contact.findMany({ where: { ...scope, ...recipients, ...audiencePredicate(dto, false, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...contactRecipientProjection, customFieldValues: { ...contactRecipientProjection.customFieldValues, where: { tenantId, module: 'contacts' } }, companyName: true, notes: true, doNotContact: true, productLinks: { ...contactRecipientProjection.productLinks, select: { ...contactRecipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
       for (const c of rows) { const resolved = personalized(presentContactAccount(c, canReadAccount), campaignFields, tenantId, requiredVariables); retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;
@@ -353,7 +355,7 @@ async function resolveScopedAudience(tenantId: string, input: unknown, db: Prism
   if (dto.source !== 'CONTACTS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.lead.findMany({ where: { ...scope, ...audiencePredicate(dto, true, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...leadRecipientProjection, customFieldValues: { ...leadRecipientProjection.customFieldValues, where: { tenantId, module: 'leads' } }, companyName: true, convertedAt: true } });
+      const rows = await db.lead.findMany({ where: { ...scope, ...recipients, ...audiencePredicate(dto, true, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...leadRecipientProjection, customFieldValues: { ...leadRecipientProjection.customFieldValues, where: { tenantId, module: 'leads' } }, companyName: true, convertedAt: true } });
       for (const l of rows) { const resolved = personalized(presentContactAccount(l, canReadAccount), campaignFields, tenantId, requiredVariables); retain({ leadId: l.id, email: l.email, phone: l.phone, reason: l.isArchived || l.deletedAt || l.convertedAt || ['archived', 'converted', 'cancelled'].includes(l.status.toLowerCase()) ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;

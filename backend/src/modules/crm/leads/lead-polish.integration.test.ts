@@ -21,7 +21,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
     const response = await fetch(base + path, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() };
   }
-  const input = (extra = {}) => ({ firstName: 'Lead', lastName: 'Acceptance', email: `${randomUUID()}@example.test`, status: 'Warm', ...extra });
+  const input = (extra = {}) => ({ firstName: 'Lead', lastName: 'Acceptance', email: `${randomUUID()}@example.test`, status: 'Inquiry', ...extra });
   async function newAgent() {
     const user = await prisma.user.create({ data: { tenantId, firstName: 'Transfer', lastName: 'Agent', email: `${randomUUID()}@camxian.com`, role: 'Sales', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     await prisma.userRole.create({ data: { tenantId, roleId, userId: user.id } });

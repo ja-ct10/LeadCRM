@@ -31,8 +31,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
   it('saves CCTV 25000, reloads it, creates separate 25000/15000 Deals, and freezes the older price', async () => {
-    const cctv = await prisma.productInterest.create({ data: { tenantId, name: 'CCTV Surveillance System', dealValue: 0 } });
-    const bio = await prisma.productInterest.create({ data: { tenantId, name: 'Biometrics', dealValue: 15000 } });
+    const cctv = await prisma.productInterest.create({ data: { tenantId, name: 'CCTV Surveillance System', category: 'Catalog', dealValue: 0 } });
+    const bio = await prisma.productInterest.create({ data: { tenantId, name: 'Biometrics', category: 'Catalog', dealValue: 15000 } });
     const path = '/administration/product-interests/' + cctv.id;
     expect((await request(path, 'PATCH', { dealValue: 25000 })).status).toBe(200);
     expect((await prisma.productInterest.findUniqueOrThrow({ where: { id: cctv.id } })).dealValue.toFixed(2)).toBe('25000.00');

@@ -45,7 +45,8 @@ try {
     '20261102000000_retire_relationship_compatibility',
     '20261110000000_retire_unused_crm_columns',
     '20261112000000_retire_lead_nonform_columns',
-    '20261129000000_retire_contact_obsolete_columns'] });
+    '20261129000000_retire_contact_obsolete_columns',
+    '20261226000000_retire_unused_relationship_tables'] });
   await db.exec(`UPDATE "Tenant" SET status='ACTIVE',"onboardingStep"=3,"onboardingCompletedAt"=now() WHERE id='import-rollout-tenant';
     UPDATE "User" SET status='ACTIVE',"mustChangePassword"=false,"onboardingCompletedAt"=now() WHERE id='import-rollout-actor';`);
   // Added nullable columns must preserve original payload comparison and must not

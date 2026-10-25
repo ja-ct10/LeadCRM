@@ -1049,16 +1049,15 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     });
   });
 
-  it('resolves scheduled audiences under the current scheduling actor Group grants', async () => {
+  it('resolves scheduled audiences under the current scheduling actor assignment while retaining tenant-wide suppression', async () => {
     await scoped(async () => {
       const company = randomUUID();
-      const senderRole = await prisma.roleDefinition.create({ data: { tenantId, name: `Scoped sender ${randomUUID()}`, permissions: { create: { tenantId, module: 'campaigns', canView: true, canSend: true } } } });
-      const crmRole = await prisma.roleDefinition.create({ data: { tenantId, name: `Group audience ${randomUUID()}`, permissions: { create: { tenantId, module: 'contacts', canView: true, canViewAll: true } } } });
+      const senderRole = await prisma.roleDefinition.create({ data: { tenantId, name: `Scoped sender ${randomUUID()}`, permissions: { create: [{ tenantId, module: 'campaigns', canView: true, canSend: true }, { tenantId, module: 'contacts', canView: true, canViewAll: true }] } } });
       const actor = await prisma.user.create({ data: { tenantId, role: senderRole.name, email: `${randomUUID()}@camxian.com`, firstName: 'Group', lastName: 'Sender', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date(), userRoles: { create: { tenantId, roleId: senderRole.id } } } });
       const group = await prisma.tenantGroup.create({ data: { tenantId, name: company } });
-      const member = await prisma.tenantGroupMember.create({ data: { tenantId, groupId: group.id, userId: actor.id, crmRoleId: crmRole.id } });
+      const member = await prisma.tenantGroupMember.create({ data: { tenantId, groupId: group.id, userId: actor.id } });
       await prisma.contact.createMany({ data: [
-        { tenantId, firstName: 'Allowed', lastName: 'Audience', email: `${randomUUID()}@example.test`, companyName: company, ownerGroupId: group.id },
+        { tenantId, firstName: 'Allowed', lastName: 'Audience', email: `${randomUUID()}@example.test`, companyName: company, assignedUserId: actor.id },
         { tenantId, firstName: 'Outside', lastName: 'Audience', email: `${randomUUID()}@example.test`, companyName: company },
       ] });
       const audience = await createAudience(tenantId, { name: company, source: 'CONTACTS', conditions: [{ field: 'companyName', operator: 'equals', value: company }] });
@@ -1066,19 +1065,19 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const preview = await request('/marketing/audiences/preview', 'POST', { source: 'CONTACTS', conditions: [{ field: 'companyName', operator: 'equals', value: company }] }, auth);
       expect(preview.status, JSON.stringify(preview.body)).toBe(200);
       expect(preview.body.data).toMatchObject({ matched: 1, eligible: 1 });
-      const allowed = await prisma.contact.findFirstOrThrow({ where: { tenantId, ownerGroupId: group.id, companyName: company } });
+      const allowed = await prisma.contact.findFirstOrThrow({ where: { tenantId, assignedUserId: actor.id, companyName: company } });
       const optOut = await prisma.contact.create({ data: { tenantId, firstName: 'Hidden', lastName: 'Opt out', email: allowed.email, doNotContact: true } });
       const suppressed = await request('/marketing/audiences/preview', 'POST', { source: 'CONTACTS', conditions: [{ field: 'companyName', operator: 'equals', value: company }] }, auth);
       expect(suppressed.body.data).toMatchObject({ matched: 1, eligible: 0, unsubscribed: 1 });
       await prisma.contact.delete({ where: { id: optOut.id } });
-      const immediate = await createCampaign(tenantId, userId, { name: company, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
+      const immediate = await createCampaign(tenantId, actor.id, { name: company, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
       const sent = await request('/marketing/campaigns/' + immediate.id + '/send', 'PATCH', undefined, auth);
       expect(sent.status, JSON.stringify(sent.body)).toBe(202);
       await vi.waitFor(async () => expect((await getCampaignById(immediate.id, tenantId)).submissionFinishedAt).not.toBeNull(), { timeout: 10000 });
       expect(await prisma.campaignContact.count({ where: { campaignId: immediate.id } })).toBe(1);
       vi.mocked(sendMail).mockClear();
       const makeScheduled = async () => {
-        const campaign = await createCampaign(tenantId, userId, { name: company, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
+        const campaign = await createCampaign(tenantId, actor.id, { name: company, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
         await crmActor.run({ tenantId, userId: actor.id, readRecords: true }, () => scheduleCampaign(campaign.id, tenantId, actor.id, { scheduledFor: new Date(Date.now() + 60000).toISOString() }));
         return campaign;
       };
@@ -1088,7 +1087,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect(sendMail).toHaveBeenCalledOnce();
       expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(1);
       const revoked = await makeScheduled();
-      await prisma.tenantGroupMember.update({ where: { id: member.id }, data: { crmRoleId: null } });
+      await prisma.contact.update({ where: { id: allowed.id }, data: { assignedUserId: null } });
+      expect(await prisma.tenantGroupMember.findUnique({ where: { id: member.id } })).not.toBeNull();
       expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
       expect(await getCampaignById(revoked.id, tenantId)).toMatchObject({ status: 'DRAFT', submissionStartedAt: null, scheduleConfig: { scheduleFailureReason: expect.stringContaining('No eligible') } });
       expect(sendMail).toHaveBeenCalledOnce();

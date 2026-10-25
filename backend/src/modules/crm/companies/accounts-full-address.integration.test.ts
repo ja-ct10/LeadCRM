@@ -26,14 +26,14 @@ const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_accounts_full_address_\d+$/.test(url.pathname);
 describe.skipIf(!disposable).sequential('Accounts on isolated native PostgreSQL', () => {
   let tenantId: string, userId: string, accountId: string;
-  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, () => crmActor.run({ tenantId, userId }, work));
+  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, () => crmActor.run({ tenantId, userId }, async () => await work()));
   beforeAll(async () => {
     const tenant = await prisma.tenant.create({ data: { name: 'Address persistence', slug: randomUUID() } });
     tenantId = tenant.id;
     const user = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@example.test`, firstName: 'Assigned', lastName: 'Agent', role: 'Sales' } });
     userId = user.id;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', crmAssignmentRestricted: true } });
-    for (const module of ['accounts', 'contacts']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true } });
+    for (const module of ['accounts', 'contacts']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canViewAll: true, canCreate: true, canEdit: true } });
     await prisma.userRole.create({ data: { tenantId, userId, roleId: role.id } });
   });
   afterAll(async () => { await prisma.$disconnect(); });

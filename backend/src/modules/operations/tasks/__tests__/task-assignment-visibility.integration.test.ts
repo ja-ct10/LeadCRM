@@ -48,7 +48,8 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
     viewer = await user('viewer', 'Task Viewer'); denied = await user('denied', 'Sales Agent', false);
     await scope(async () => {
       for (const [name, members] of [['First team', [manager, a]], ['Second team', [manager, head, b, representative]]] as const) {
-        await prisma.tenantGroup.create({ data: { tenantId, name, members: { create: members.map(member => ({ tenantId, userId: member.id })) } } });
+        const group = await prisma.tenantGroup.create({ data: { tenantId, name } });
+        await prisma.tenantGroupMember.createMany({ data: members.map(member => ({ tenantId, groupId: group.id, userId: member.id })) });
       }
       const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Visibility pipeline' } });
       const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0, requiredFields: [] } });
@@ -61,6 +62,8 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
           const row = await prisma.task.create({ data: { tenantId, title: `Visibility ${actor.id} ${index}`, assignedUserId: actor.id, createdById: manager.id,
             dueDate, status, priority: 'High', isArchived: index === 6, dealLinks: { create: { tenantId, dealId, position: 0 } } } });
           rows.push(row);
+          if (row.isArchived) await prisma.auditLog.create({ data: { tenantId, userId: actor.id,
+            action: 'task.archived', entityType: 'Task', entityId: row.id } });
           await prisma.activity.create({ data: { tenantId, taskId: row.id, type: 'task', title: `${row.title} history`, description: 'Visibility history', createdById: manager.id } });
         }
       }
@@ -196,7 +199,8 @@ describe.skipIf(!disposable)('Task assignment visibility through authenticated H
     expect((await call(manager, `/operations/tasks/${ownRows(a)[0].id}`, 'PUT', { assignedUserId: outsider.id })).status).toBe(403);
     for (const sortBy of ['archivedAt', 'name']) {
       const archived = await call(head, `/administration/archived-data?type=Task&sortBy=${sortBy}`);
-      expect(archived.body.data.map((row: { id: string }) => row.id).sort()).toEqual(rows.filter(row => row.isArchived && [b.id, representative.id].includes(row.assignedUserId)).map(row => row.id).sort());
+      expect(archived.body.meta.total).toBe(0);
+      expect(archived.body.data).toEqual([]); // Group scope does not make this user the archiver.
     }
     await scope(() => prisma.tenantGroupMember.deleteMany({ where: { tenantId, userId: head.id } }));
     expect((await call(head, `/operations/tasks/${ownRows(b)[0].id}`, 'PUT', { status: 'in_progress' })).status).toBe(404);

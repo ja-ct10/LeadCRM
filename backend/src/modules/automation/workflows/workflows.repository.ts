@@ -1,3 +1,4 @@
+import { creatorWhere } from '../../crm/access/record-visibility';
 import { Prisma } from '@prisma/client';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { workflowStatusLabel } from '@leadcrm/shared';
@@ -74,9 +75,12 @@ export async function builderOptions(tenantId: string, marketing: boolean, acces
 export function findWorkflowById(id: string, tenantId: string) {
   return prisma.workflow.findFirst({ where: { id, tenantId } });
 }
+export async function findVisibleWorkflowById(id: string, tenantId: string) {
+  return prisma.workflow.findFirst({ where: { id, ...await creatorWhere(tenantId, prisma, 'Workflow') } });
+}
 export async function listWorkflows(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
-  const where: Prisma.WorkflowWhereInput = { tenantId, isArchived: query.archived === 'true',
+  const where: Prisma.WorkflowWhereInput = { ...await creatorWhere(tenantId, prisma, 'Workflow'), isArchived: query.archived === 'true',
     ...(query.status ? { status: { in: String(query.status).split(',') } } : {}),
     ...(query.trigger ? { trigger: { in: String(query.trigger).split(',') } } : {}),
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
@@ -104,7 +108,11 @@ function workflowData(draft: Partial<WorkflowDraft>): Prisma.WorkflowUncheckedUp
 }
 export function workflowNames(tenantId: string, excludeId?: string) {
   // Archived names remain reserved. Selecting only the name avoids loading definitions.
-  return prisma.workflow.findMany({ where: { tenantId, ...(excludeId ? { id: { not: excludeId } } : {}) }, select: { name: true } });
+  const read = () => prisma.workflow.findMany({ where: { tenantId, ...(excludeId ? { id: { not: excludeId } } : {}) }, select: { name: true } });
+  const actor = crmActor.getStore();
+  // Tenant-wide uniqueness includes inaccessible archived names. Only the generic
+  // availability result is exposed, never definitions or record identities.
+  return actor ? crmActor.run({ ...actor, readRecords: false }, async () => await read()) : read();
 }
 
 async function assertNameAvailable(tenantId: string, name: string, excludeId?: string) {
@@ -122,12 +130,12 @@ function rethrowNameConflict(error: unknown): never {
   throw error;
 }
 
-export async function createWorkflow(tenantId: string, draft: WorkflowDraft, activatedById?: string) {
+export async function createWorkflow(tenantId: string, draft: WorkflowDraft, activatedById?: string, createdById?: string) {
   const name = cleanWorkflowName(draft.name);
   await assertNameAvailable(tenantId, name);
   try {
     return await prisma.$transaction(async tx => {
-      const created = await tx.workflow.create({ data: { ...draft, name, tenantId, status: draft.isActive ? 'ACTIVE' : 'DRAFT', activatedById,
+      const created = await tx.workflow.create({ data: { ...draft, name, tenantId, createdById, status: draft.isActive ? 'ACTIVE' : 'DRAFT', activatedById,
         conditions: draft.conditions == null ? Prisma.DbNull : draft.conditions, actions: draft.actions as Prisma.InputJsonValue } });
       if (draft.isActive) await tx.workflowPublication.create({ data: { tenantId, workflowId: created.id, version: created.version, activatedById, definition: draft as unknown as Prisma.InputJsonValue } });
       return created;
@@ -141,7 +149,7 @@ export async function updateWorkflow(id: string, tenantId: string, draft: Partia
   }
   try {
     return await prisma.$transaction(async tx => {
-      const updated = await tx.workflow.update({ where: { id, tenantId }, data: { ...workflowData(draft), ...(definitionChanged ? { version: { increment: 1 } } : {}) } });
+      const updated = await tx.workflow.update({ where: { id, ...await creatorWhere(tenantId, tx, 'Workflow') }, data: { ...workflowData(draft), ...(definitionChanged ? { version: { increment: 1 } } : {}) } });
       if (updated.isActive) {
         const definition = { name: updated.name, description: updated.description, trigger: updated.trigger, conditions: updated.conditions, actions: updated.actions, isActive: true };
         await tx.workflowPublication.upsert({ where: { workflowId_tenantId_version: { workflowId: id, tenantId, version: updated.version } }, create: { tenantId, workflowId: id, version: updated.version, activatedById: updated.activatedById, definition }, update: {} });

@@ -42,7 +42,7 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
   beforeEach(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Two Sales mailboxes', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
     roleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', crmAssignmentRestricted: true } })).id;
-    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId, module, canView: true, canEdit: true, canCreate: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId, module, canView: true, canViewMy: true, canEdit: true, canCreate: true })) });
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     agents = []; messages = new Map(); reads = []; writes = 0; loseAcknowledgement = false; failReads = false; historyDelayMs = 0;
     for (const name of ['A', 'B']) {
