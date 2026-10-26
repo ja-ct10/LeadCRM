@@ -156,6 +156,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const exportView = { search, my: myDeals, filters,
     accountId: searchParams.get('accountId') || searchParams.get('organizationId') || undefined,
     leadId: searchParams.get('leadId') || undefined, contactId: searchParams.get('contactId') || undefined };
+  const hasExportData = all.some(deal => matchesDealView({ ...deal, status: stageStatus(deal) }, exportView, user?.id ?? ''));
   const visible = all.filter(deal => (highlightId && target?.id === deal.id) || matchesDealView({ ...deal, status: stageStatus(deal) }, exportView, user?.id ?? ''));
   const locatedDeal = target && all.find(deal => deal.id === target.id);
   const locatorMessage = targetError || (target && !query.isInitialLoad && !query.isRefreshing && !query.error &&
@@ -184,7 +185,9 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
       <ModuleSearchInput value={search} onChange={setSearch} placeholder="Search deals..." label="Search deals" />
       <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">
-        <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" hasData={hasExportData}
+          disabled={!pipeline || query.isInitialLoad || query.isRefreshing || refreshing || !!query.error || !!pipelineError}
+          params={{ pipelineId: pipeline?.id, scope: activeTab, view: JSON.stringify(exportView) }} />
           <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">Pipeline<Input type="text" readOnly aria-label="Pipeline" value={pipeline?.name ?? ''} size={pipeline?.name.length || 1} className="h-8 w-auto min-w-0 max-w-[min(18rem,calc(100vw-5rem))] rounded-lg border-border bg-card px-2 py-0 text-xs text-foreground dark:border-border dark:bg-card" /></label>
         </div>
         <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} disabled={query.isRefreshing || query.isInitialLoad} refreshing={refreshing} /></div>

@@ -30,10 +30,15 @@ import { useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useWorkspacePanel } from '@/shared/lib/overlay-state';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { NAV_GROUPS, SETTINGS_TAB_MODULES, type SettingsTab } from '../settings-navigation';
+import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
+import { UnreadNotificationDot } from '@/features/tenant/notifications/ui/unread-notification-dot';
 
 export default function SettingsPage(): React.ReactElement {
   useWorkspacePanel(208, useMediaQuery('(min-width: 1280px)'));
   const { tenant, userCan } = useAuth();
+  const { unreadBySettingsTab } = useNotifications('all', { countsOnly: true });
+  const unreadByTab: Partial<Record<SettingsTab, number>> = unreadBySettingsTab;
+  const hasUnread = (tab: SettingsTab) => (unreadByTab[tab] ?? 0) > 0;
 
   const tabModules = SETTINGS_TAB_MODULES;
   const canAccessTab = (tab: SettingsTab) => tab === 'users' ? userCan('users', 'canView') || userCan('groups', 'canView') : !tabModules[tab] || userCan(tabModules[tab]!, 'canView');
@@ -119,16 +124,19 @@ export default function SettingsPage(): React.ReactElement {
             id="settings-mobile-nav"
             value={activeTab}
             onChange={(e) => selectTab(e.target.value as SettingsTab)}
-            className="w-full bg-muted border border-border text-foreground rounded-lg pl-3 pr-9 py-2.5 text-sm font-medium focus:outline-none focus:border-primary transition-colors appearance-none"
+            className={cn('w-full bg-muted border border-border text-foreground rounded-lg pl-3 pr-9 py-2.5 text-sm font-medium focus:outline-none focus:border-primary transition-colors appearance-none', hasUnread(activeTab) && canAccessTab(activeTab) && 'pr-14')}
           >
             {visibleNavGroups.map((group) => (
               <optgroup key={group.label} label={group.label}>
                 {group.items.map((item) => (
-                  <option key={item.id} value={item.id}>{item.label}</option>
+                  <option key={item.id} value={item.id} aria-label={hasUnread(item.id) ? `${item.label} (unread)` : undefined}>
+                    {item.label}{hasUnread(item.id) && item.id !== activeTab ? ' (unread)' : ''}
+                  </option>
                 ))}
               </optgroup>
             ))}
           </select>
+          {activeItem && hasUnread(activeTab) && <UnreadNotificationDot label={`Unread notifications in ${activeItem.label}`} className="absolute right-9 top-1/2 -translate-y-1/2 pointer-events-none" />}
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
         </div>
       </div>
@@ -157,7 +165,8 @@ export default function SettingsPage(): React.ReactElement {
                             : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F1F5F9] hover:bg-slate-50 dark:hover:bg-[#1C2027]'
                         )}
                       >
-                        <span>{item.label}</span>
+                        <span className="min-w-0 flex-1">{item.label}</span>
+                        {hasUnread(item.id) && <UnreadNotificationDot label={`Unread notifications in ${item.label}`} />}
                       </button>
                     );
                   })}
@@ -181,7 +190,8 @@ export default function SettingsPage(): React.ReactElement {
                       )}
                     >
                       {Icon && React.createElement(Icon as any, { className: "w-3.5 h-3.5 shrink-0" })}
-                      <span>{item.label}</span>
+                      <span className="min-w-0 flex-1">{item.label}</span>
+                      {hasUnread(item.id) && <UnreadNotificationDot label={`Unread notifications in ${item.label}`} />}
                     </button>
                   );
                 })}

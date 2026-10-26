@@ -158,6 +158,7 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
     notifications: enabled ? currentState.notifications : [],
     unreadCount: enabled ? liveCounts?.unreadCount ?? currentState.unreadCount : 0,
     unreadByModule: enabled ? liveCounts?.unreadByModule ?? {} : {},
+    unreadBySettingsTab: enabled ? liveCounts?.unreadBySettingsTab ?? {} : {},
     unreadRecords: enabled ? liveCounts?.unreadRecords ?? [] : [],
     hasCounts: enabled && liveCounts?.success === true,
     totalCount: enabled ? liveCounts?.totalCount ?? currentState.totalCount : 0,

@@ -55,6 +55,7 @@ export function exportCrm(module: Module) {
         }
         return rows;
       }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 });
+      if (!data.length) throw new AppError('No data available to export.', 404);
       const fields = columns[module];
       const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${module}-${date}.csv"`, 'Cache-Control': 'no-store' });

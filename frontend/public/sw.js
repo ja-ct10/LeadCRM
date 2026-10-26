@@ -1,9 +1,9 @@
-const CACHE_NAME = 'leadcrm-cache-v7';
+const CACHE_NAME = 'leadcrm-cache-v8';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/camxian_logo.png',
   '/camxian_logo_2.png',
-  '/icons/camxian-32.png',
+  '/favicon.ico',
   '/icons/camxian-180.png',
   '/icons/camxian-192.png',
   '/icons/camxian-512.png',

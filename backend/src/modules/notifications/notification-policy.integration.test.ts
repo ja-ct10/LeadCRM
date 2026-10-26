@@ -431,7 +431,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect((await request('/notifications?isRead=false', 'GET', undefined, auth)).body.meta.total).toBe(2);
     expect((await request('/notifications?isRead=true', 'GET', undefined, auth)).body.meta.total).toBe(1);
     const summary = await notificationCounts(tenantId, viewer.id, { since: new Date(+now - 1000).toISOString() });
-    expect(summary).toMatchObject({ totalCount: 3, unreadCount: 2, unreadRecords: [], unreadByModule: { settings: 2 }, updates: [], activeSmsUntil: null });
+    expect(summary).toMatchObject({ totalCount: 3, unreadCount: 2, unreadRecords: [], unreadByModule: { settings: 2 }, unreadBySettingsTab: { users: 1, roles: 1 }, updates: [], activeSmsUntil: null });
     expect((await request('/notifications/' + visible[1].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=roles');
     expect((await request('/notifications/' + visible[0].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=users');
     for (const item of hidden) {
@@ -445,10 +445,55 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     }
     expect((await request('/crm/contacts/' + records[1].entityId, 'GET', undefined, auth)).status).toBe(200);
     expect((await request('/notifications/' + visible[0].id + '/read', 'PATCH', undefined, auth)).body.unreadCount).toBe(1);
-    expect((await request('/notifications/read-all', 'PATCH', {}, auth)).body).toMatchObject({ unreadCount: 0, totalCount: 3 });
-    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadCount: 0, unreadRecords: [] });
+    expect((await request('/notifications/read-all', 'PATCH', {}, auth)).body).toMatchObject({ unreadCount: 0, totalCount: 3, unreadBySettingsTab: {} });
+    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadCount: 0, unreadRecords: [], unreadBySettingsTab: {} });
     expect(await prisma.notification.findMany({ where: { id: { in: hidden.map(n => n.id) } }, orderBy: { id: 'asc' } })).toEqual(hidden);
     expect(await prisma.notificationDelivery.findMany({ where: { tenantId, userId: viewer.id }, orderBy: { eventKey: 'asc' } })).toEqual(ledger);
+  });
+
+  it('summarizes every supported Settings event across pages and synchronizes reads without leaking other recipients, tenants or denied destinations', async () => {
+    const viewer = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Settings', lastName: 'Admin',
+      role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: adminRoleId } } } });
+    const auth = (await issueAuthSession(viewer)).token;
+    const createdAt = new Date(Date.now() - 1000);
+    const team = await Promise.all(['user_created', 'user_status_changed', 'user_status_changed', 'user_role_changed'].map(type =>
+      prisma.notification.create({ data: { tenantId, userId: viewer.id, type, entityType: 'User', entityId: agentId, title: 'Team event', createdAt } })));
+    await prisma.notification.createMany({ data: [
+      ...['role_created', 'role_archived', 'role_permissions_changed'].map(type => ({ tenantId, userId: viewer.id, type,
+        entityType: 'RoleDefinition', entityId: adminRoleId, title: 'Role event', createdAt })),
+      { tenantId, userId: viewer.id, type: 'password_expiring_soon', entityType: 'PasswordSecurity', entityId: viewer.id, title: 'Profile event', createdAt },
+      { tenantId, userId: viewer.id, type: 'user_created', entityType: 'User', entityId: randomUUID(), title: 'Unavailable user', createdAt },
+      { tenantId, userId: viewer.id, type: 'user_created', entityType: 'User', entityId: agentId, title: 'Already read', isRead: true, createdAt },
+    ] });
+    const otherRecipient = await prisma.notification.create({ data: { tenantId, userId: otherId, type: 'user_created',
+      entityType: 'User', entityId: agentId, title: 'Other recipient', createdAt } });
+    const foreign = await prisma.tenant.create({ data: { name: 'Settings isolation', slug: randomUUID() } });
+    const foreignUser = await prisma.user.create({ data: { tenantId: foreign.id, email: randomUUID() + '@camxian.com', firstName: 'Foreign', lastName: 'Admin', role: 'Viewer' } });
+    const foreignNotification = await prisma.notification.create({ data: { tenantId: foreign.id, userId: foreignUser.id, type: 'user_created',
+      entityType: 'User', entityId: foreignUser.id, title: 'Other tenant', createdAt } });
+    await prisma.notification.create({ data: { tenantId, userId: viewer.id, type: 'user_created', entityType: 'User',
+      entityId: foreignUser.id, title: 'Foreign destination', createdAt } });
+    const expected = { users: 4, roles: 3, profile: 1 };
+    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, unreadByModule: { settings: 8 } });
+    expect((await request('/notifications?limit=1', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, meta: { hasMore: true } });
+    // GETs and resolving a Settings destination do not consume unread state.
+    await request('/notifications/' + team[0].id + '/destination', 'GET', undefined, auth);
+    expect((await notificationCounts(tenantId, viewer.id)).unreadBySettingsTab).toEqual(expected);
+    expect((await request('/notifications/' + team[0].id + '/read', 'PATCH', undefined, auth)).body.unreadBySettingsTab).toEqual({ users: 3, roles: 3, profile: 1 });
+    expect((await request('/notifications/read-all', 'PATCH', {}, auth)).body.unreadBySettingsTab).toEqual({});
+    const fresh = await prisma.notification.create({ data: { tenantId, userId: viewer.id, type: 'user_status_changed',
+      entityType: 'User', entityId: agentId, title: 'New account status' } });
+    expect((await notificationCounts(tenantId, viewer.id)).unreadBySettingsTab).toEqual({ users: 1 });
+    expect((await request('/notifications', 'DELETE', { ids: [fresh.id] }, auth)).body.unreadBySettingsTab).toEqual({});
+    for (const item of [otherRecipient, foreignNotification]) {
+      expect((await request('/notifications/' + item.id + '/read', 'PATCH', undefined, auth)).status).toBe(404);
+      expect((await prisma.notification.findUniqueOrThrow({ where: { id: item.id } })).isRead).toBe(false);
+    }
+    expect((await notificationCounts(tenantId, otherId)).unreadBySettingsTab).toEqual({});
+    // Revoking current administrator membership removes the destination hints immediately.
+    await prisma.userRole.deleteMany({ where: { tenantId, userId: viewer.id } });
+    await prisma.notification.create({ data: { tenantId, userId: viewer.id, type: 'user_created', entityType: 'User', entityId: agentId, title: 'Denied destination' } });
+    expect((await notificationCounts(tenantId, viewer.id)).unreadBySettingsTab).toEqual({});
   });
 
   it('reads one record across feed pages, honors the open cutoff and isolates recipients and tenants', async () => {

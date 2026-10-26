@@ -334,3 +334,19 @@ it('uses the simplified loading skeleton and preserves permission-based unavaila
   expect(screen.getByRole('alert').textContent).toContain('Your reporting access changed.');
   expect(screen.queryByRole('group')).toBeNull();
 });
+
+it('keeps the Reports toolbar mounted and passes loading through initial and cached refreshes', () => {
+  const report = mocks.report;
+  const actions = ({ loading }: { loading: boolean }) => <button disabled={loading}>Export fixture</button>;
+  mocks.report = null; mocks.loading = true;
+  const view = render(<Dashboard presentation="reporting" heading="Analytics & Reports" renderToolbarActions={actions} />);
+  expect(screen.getByText('Analytics & Reports')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Export fixture' })).toHaveProperty('disabled', true);
+  expect(screen.queryByText('Dashboard metrics are unavailable.')).toBeNull();
+  mocks.report = report;
+  view.rerender(<Dashboard presentation="reporting" renderToolbarActions={actions} />);
+  expect(screen.getByRole('button', { name: 'Export fixture' })).toHaveProperty('disabled', true);
+  mocks.loading = false;
+  view.rerender(<Dashboard presentation="reporting" renderToolbarActions={actions} />);
+  expect(screen.getByRole('button', { name: 'Export fixture' })).toHaveProperty('disabled', false);
+});

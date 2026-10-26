@@ -93,6 +93,7 @@ export function useNotificationCounts(scope: string, tenantId: string, userId: s
           }
           const changed = watcher!.counts && (watcher!.counts.totalCount !== result.totalCount || watcher!.counts.unreadCount !== result.unreadCount
             || JSON.stringify(watcher!.counts.unreadRecords) !== JSON.stringify(result.unreadRecords)
+            || JSON.stringify(watcher!.counts.unreadBySettingsTab) !== JSON.stringify(result.unreadBySettingsTab)
             || JSON.stringify(watcher!.counts.unreadByModule) !== JSON.stringify(result.unreadByModule));
           watcher!.counts = { ...result, scope };
           watcher!.listeners.forEach(fn => fn(watcher!.counts!));

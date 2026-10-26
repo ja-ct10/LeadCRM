@@ -4,6 +4,7 @@ exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema
 exports.assignmentName = assignmentName;
 exports.assignmentUserName = assignmentUserName;
 exports.formatAssignmentChange = formatAssignmentChange;
+exports.notificationSettingsTab = notificationSettingsTab;
 const zod_1 = require("zod");
 function assignmentName(value) {
     if (typeof value !== 'string')
@@ -52,6 +53,17 @@ exports.NotificationTypes = [
     'website_lead', 'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
     ...exports.SmsCampaignNotificationTypes,
 ];
+const settingsNotificationTabs = {
+    password_expiring_soon: 'profile',
+    user_created: 'users', user_status_changed: 'users', user_role_changed: 'users',
+    role_created: 'roles', role_archived: 'roles', role_permissions_changed: 'roles',
+};
+/** Submenu hints require a supported event and its currently authorized destination. */
+function notificationSettingsTab(type, destination) {
+    const tab = settingsNotificationTabs[type];
+    const [path, query] = destination.split('?');
+    return tab && path === '/settings' && new URLSearchParams(query).get('tab') === tab ? tab : undefined;
+}
 exports.NotificationQuerySchema = zod_1.z.object({
     page: zod_1.z.coerce.number().int().min(1).max(10000).default(1),
     limit: zod_1.z.coerce.number().int().min(1).max(100).default(20),

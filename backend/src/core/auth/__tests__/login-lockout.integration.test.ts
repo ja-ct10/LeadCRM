@@ -388,7 +388,8 @@ describe.sequential('password reminders, authorized CSV and Product metadata', (
       if (module === 'deals') emptyQuery.set('view', JSON.stringify({ search: 'NoMatchingExportRecord', my: false, filters: {} }));
       else emptyQuery.set('search', 'NoMatchingExportRecord');
       const empty = await fetch(base + '/crm/' + module + '/export?' + emptyQuery, { headers: { Cookie: cookie } });
-      expect(empty.status).toBe(200); expect((await empty.text()).split('\r\n')).toHaveLength(1);
+      expect(empty.status).toBe(404); expect(await empty.json()).toEqual({ success: false, error: 'No data available to export.' });
+      expect(empty.headers.get('content-type')).toContain('application/json'); expect(empty.headers.get('content-disposition')).toBeNull();
       expect((await call('/crm/' + module + '/export')).status).toBe(401);
     }
     const noGrants = await login(password, email); const deniedCookie = noGrants.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
