@@ -1,6 +1,7 @@
 'use client';
 
 import { UserAvatar } from '@/shared/components/user-avatar';
+import { AppBrand, AppLogo } from '@/shared/components/app-logo';
 import React, { useId, useRef } from 'react';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import type { NavigationMode } from './use-responsive-navigation';
@@ -37,7 +38,7 @@ export default function SidebarNav({
   hidden = false,
 }: SidebarNavProps): React.ReactElement {
   const { currentPath, filteredNav } = useLayout();
-  const { user, tenant } = useAuth();
+  const { user } = useAuth();
   const { unreadByModule } = useNotifications('all', { countsOnly: true });
   const hasUnread = (path: string) => (unreadByModule[path === 'pipeline' ? 'deals' : path] ?? 0) > 0;
   const panelRef = useRef<HTMLElement>(null);
@@ -78,23 +79,15 @@ export default function SidebarNav({
         isCollapsed ? 'justify-center px-2 py-4' : 'justify-between px-4 py-4',
       )}>
         <div
-          className={cn('flex items-center gap-2.5', isCollapsed && 'justify-center')}
-          title={isCollapsed ? (tenant?.name ? `LeadCRM — ${tenant.name}` : 'LeadCRM') : undefined}
+          className={cn('flex min-h-7 min-w-0 items-center justify-center', isCollapsed ? 'w-10' : 'flex-1')}
+          title={isCollapsed ? 'Camxian Technologies' : undefined}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0">
-            <img src="/leadcrm_logo.png" alt="LeadCRM" className="h-7 w-7 object-contain" />
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-[14px] font-bold text-[var(--sidebar-text)] tracking-tight leading-tight">
-                Lead<span className="text-primary">CRM</span>
-              </span>
-              {tenant?.name && (
-                <span className="text-[10px] text-[var(--sidebar-text-muted)] truncate leading-tight max-w-[140px]">
-                  {tenant.name}
-                </span>
-              )}
-            </div>
+          {isCollapsed ? (
+            <AppLogo compact className="w-10 p-1" />
+          ) : (
+            <AppBrand className="w-40">
+              <AppLogo className="w-full p-1.5" />
+            </AppBrand>
           )}
         </div>
 

@@ -3,6 +3,7 @@
 import { type ReactNode } from 'react';
 import { Compass, type LucideIcon } from 'lucide-react';
 import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
+import { AppLogo } from '@/shared/components/app-logo';
 
 export function OnboardingShell({
   step, totalSteps, title = 'Welcome to LeadCRM', description = 'Your customer relationships and daily work, together.',
@@ -13,8 +14,7 @@ export function OnboardingShell({
     <main className="grid min-h-[var(--app-viewport-height)] bg-white text-slate-900 lg:grid-cols-2 dark:bg-slate-950 dark:text-white">
       <aside className="flex min-w-0 flex-col bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 p-5 text-white sm:p-10 lg:min-h-[var(--app-viewport-height)] lg:p-12 xl:p-16">
         <div className="flex items-center gap-3 text-2xl font-bold">
-          <span className="rounded-xl bg-white p-2.5"><img src="/leadcrm_logo.png" alt="" className="h-7 w-7 object-contain" /></span>
-          LeadCRM
+          <AppLogo className="w-48 p-2.5" />
         </div>
         <div className="my-8 max-w-lg lg:my-auto lg:py-16">
           <Icon aria-hidden="true" className="mb-5 h-10 w-10 lg:mb-8 lg:h-14 lg:w-14" strokeWidth={1.5} />

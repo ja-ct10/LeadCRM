@@ -15,7 +15,7 @@ const services = [
   { title: 'IT Infrastructure', description: 'Laptops, servers, and data cabinets tailored to your requirements.', icon: Server },
 ];
 
-export function CamxianBrandPanel({ onNavigate }: { onNavigate: (path: string) => void }) {
+export function CamxianBrandPanel() {
   const reducedMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -38,13 +38,8 @@ export function CamxianBrandPanel({ onNavigate }: { onNavigate: (path: string) =
   return (
     <aside className="relative flex w-full flex-col overflow-hidden bg-linear-to-br from-blue-500 via-blue-600 to-blue-800 text-white lg:w-1/2">
       <div aria-hidden="true" className="pointer-events-none absolute -right-32 -top-32 size-96 rounded-full border border-white/10" />
-      <div className="relative flex h-full flex-col justify-between gap-6 p-6 sm:p-8 lg:p-8 xl:p-10">
-        <motion.button {...entrance(0)} type="button" onClick={() => onNavigate('login')} className="flex w-fit items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-white shadow-sm"><img src="/leadcrm_logo.png" alt="" className="size-7 object-contain" /></span>
-          <span className="text-xl font-bold">LeadCRM</span>
-        </motion.button>
+      <div className="relative flex flex-1 flex-col justify-center gap-6 p-6 sm:p-8 lg:p-8 xl:p-10">
         <div className="max-w-lg space-y-4">
-          <motion.p {...entrance(1)} className="text-xs font-semibold tracking-[0.2em] text-blue-100">CAMXIAN TECHNOLOGIES</motion.p>
           <motion.h1 {...entrance(2)} className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl xl:text-4xl">Technology that will<br className="hidden lg:block" /> shape your future.</motion.h1>
           <motion.p {...entrance(3)} className="hidden max-w-sm text-base leading-relaxed text-blue-100 lg:block">Empowering innovation and security today for a safer tomorrow!</motion.p>
           <motion.ul {...entrance(4)} className="hidden flex-wrap gap-2 text-xs font-medium lg:flex">

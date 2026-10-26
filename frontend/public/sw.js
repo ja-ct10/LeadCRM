@@ -1,9 +1,13 @@
-const CACHE_NAME = 'leadcrm-cache-v5';
+const CACHE_NAME = 'leadcrm-cache-v7';
 const STATIC_ASSETS = [
   '/manifest.json',
-  '/icons/leadcrm-192.png',
-  '/icons/leadcrm-512.png',
-  '/icons/leadcrm-maskable-512.png'
+  '/camxian_logo.png',
+  '/camxian_logo_2.png',
+  '/icons/camxian-32.png',
+  '/icons/camxian-180.png',
+  '/icons/camxian-192.png',
+  '/icons/camxian-512.png',
+  '/icons/camxian-maskable-512.png'
 ];
 
 // ── Install: pre-cache critical static assets ─────────
@@ -57,8 +61,7 @@ self.addEventListener('fetch', event => {
   // are fetches to page URLs, not navigations, and must never enter this cache.
   const isPublicAsset = url.origin === self.location.origin && (
     url.pathname.startsWith('/_next/static/') ||
-    STATIC_ASSETS.includes(url.pathname) ||
-    ['/leadcrm_logo.png', '/leadcrm_logo.ico'].includes(url.pathname)
+    STATIC_ASSETS.includes(url.pathname)
   );
   if (!isPublicAsset) return;
 

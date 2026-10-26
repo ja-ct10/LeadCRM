@@ -11,7 +11,7 @@ beforeEach(() => { vi.useFakeTimers(); state.reduced = false; });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('Camxian solutions', () => {
   it('rotates and cancels its timer on unmount', () => {
-    const view = render(<CamxianBrandPanel onNavigate={vi.fn()} />);
+    const view = render(<CamxianBrandPanel />);
     expect(screen.getByRole('heading', { name: 'CCTV Surveillance' })).toBeTruthy();
     act(() => vi.advanceTimersByTime(4500));
     expect(screen.getByRole('heading', { name: 'Biometrics & Access Control' })).toBeTruthy();
@@ -19,7 +19,7 @@ describe('Camxian solutions', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
   it('lets readers pause and choose a solution', () => {
-    render(<CamxianBrandPanel onNavigate={vi.fn()} />);
+    render(<CamxianBrandPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Show Structured Cabling' }));
     act(() => vi.advanceTimersByTime(18000));
     expect(screen.getByRole('heading', { name: 'Structured Cabling' })).toBeTruthy();
@@ -27,7 +27,7 @@ describe('Camxian solutions', () => {
   });
   it('never auto-rotates for reduced motion', () => {
     state.reduced = true;
-    render(<CamxianBrandPanel onNavigate={vi.fn()} />);
+    render(<CamxianBrandPanel />);
     act(() => vi.advanceTimersByTime(18000));
     expect(screen.getByRole('heading', { name: 'CCTV Surveillance' })).toBeTruthy();
     expect(vi.getTimerCount()).toBe(0);

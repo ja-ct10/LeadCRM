@@ -18,7 +18,8 @@ describe('public legal documents without an authentication provider', () => {
     expect(legalMetadata(document).alternates?.canonical).toBe(`https://lead-crm.tech${document.path}`);
     expect(screen.getByRole('complementary', { name: 'Document review status' })).toBeTruthy();
     const footer = within(screen.getByRole('contentinfo'));
-    expect(footer.getByRole('link', { name: 'LeadCRM' }).getAttribute('href')).toBe('/login');
+    expect(footer.getByRole('link', { name: 'Camxian Technologies' }).getAttribute('href')).toBe('/login');
+    expect(footer.getByText('Powered by LeadCRM')).toBeTruthy();
     expect(footer.getByText('A centralized CRM platform for Camxian Technologies, designed to manage leads, customers, sales pipelines, and automated workflows.')).toBeTruthy();
     expect(footer.getByRole('link', { name: LEGAL_ORGANIZATION.supportEmail }).getAttribute('href')).toBe(`mailto:${LEGAL_ORGANIZATION.supportEmail}`);
     expect(footer.getByText('© 2026 LeadCRM. All rights reserved.')).toBeTruthy();

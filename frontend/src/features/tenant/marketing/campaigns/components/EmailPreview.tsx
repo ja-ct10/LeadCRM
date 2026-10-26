@@ -2,6 +2,7 @@ import React from 'react';
 import { Mail, Shield, UserCircle2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { sanitizeEmailHtml } from '@/src/lib/sanitize';
+import { AppLogo } from '@/shared/components/app-logo';
 
 interface EmailPreviewProps {
   subject: string;
@@ -49,12 +50,7 @@ export function EmailPreview({
       <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-slate-900 space-y-4">
         {/* Logo branding strip */}
         <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/leadcrm_logo.png"
-            alt="LeadCRM"
-            className="h-7 w-auto object-contain"
-          />
+          <AppLogo className="w-40 p-1" />
           <div className="h-4 w-px bg-gray-200 dark:bg-white/8" />
           <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Email Preview

@@ -49,8 +49,8 @@ it('stays hidden until a real prompt object is available, then invokes it once',
   expect(screen.getByText('Get the LeadCRM app!')).toBeTruthy();
   expect(screen.queryByText('Leads, pipelines and workflows — on the go.')).toBeNull();
   const icon = screen.getByRole('region', { name: 'Install LeadCRM' }).querySelector('img');
-  expect(icon?.getAttribute('src')).toBe('/leadcrm_logo.png');
-  expect(icon?.getAttribute('alt')).toBe('');
+  expect(icon?.getAttribute('src')).toBe('/camxian_logo.png');
+  expect(icon?.getAttribute('alt')).toBe('Camxian Technologies');
   expect(screen.getByRole('button', { name: 'Dismiss install banner' })).toBeTruthy();
   await act(async () => { const button = screen.getByRole('button', { name: 'Install LeadCRM app' }); fireEvent.click(button); fireEvent.click(button); });
   expect(event.prompt).toHaveBeenCalledTimes(1);
