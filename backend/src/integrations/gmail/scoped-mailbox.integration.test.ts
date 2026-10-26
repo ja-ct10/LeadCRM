@@ -505,15 +505,27 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(detail.body.emails.map((row: GmailEmail) => row.id)).toEqual(['thread-first', 'thread-send', 'thread-reply', 'thread-latest']);
     expect(detail.body.emails[0].body).toBe(first.body);
   });
-  it('keeps different provider threads separate for the same correspondent', async () => {
-    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'separate-a'), mail(leadEmail, 'separate-b'), mail(contactEmail, 'separate-c')], permissions));
+  it('groups different provider threads for the same correspondent without a Deal', async () => {
+    const messages = [
+      { ...mail(leadEmail, 'separate-a'), subject: 'First inquiry', date: '2026-10-01T01:00:00Z' },
+      { ...mail(`Customer <${leadEmail.toUpperCase()}>`, 'separate-b', ['INBOX']), subject: 'Another inquiry', snippet: 'Latest inquiry', date: '2026-10-02T01:00:00Z' },
+      mail(contactEmail, 'separate-c'),
+    ];
+    await scope(() => ingestMailboxMessages(account, messages, permissions));
     const rows = (await call('/emails')).body.emails;
-    expect(rows).toHaveLength(3); expect(rows.every((row: GmailEmail) => row.messageCount === 1)).toBe(true);
-    expect(new Set(rows.map((row: GmailEmail) => row.conversationId)).size).toBe(3);
-    for (const row of rows) {
-      const history = await call('/conversations/' + row.conversationId);
-      expect(history.body.emails).toHaveLength(1); expect(history.body.emails[0].threadId).toBe(row.threadId);
-    }
+    expect(rows).toHaveLength(2); expect(new Set(rows.map((row: GmailEmail) => row.conversationId)).size).toBe(2);
+    const row = rows.find((row: GmailEmail) => row.correspondentAddresses?.includes(leadEmail));
+    expect(row).toMatchObject({ id: 'separate-b', threadId: 'separate-b', dealId: null, messageCount: 2,
+      subject: 'Another inquiry', snippet: 'Latest inquiry', date: '2026-10-02T01:00:00.000Z', isRead: false });
+    const history = (await call('/conversations/' + row.conversationId)).body;
+    expect(history.messageCount).toBe(2);
+    expect(history.emails.map((message: GmailEmail) => [message.id, message.threadId, message.subject])).toEqual([
+      ['separate-a', 'separate-a', 'First inquiry'], ['separate-b', 'separate-b', 'Another inquiry'],
+    ]);
+    expect(history.threads).toHaveLength(2);
+    await scope(() => ingestMailboxMessages(account, [...messages].reverse(), permissions));
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(3);
+    expect((await call('/emails')).body.emails.find((email: GmailEmail) => email.id === row.id).conversationId).toBe(row.conversationId);
   });
 
   it('keeps the same display name at two exact addresses separate', async () => {
@@ -522,16 +534,20 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(rows).toHaveLength(2); expect(new Set(rows.map((row: GmailEmail) => row.conversationId)).size).toBe(2);
     expect(rows.every((row: GmailEmail) => row.participants?.includes('John'))).toBe(true);
   });
-  it('preserves separate Welcome/Reset Gmail threads and original subjects', async () => {
+  it('groups Welcome/Reset emails from one normalized sender while preserving their original threads and subjects', async () => {
     await scope(() => ingestMailboxMessages(account, [
-      { ...mail('Camxian Technologies <INFO@CAMXIAN.COM>', 'welcome'), subject: 'Welcome to LeadCRM' },
-      { ...mail('Camxian Technologies <info@camxian.com>', 'reset-one'), subject: 'Reset your LeadCRM password' },
-      { ...mail('info@camxian.com', 'reset-two'), subject: 'Reset your LeadCRM password' },
+      { ...mail('Camxian Technologies <INFO@CAMXIAN.COM>', 'welcome', ['INBOX']), subject: 'Welcome to LeadCRM', date: '2026-10-01T01:00:00Z' },
+      { ...mail('Camxian Technologies <info@camxian.com>', 'reset-one'), subject: 'Reset your LeadCRM password', date: '2026-10-02T01:00:00Z' },
+      { ...mail('info@camxian.com', 'reset-two'), subject: 'Reset your LeadCRM password', snippet: 'Latest reset', date: '2026-10-03T01:00:00Z' },
     ], permissions));
     const rows = (await call('/emails')).body.emails;
-    expect(rows).toHaveLength(3); expect((await call('/unread-count')).body.unreadCount).toBe(3);
-    expect(rows.map((row: GmailEmail) => row.subject)).toContain('Welcome to LeadCRM');
-    expect(rows.every((row: GmailEmail) => row.messageCount === 1)).toBe(true);
+    expect(rows).toHaveLength(1); expect((await call('/unread-count')).body.unreadCount).toBe(1);
+    expect(rows[0]).toMatchObject({ id: 'reset-two', threadId: 'reset-two', dealId: null, messageCount: 3,
+      correspondentAddresses: ['info@camxian.com'], snippet: 'Latest reset', date: '2026-10-03T01:00:00.000Z', isRead: false });
+    const history = (await call('/conversations/' + rows[0].conversationId)).body;
+    expect(history.emails.map((row: GmailEmail) => row.threadId)).toEqual(['welcome', 'reset-one', 'reset-two']);
+    expect(history.emails.map((row: GmailEmail) => row.subject)).toEqual(['Welcome to LeadCRM', 'Reset your LeadCRM password', 'Reset your LeadCRM password']);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(3);
   });
 
   it('isolates multi-participant topics from private histories and retains later replies within the group', async () => {
@@ -558,8 +574,10 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/emails')).body.emails).toHaveLength(0); expect((await call('/unread-count')).body.unreadCount).toBe(0);
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(2);
   });
-  it('opens the latest page and retrieves older messages without duplication', async () => {
-    for (let i = 0; i < 55; i++) await persistHistorical({ ...mail(leadEmail, `history-${String(i).padStart(2, '0')}`), threadId: 'history-topic', date: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString() });
+  it('opens the latest page across interleaved threads and paginates timestamp ties without duplication', async () => {
+    for (let i = 0; i < 55; i++) await persistHistorical({ ...mail(leadEmail, `history-${String(i).padStart(2, '0')}`),
+      threadId: i === 0 || i === 54 ? 'history-old-topic' : 'history-new-topic',
+      date: new Date(Date.UTC(2026, 9, 1, 0, i === 5 ? 4 : i)).toISOString() });
     const row = (await call('/emails?maxResults=1')).body.emails[0]; expect(row.messageCount).toBe(55);
     const first = (await call('/conversations/' + row.conversationId)).body;
     expect(first.emails).toHaveLength(50); expect(first.emails.at(-1).id).toBe('history-54'); expect(first.nextPageToken).toBeTruthy();
@@ -567,11 +585,14 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(second.emails).toHaveLength(5); expect(second.nextPageToken).toBeUndefined();
     const all = [...second.emails, ...first.emails];
     expect(new Set(all.map((message: GmailEmail) => message.id)).size).toBe(55);
+    expect(all.map((message: GmailEmail) => message.id)).toEqual(Array.from({ length: 55 }, (_, i) => `history-${String(i).padStart(2, '0')}`));
+    expect(first.emails.at(-1).threadId).toBe('history-old-topic');
+    expect(first.threads).toHaveLength(2);
     const dates = all.map((message: GmailEmail) => Date.parse(message.date)); expect(dates).toEqual([...dates].sort((a, b) => a - b));
   });
 
   it('marks only the opened message read and counts one unread correspondent across original topics', async () => {
-    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'unread-topic-a'), { ...mail(leadEmail, 'unread-topic-b'), threadId: 'unread-topic-a' }, { ...mail(leadEmail, 'unread-topic-c'), threadId: 'unread-topic-a' }], permissions));
+    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'unread-topic-a'), mail(leadEmail, 'unread-topic-b'), mail(leadEmail, 'unread-topic-c')], permissions));
     const row = (await call('/emails')).body.emails[0]; expect(row.messageCount).toBe(3);
     expect((await call('/unread-count')).body.unreadCount).toBe(1);
     const provider = vi.fn(async () => Response.json({})); vi.stubGlobal('fetch', provider);
@@ -582,7 +603,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   });
   it.each(['archive', 'trash'])('applies correspondent %s only to authorized messages across its topics', async action => {
     await persistHistorical(mail(leadEmail, 'group-action-one'));
-    await persistHistorical({ ...mail(leadEmail, 'group-action-two'), threadId: 'group-action-one' });
+    await persistHistorical(mail(leadEmail, 'group-action-two'));
     await persistHistorical({ ...mail('bank@example.com', 'group-action-private'), threadId: 'group-action-one' });
     await persistHistorical({ ...mail(account.email, 'group-action-draft', ['DRAFT']), to: [leadEmail], draftId: 'draft-action' });
     const row = (await call('/emails')).body.emails[0];
@@ -593,6 +614,36 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(provider).toHaveBeenCalledTimes(2);
     expect(provider.mock.calls.every(([path]) => !String(path).includes('private') && !String(path).includes('draft'))).toBe(true);
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(4);
+  });
+  it('groups a correspondent across threads by Deal while keeping other Deals and unassigned mail separate', async () => {
+    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const deals = [];
+    for (const title of ['CCTV', 'Telephone']) deals.push(await prisma.deal.create({ data: { tenantId, assignedUserId: userId,
+      pipelineId: pipeline.id, stageId: initial.id, title, leadDeals: { create: { leadId } } } }));
+    for (const [index, dealId] of [deals[0].id, deals[1].id, null].entries()) {
+      for (let topic = 0; topic < 2; topic++) await persistHistorical({ ...mail(leadEmail, `deal-group-${index}-${topic}`),
+        subject: `Different subject ${index}-${topic}`, date: new Date(Date.UTC(2026, 9, 1, index, topic)).toISOString() }, { leadId, dealId });
+    }
+    const rows = (await call('/emails')).body.emails as GmailEmail[];
+    expect(rows).toHaveLength(3); expect(rows.every(row => row.messageCount === 2)).toBe(true);
+    expect((await call('/unread-count')).body.unreadCount).toBe(3);
+    for (const [index, dealId] of [deals[0].id, deals[1].id, null].entries()) {
+      const row = rows.find(row => row.dealId === dealId)!;
+      const detail = (await call('/conversations/' + row.conversationId)).body;
+      expect(detail.messageCount).toBe(2);
+      expect(detail.emails.map((message: GmailEmail) => message.id)).toEqual([`deal-group-${index}-0`, `deal-group-${index}-1`]);
+      expect(detail.emails.every((message: GmailEmail) => message.dealId === dealId)).toBe(true);
+    }
+    const group = rows.find(row => row.dealId === deals[0].id)!;
+    await persistHistorical({ ...mail(leadEmail, 'deal-group-latest'), subject: 'Latest subject', snippet: 'Latest Deal update', date: '2026-10-05T01:00:00Z' }, { leadId, dealId: deals[0].id });
+    const updated = (await call('/emails')).body.emails.find((row: GmailEmail) => row.dealId === deals[0].id);
+    expect(updated).toMatchObject({ conversationId: group.conversationId, messageCount: 3, id: 'deal-group-latest', snippet: 'Latest Deal update' });
+    const provider = vi.fn(async () => Response.json({})); vi.stubGlobal('fetch', provider);
+    expect((await call('/archive', 'POST', { conversationIds: [group.conversationId] })).body.count).toBe(3);
+    expect(provider).toHaveBeenCalledTimes(3);
+    expect(provider.mock.calls.every(([path]) => /deal-group-(0-|latest)/.test(String(path)))).toBe(true);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, labels: { has: 'INBOX' } } })).toBe(4);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(7);
   });
   it('preserves separate Deal groups inside one Gmail thread and leaves ambiguity unassigned', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
@@ -670,7 +721,8 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it.each([false, true])('replies to an older selected topic from consolidated history (Reply All=%s)', async all => {
     const source = { ...mail(leadEmail, 'selected-old'), date: '2026-10-01T01:00:00Z', subject: 'Older topic', rfcMessageId: '<older@example.test>' };
     await scope(() => ingestMailboxMessages(account, [source, { ...mail(leadEmail, 'newer-topic'), subject: 'Newer topic' }], permissions));
-    const row = (await call('/emails')).body.emails.find((row: GmailEmail) => row.threadId === source.threadId); expect(row.messageCount).toBe(1);
+    const rows = (await call('/emails')).body.emails; expect(rows).toHaveLength(1);
+    const row = rows[0]; expect(row.messageCount).toBe(2); expect(row.threadId).toBe('newer-topic');
     const selected = (await call('/conversations/' + row.conversationId)).body.emails.find((message: GmailEmail) => message.id === source.id);
     let write: any;
     const to = all ? [leadEmail, contactEmail] : [leadEmail];
@@ -686,15 +738,15 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   });
   it('searches any eligible message and filters whole conversations using latest activity', async () => {
     await persistHistorical({ ...mail(leadEmail, 'search-old'), threadId: 'search-thread', body: 'Historical rare-needle text', date: '2026-10-01T01:00:00Z' });
-    await persistHistorical({ ...mail(account.email, 'search-new', ['SENT']), threadId: 'search-thread', to: [leadEmail], snippet: 'Latest response', date: '2026-10-03T01:00:00Z' });
+    await persistHistorical({ ...mail(account.email, 'search-new', ['SENT']), threadId: 'search-new-thread', to: [leadEmail], snippet: 'Latest response', date: '2026-10-03T01:00:00Z' });
     await persistHistorical({ ...mail(contactEmail, 'search-other', ['INBOX']), date: '2026-10-02T01:00:00Z' });
     for (const filter of ['all', 'unread', 'sent']) {
       const rows = (await call(`/emails?filter=${filter}&query=rare-needle`)).body.emails;
       expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ id: 'search-new', messageCount: 2, isRead: false, snippet: 'Latest response' });
     }
-    expect((await call('/emails?sort=oldest')).body.emails.map((row: GmailEmail) => row.threadId)).toEqual(['search-other', 'search-thread']);
-    expect((await call('/emails?sort=newest')).body.emails.map((row: GmailEmail) => row.threadId)).toEqual(['search-thread', 'search-other']);
-    expect((await call('/emails?sort=unread')).body.emails[0].threadId).toBe('search-thread');
+    expect((await call('/emails?sort=oldest')).body.emails.map((row: GmailEmail) => row.threadId)).toEqual(['search-other', 'search-new-thread']);
+    expect((await call('/emails?sort=newest')).body.emails.map((row: GmailEmail) => row.threadId)).toEqual(['search-new-thread', 'search-other']);
+    expect((await call('/emails?sort=unread')).body.emails[0].threadId).toBe('search-new-thread');
     expect((await call('/emails?query=' + encodeURIComponent(account.email))).body.emails).toHaveLength(2);
   });
   it('counts unread incoming conversations and excludes outgoing UNREAD labels', async () => {
@@ -998,9 +1050,10 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(raw).toContain('In-Reply-To: <parent@example.test>');
     expect(parseGmailMessage(apiMail(incoming, [{ name: 'References', value: '<safe@example.test>\r\nBcc: bank@example.test' }])).rfcReferences).toEqual([]);
   });
-  it('creates a separate row for a new Compose thread without altering older conversations', async () => {
+  it('groups a new Compose thread with its correspondent without changing provider threading', async () => {
     const incoming = { ...mail(leadEmail, 'compose-existing'), rfcMessageId: '<existing@example.test>' };
     await scope(() => ingestMailboxMessages(account, [incoming], permissions));
+    const original = (await call('/emails')).body.emails[0];
     let write: any;
     const sent = { ...mail(account.email, 'compose-new', ['SENT']), threadId: 'compose-new-thread', to: [leadEmail] };
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -1010,7 +1063,8 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/send', 'POST', { to: leadEmail, subject: incoming.subject, body: '<p>New conversation</p>' })).status).toBe(200);
     expect(write.threadId).toBeUndefined(); expect(Buffer.from(write.raw, 'base64url').toString()).not.toContain('In-Reply-To:');
     const rows = (await call('/emails')).body.emails;
-    expect(rows).toHaveLength(2); expect(rows.every((row: GmailEmail) => row.messageCount === 1)).toBe(true);
+    expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ conversationId: original.conversationId, messageCount: 2 });
+    expect((await call('/conversations/' + original.conversationId)).body.emails.map((row: GmailEmail) => row.threadId).sort()).toEqual(['compose-existing', 'compose-new-thread']);
   });
 
   it('updates and sends saved reply drafts with their existing thread, and deletes only authorized drafts', async () => {
@@ -1431,7 +1485,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const older = { ...mail(leadEmail, 'archive-old', ['UNREAD']), threadId: 'archive-mixed' };
     const incoming = { ...mail(leadEmail, 'archive-new'), threadId: older.threadId };
     const outgoing = { ...mail(account.email, 'archive-reply', ['SENT']), to: [leadEmail], threadId: older.threadId };
-    await scope(() => ingestMailboxMessages(account, [older, incoming, outgoing, { ...outgoing, id: 'ordinary-sent', threadId: 'ordinary-sent-thread' }], permissions));
+    await scope(() => ingestMailboxMessages(account, [older, incoming, outgoing, { ...outgoing, id: 'ordinary-sent', threadId: 'ordinary-sent-thread', to: [contactEmail] }], permissions));
     expect((await call('/emails?view=archived')).body.emails).toEqual([]);
     const original = (await call('/emails')).body.emails.find((row: GmailEmail) => row.threadId === older.threadId);
     const activityCount = await prisma.activity.count({ where: { tenantId, mailboxMessage: { accountId: account.id } } });

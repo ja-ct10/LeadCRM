@@ -206,7 +206,7 @@ export default function LeadsPage(): React.ReactElement {
   // Total record count from server metadata (falls back to current page
   // length while metadata is still loading on first render)
   const serverTotal = leadsMeta?.total ?? leads.length;
-  const showNoMatches = Boolean(debouncedSearch.trim() || serverFilters.length || highlightId || serverTotal > 0);
+  const showNoMatches = Boolean(debouncedSearch.trim() || serverFilters.some(filter => filter.field !== 'scope') || highlightId || serverTotal > 0);
 
   // Sync to URL
   useEffect(() => {
@@ -466,7 +466,7 @@ export default function LeadsPage(): React.ReactElement {
             title={showNoMatches ? 'No matching records' : 'No leads yet'}
             description={showNoMatches
               ? 'Try a different search term or clear your filters.'
-              : 'Add your first lead to start tracking potential customers.'}
+              : 'Add your first lead to start building your CRM.'}
             actionLabel={!showNoMatches && canCreate ? 'Add Lead' : undefined}
             onAction={!showNoMatches && canCreate ? handleCreate : undefined}
           />

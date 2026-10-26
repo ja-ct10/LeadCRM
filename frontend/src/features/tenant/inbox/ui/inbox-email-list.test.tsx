@@ -44,6 +44,20 @@ it('retains correspondent selection when a different Gmail topic becomes the lat
   fireEvent.click(screen.getByLabelText('Archive'));
   await waitFor(() => expect(mocks.archive).toHaveBeenCalledWith([conversationId]));
 });
+it('opens distinct Deal and no-Deal rows for the same correspondent using their conversation identities', () => {
+  const options = props();
+  const emails = [
+    { ...row, conversationId: 'c_' + 'a'.repeat(32), dealId: 'deal-a', dealTitle: 'CCTV', messageCount: 3 },
+    { ...row, conversationId: 'c_' + 'b'.repeat(32), dealId: 'deal-b', dealTitle: 'Telephone', messageCount: 2 },
+    { ...row, conversationId: 'c_' + 'c'.repeat(32), dealId: null, messageCount: 4 },
+  ];
+  render(<InboxEmailList {...options} emails={emails} totalCount={3} />);
+  expect(screen.getByText('CCTV')).toBeTruthy(); expect(screen.getByText('Telephone')).toBeTruthy(); expect(screen.getByText('No Deal')).toBeTruthy();
+  expect(screen.getByLabelText('3 messages')).toBeTruthy(); expect(screen.getByLabelText('2 messages')).toBeTruthy(); expect(screen.getByLabelText('4 messages')).toBeTruthy();
+  const buttons = screen.getAllByRole('button', { name: /Open email from Doris/ });
+  expect(buttons).toHaveLength(3);
+  buttons.forEach((button, index) => { fireEvent.click(button); expect(options.onEmailClick).toHaveBeenLastCalledWith(emails[index]); });
+});
 it.each(['Archive', 'Delete Permanently'])('selects visible conversations and sends stable thread IDs for %s', async action => {
   const options = props(), view = render(<InboxEmailList {...options} />);
   fireEvent.click(screen.getByLabelText('Select all emails'));

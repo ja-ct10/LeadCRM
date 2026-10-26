@@ -70,7 +70,8 @@ export async function mailboxDealMessageIds(account: EmailAccount, scope: Mailbo
   return rows.map(row => row.id);
 }
 
-/** Direction, subject and correspondent changes never create a reply row. */
+/** One-to-one histories share a correspondent/Deal row across Gmail threads.
+ * Multi-participant histories retain their original thread boundary. */
 export function correspondentCte(account: EmailAccount, scope: MailboxScope, query?: string): Prisma.Sql {
   const mailbox = mailboxAddress(account.email) ?? '';
   const search = query ? Prisma.sql`(
@@ -86,7 +87,9 @@ export function correspondentCte(account: EmailAccount, scope: MailboxScope, que
       (${incomingUnread(account)}) AS unread, (${search}) AS matched,
       (m."fromAddress" <> ${mailbox} AND ${mailbox} = ANY(m."recipientAddresses") AND NOT ('SENT' = ANY(m.labels))) AS received,
       CASE WHEN cardinality(p.addresses) = 1 THEN 'person' ELSE 'group' END AS "conversationKind",
-      'c_' || md5(jsonb_build_array(${account.tenantId}::text, ${account.id}::text, m."threadId", m."effectiveDealId")::text) AS "conversationId"
+      'c_' || md5(jsonb_build_array(${account.tenantId}::text, ${account.id}::text,
+        CASE WHEN cardinality(p.addresses) = 1 THEN 'person:' || p.addresses[1] ELSE 'thread:' || m."threadId" END,
+        m."effectiveDealId")::text) AS "conversationId"
     FROM linked m LEFT JOIN thread_people p ON p."threadId" = m."threadId"
   ), eligible AS (
     SELECT g.*, bool_or(received) OVER w AND NOT bool_or(received AND 'INBOX' = ANY(labels)) OVER w AS "isArchived",
@@ -96,7 +99,7 @@ export function correspondentCte(account: EmailAccount, scope: MailboxScope, que
 }
 
 export function conversationContext(account: EmailAccount, scope: MailboxScope, purpose: unknown) {
-  return createHash('sha256').update(JSON.stringify(['thread-deals-v2', account.tenantId, account.id, account.mailboxVersion, scope.hash, purpose])).digest('hex');
+  return createHash('sha256').update(JSON.stringify(['correspondent-deals-v3', account.tenantId, account.id, account.mailboxVersion, scope.hash, purpose])).digest('hex');
 }
 
 export async function countUnreadConversations(account: EmailAccount, scope: MailboxScope) {

@@ -133,11 +133,12 @@ function expectNoTable() {
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
 }
 
-it('reuses the card with the Lead icon and opens the same create panel as the header', () => {
+it.each(['all', 'my', 'active'])('reuses the Contacts card and existing creation flow on the empty %s tab', tab => {
+  mocks.params = { tab };
   render(<LeadsPage />);
   const card = screen.getByRole('heading', { name: 'No leads yet' }).closest('.border-dashed')!;
   expect(card.querySelector('.lucide-target')).toBeTruthy();
-  expect(screen.getByText('Add your first lead to start tracking potential customers.')).toBeTruthy();
+  expect(screen.getByText('Add your first lead to start building your CRM.')).toBeTruthy();
   expect(card.querySelector('.lucide-plus')).toBeTruthy();
   expectNoTable();
   expect(screen.getByPlaceholderText('Search leads...')).toBeTruthy();
@@ -151,18 +152,19 @@ it('reuses the card with the Lead icon and opens the same create panel as the he
   expect(screen.getByRole('dialog', { name: 'Create Lead panel' })).toBeTruthy();
 });
 
-it('hides both creation entry points without Create permission', () => {
+it.each(['all', 'my', 'active'])('hides both creation entry points without Create permission on %s', tab => {
   mocks.canCreate = false;
+  mocks.params = { tab };
   render(<LeadsPage />);
   expect(screen.getByRole('heading', { name: 'No leads yet' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Add Lead' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Create Lead' })).toBeNull();
 });
 
-it.each([
+it.each<{ params: Record<string, string>; arrays: Record<string, string[]> }>([
   { params: { search: 'missing' }, arrays: {} },
-  { params: { tab: 'my' }, arrays: {} },
-  { params: { tab: 'active' }, arrays: {} },
+  { params: { tab: 'my', search: 'missing' }, arrays: {} },
+  { params: { tab: 'active' }, arrays: { statuses: ['New'] } },
   { params: { highlight: 'missing-lead' }, arrays: {} },
   { params: { createdOperator: 'gte', createdFrom: '2026-10-01' }, arrays: {} },
   ...['statuses', 'sources', 'owners', 'related', 'system'].map(key => ({ params: {}, arrays: { [key]: [key === 'sources' ? 'Website' : 'missing'] } })),
@@ -184,7 +186,8 @@ it('responds to search and tabs while retaining the header Create action', async
   fireEvent.change(screen.getByPlaceholderText('Search leads...'), { target: { value: '' } });
   await screen.findByRole('heading', { name: 'No leads yet' });
   fireEvent.click(screen.getByRole('button', { name: 'My Leads' }));
-  expect(screen.getByRole('heading', { name: 'No matching records' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'No leads yet' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Add Lead' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Create New' }));
   expect(screen.getByRole('dialog', { name: 'Create Lead panel' })).toBeTruthy();
