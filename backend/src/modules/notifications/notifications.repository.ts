@@ -1,7 +1,7 @@
 import prisma from '../../config/database.config';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { NotificationQuerySchema, SmsCampaignNotificationTypes, NotificationRecordTargetSchema, type NotificationRecordTarget, type UnreadNotificationRecord } from '@leadcrm/shared';
+import { NotificationQuerySchema, SmsCampaignNotificationTypes, NotificationRecordTargetSchema, notificationSettingsTab, type NotificationSettingsTab, type NotificationRecordTarget, type UnreadNotificationRecord } from '@leadcrm/shared';
 import { NotFoundError, ValidationError } from '../../shared/errors/http-error';
 import { presentNotifications, notificationAccess } from './notification-access';
 import { getNotificationPreferences } from './notification-preferences.service';
@@ -42,8 +42,9 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
   const where = { tenantId, userId, AND: [access.visibilityWhere] };
   // Both values come from one SQL snapshot, including inside mutation transactions.
   const groups = await tx.notification.groupBy({ by: ['isRead'], where, _count: { _all: true } });
-  const unread = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where: { ...where, isRead: false }, _count: { _all: true } });
+  const unread = await tx.notification.groupBy({ by: ['type', 'entityType', 'entityId'], where: { ...where, isRead: false }, _count: { _all: true } });
   const unreadByModule: Record<string, number> = {};
+  const unreadBySettingsTab: Partial<Record<NotificationSettingsTab, number>> = {};
   const records = new Map<string, UnreadNotificationRecord>();
   for (const group of unread) {
     const target = await access.resolve(group.entityType, group.entityId);
@@ -54,6 +55,8 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
       : path.startsWith('/automation/') ? 'workflows'
       : path.startsWith('/operations/') ? 'tasks' : path.split('/')[1];
     if (module) unreadByModule[module] = (unreadByModule[module] ?? 0) + group._count._all;
+    const tab = notificationSettingsTab(group.type, target.destination);
+    if (tab) unreadBySettingsTab[tab] = (unreadBySettingsTab[tab] ?? 0) + group._count._all;
     const record = NotificationRecordTargetSchema.safeParse({ entityType: target.entityType, entityId: target.entityId });
     if (record.success) {
       const key = target.entityType + ':' + target.entityId;
@@ -61,7 +64,7 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
       records.set(key, { ...record.data, count: (previous?.count ?? 0) + group._count._all });
     }
   }
-  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0, unreadByModule,
+  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0, unreadByModule, unreadBySettingsTab,
     unreadRecords: [...records.values()].sort((a, b) => (a.entityType + ':' + a.entityId).localeCompare(b.entityType + ':' + b.entityId)) };
 }
 export async function notificationCounts(tenantId: string, userId: string, input: Record<string, unknown> = {}) {
@@ -103,7 +106,7 @@ export async function notificationCounts(tenantId: string, userId: string, input
   const next = { ...cursor, at: hasMore && last ? last.createdAt.toISOString() : now.toISOString(), id: hasMore && last ? last.id : '', page: hasMore };
   const updates = (await presentNotifications(tenantId, userId, records)).filter(row => row.available);
   const access = result.active ? await notificationAccess(tenantId, userId) : null;
-  return { totalCount: result.totalCount, unreadCount: result.unreadCount, unreadByModule: result.unreadByModule, unreadRecords: result.unreadRecords, updates, hasMore,
+  return { totalCount: result.totalCount, unreadCount: result.unreadCount, unreadByModule: result.unreadByModule, unreadBySettingsTab: result.unreadBySettingsTab, unreadRecords: result.unreadRecords, updates, hasMore,
     cursor: Buffer.from(JSON.stringify(next)).toString('base64url'),
     activeSmsUntil: result.active?.submissionStartedAt && await access?.resolve('Campaign', result.active.id)
       ? new Date(+result.active.submissionStartedAt + 300000).toISOString() : null };

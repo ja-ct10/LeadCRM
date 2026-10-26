@@ -360,7 +360,9 @@ export default function AccountsPage(): React.ReactElement {
     <>
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
-        exportAction={<ExportCsvButton module="accounts" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
+        exportAction={<ExportCsvButton module="accounts" hasData={highlightId ? undefined : serverTotal > 0}
+          disabled={isLoading || isRefreshing || (!highlightId && !!accountsError) || searchTerm !== debouncedSearch}
+          params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
         bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...accountSelectedIds].some(id => !recordAccess.canMutate(accounts.find(record => record.id === id), 'canArchive'))} onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
         moduleId="accounts"
         title="Accounts"

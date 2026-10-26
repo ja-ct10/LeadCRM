@@ -11,6 +11,7 @@ import { useLayout } from './use-layout';
 import { cn } from '@/lib/utils';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
+import { UnreadNotificationDot } from '@/features/tenant/notifications/ui/unread-notification-dot';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ function NavButton({ item, isActive, isCollapsed, hasUnread, onClick }: NavButto
       )}
 
       <span className="relative shrink-0"><Icon className="h-[16px] w-[16px]" />
-        {isCollapsed && hasUnread && <span role="status" aria-label={`Unread ${item.name} notifications`} className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-[var(--sidebar-bg)]" />}
+        {isCollapsed && hasUnread && <UnreadNotificationDot label={`Unread ${item.name} notifications`} className="absolute -right-1 -top-1 ring-2 ring-[var(--sidebar-bg)]" />}
       </span>
 
       {!isCollapsed && (
@@ -269,7 +270,7 @@ function NavButton({ item, isActive, isCollapsed, hasUnread, onClick }: NavButto
           <span className="truncate flex-1 text-left">{item.name}</span>
           {hasUnread && (
             <span className="shrink-0 min-w-[20px] h-[18px] flex items-center justify-center">
-              <span role="status" aria-label={`Unread ${item.name} notifications`} className="h-2 w-2 rounded-full bg-blue-500" />
+              <UnreadNotificationDot label={`Unread ${item.name} notifications`} />
             </span>
           )}
         </>

@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   title: 'LeadCRM - Camxian Technologies',
   description: 'The premier CRM platform for IT solutions providers, security firms, and telecom agencies.',
   icons: {
-    icon: { url: '/icons/camxian-32.png', type: 'image/png', sizes: '32x32' },
+    icon: { url: '/favicon.ico', type: 'image/x-icon', sizes: '16x16 32x32 48x48' },
     apple: { url: '/icons/camxian-180.png', type: 'image/png', sizes: '180x180' },
   },
 };

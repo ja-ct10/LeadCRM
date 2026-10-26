@@ -3,9 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { apiClient } from '@/lib/api/client';
 
 const state = vi.hoisted(() => ({
   role: 'Sales',
+  loading: false, refreshing: false, error: null as string | null,
   pipelines: [] as any[], rows: [] as any[], params: '', permissions: [] as string[],
   replace: vi.fn(), refetch: vi.fn(), refreshPipelines: vi.fn(), addDeals: vi.fn(), moveDealStage: vi.fn(), setData: vi.fn(),
 }));
@@ -16,7 +18,7 @@ vi.mock('next/navigation', () => {
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', role: state.role }, tenant: { id: 'tenant' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [], addDeals: state.addDeals, moveDealStage: state.moveDealStage, refreshPipelines: state.refreshPipelines }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => state.permissions.includes(permission) }));
-vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: state.setData, isInitialLoad: false }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: state.setData, isInitialLoad: state.loading, isRefreshing: state.refreshing, error: state.error }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/shared/components/crm', () => ({ DealPanel: () => null }));
@@ -36,6 +38,7 @@ import PipelinePage from './pipeline-page';
 
 beforeEach(() => {
   vi.clearAllMocks(); state.role = 'Sales'; state.params = '';
+  state.loading = false; state.refreshing = false; state.error = null;
   state.permissions = ['deals.view_all', 'deals.view_my', 'deals.create', 'deals.edit', 'deals.manage_stages'];
   state.pipelines = [{ id: 'sales', name: 'Sales Pipeline', stages: [{ id: 'lead', name: 'Lead', isDefault: true }, { id: 'qualified', name: 'Qualified' }] }];
   state.rows = [
@@ -45,7 +48,7 @@ beforeEach(() => {
   state.refetch.mockResolvedValue(undefined); state.refreshPipelines.mockResolvedValue(undefined);
   state.addDeals.mockResolvedValue(undefined); state.moveDealStage.mockResolvedValue({ ...state.rows[0], stageId: 'qualified' });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it('uses the CRM shell spacing and shared search without Deals KPI cards', () => {
   const { container } = render(<PipelinePage />);
@@ -248,4 +251,44 @@ it('falls back to My Deals and removes the board when its last tab is revoked', 
   state.permissions = []; view.rerender(<PipelinePage />);
   expect(screen.getByRole('alert').textContent).toContain('You do not have permission');
   expect(screen.queryByTestId('board')).toBeNull();
+});
+
+it('updates Export for empty scopes, search, filters and restored records while retaining creation', () => {
+  const view = render(<PipelinePage />);
+  const button = screen.getByRole('button', { name: 'Export CSV' });
+  expect(button).toHaveProperty('disabled', false);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: 'No match' } });
+  expect(button).toHaveProperty('disabled', true);
+  expect(button.getAttribute('title')).toBe('No data available to export.');
+  expect(screen.getByRole('button', { name: 'New Deal' })).toHaveProperty('disabled', false);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: '' } });
+  expect(button).toHaveProperty('disabled', false);
+  fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Deals' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter other owner' }));
+  expect(button).toHaveProperty('disabled', true);
+  fireEvent.click(screen.getByRole('button', { name: 'Filter other owner' }));
+  expect(button).toHaveProperty('disabled', false);
+  const rows = state.rows; state.rows = []; view.rerender(<PipelinePage />);
+  expect(button).toHaveProperty('disabled', true);
+  state.rows = rows; view.rerender(<PipelinePage />);
+  expect(button).toHaveProperty('disabled', false);
+});
+
+it.each(['loading', 'refreshing', 'error'] as const)('disables Deals Export during %s even with cached matches', condition => {
+  if (condition === 'error') state.error = 'Cannot load deals'; else state[condition] = true;
+  render(<PipelinePage />);
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'New Deal' })).toHaveProperty('disabled', false);
+  expect(screen.getByRole('textbox', { name: 'Search deals' })).toHaveProperty('disabled', false);
+});
+
+it('does not count a highlighted Deal that only bypasses the display filters', async () => {
+  state.params = 'highlight=one';
+  vi.spyOn(apiClient, 'get').mockResolvedValue({ data: state.rows[0] });
+  render(<PipelinePage />);
+  await waitFor(() => expect(state.refetch).toHaveBeenCalled());
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: 'No match' } });
+  expect(screen.getByText('First Deal')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveProperty('disabled', true);
 });

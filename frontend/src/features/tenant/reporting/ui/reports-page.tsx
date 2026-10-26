@@ -2,15 +2,18 @@
 
 import Dashboard from '@/features/tenant/dashboard/ui/dashboard';
 import { dashboardQueryString } from '@/features/tenant/dashboard/hooks/use-dashboard-report';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DashboardQuery, DashboardReport } from '@leadcrm/shared';
 
-function ReportsCsvExport({ query, report, error, className }: { query: DashboardQuery; report: DashboardReport | null; error: string | null; className: string }) {
+function ReportsCsvExport({ query, report, error, loading, className }: { query: DashboardQuery; report: DashboardReport | null; error: string | null; loading: boolean; className: string }) {
   const [exporting, setExporting] = useState(false);
+  const pending = useRef(false);
+  const disabled = !report || loading || exporting || !!error;
   const exportCsv = async () => {
-    if (exporting) return;
+    if (disabled || pending.current) return;
+    pending.current = true;
     setExporting(true);
     try {
       const response = await fetch(`/api/proxy/reporting/dashboard/export?${dashboardQueryString(query)}`, { credentials: 'include', cache: 'no-store' });
@@ -21,9 +24,9 @@ function ReportsCsvExport({ query, report, error, className }: { query: Dashboar
       document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
       toast.success('Dashboard exported to CSV');
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Export failed'); }
-    finally { setExporting(false); }
+    finally { pending.current = false; setExporting(false); }
   };
-  return <button onClick={exportCsv} disabled={!report || exporting || !!error} className={className} title="Export CSV" aria-label={exporting ? 'Exporting…' : 'Export CSV'}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">{exporting ? 'Exporting…' : 'Export CSV'}</span></button>;
+  return <button onClick={exportCsv} disabled={disabled} className={className} title="Export CSV" aria-label="Export CSV" aria-busy={exporting || loading || undefined}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">{exporting ? 'Exporting…' : 'Export CSV'}</span></button>;
 }
 
 /** Reports reuse the authorized Dashboard view and retain their CSV control. */

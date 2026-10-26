@@ -54,6 +54,7 @@ export interface NotificationMutationResponse {
   totalCount: number;
   unreadCount: number;
   unreadByModule?: Record<string, number>;
+  unreadBySettingsTab?: Partial<Record<NotificationSettingsTab, number>>;
   unreadRecords?: UnreadNotificationRecord[];
   readBefore?: string;
   readRecord?: NotificationRecordTarget;
@@ -98,6 +99,21 @@ export const NotificationTypes = [
   ...SmsCampaignNotificationTypes,
 ] as const;
 export type NotificationType = typeof NotificationTypes[number];
+
+export type NotificationSettingsTab = 'profile' | 'users' | 'roles';
+const settingsNotificationTabs: Partial<Record<NotificationType, NotificationSettingsTab>> = {
+  password_expiring_soon: 'profile',
+  user_created: 'users', user_status_changed: 'users', user_role_changed: 'users',
+  role_created: 'roles', role_archived: 'roles', role_permissions_changed: 'roles',
+};
+
+/** Submenu hints require a supported event and its currently authorized destination. */
+export function notificationSettingsTab(type: string, destination: string): NotificationSettingsTab | undefined {
+  const tab = settingsNotificationTabs[type as NotificationType];
+  const [path, query] = destination.split('?');
+  return tab && path === '/settings' && new URLSearchParams(query).get('tab') === tab ? tab : undefined;
+}
+
 export const NotificationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

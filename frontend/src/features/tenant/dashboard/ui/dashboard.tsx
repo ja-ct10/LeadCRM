@@ -96,7 +96,7 @@ function DashboardClock() {
 export default function Dashboard({ heading, renderToolbarActions, presentation = 'dashboard' }: {
   heading?: string;
   presentation?: 'dashboard' | 'reporting';
-  renderToolbarActions?: (props: { query: DashboardQuery; report: DashboardReport | null; error: string | null; className: string }) => React.ReactNode;
+  renderToolbarActions?: (props: { query: DashboardQuery; report: DashboardReport | null; error: string | null; loading: boolean; className: string }) => React.ReactNode;
 } = {}) {
   const { user } = useAuth();
   const [selectedQuery, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
@@ -208,7 +208,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
     if (await refresh()) toast.success('Dashboard metrics refreshed'); else toast.error('Dashboard could not refresh');
   };
   if (!user) return null;
-  if (!report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton presentation={presentation} /></div>;
+  if (presentation === 'dashboard' && !report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton presentation={presentation} /></div>;
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="p-4 lg:p-6 space-y-6" aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -220,7 +220,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
           {presentation === 'reporting' && <DropdownMenu><DropdownMenuTrigger className={toolbarButton} aria-label="Dashboard date range" title={ranges.find(range => range.id === query.range)?.label}><Calendar size={14} aria-hidden="true" /><span className="hidden sm:inline">{ranges.find(range => range.id === query.range)?.label}</span><ChevronDown size={12} aria-hidden="true" className="hidden sm:block" /></DropdownMenuTrigger>
             <DropdownMenuContent align="end">{ranges.map(range => <DropdownMenuItem key={range.id} onClick={() => selectRange(range.id)}>{range.label}</DropdownMenuItem>)}</DropdownMenuContent>
           </DropdownMenu>}
-          {renderToolbarActions?.({ query, report, error, className: toolbarButton })}
+          {renderToolbarActions?.({ query, report, error, loading, className: toolbarButton })}
           <button onClick={handleRefresh} disabled={loading} className={toolbarButton} title="Sync Metrics" aria-label={loading ? 'Syncing…' : 'Sync Metrics'}><RefreshCw size={14} aria-hidden="true" className={loading ? 'animate-spin' : ''} /><span className="hidden sm:inline">{loading ? 'Syncing…' : 'Sync Metrics'}</span></button>
         </div>
       </div>
@@ -230,7 +230,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
         <button className={button} onClick={applyCustom}>Apply dates</button><button className={button} onClick={() => setCustom(false)}>Cancel</button>
       </div>}
       {error && <div role="alert" className="text-sm text-destructive border border-red-200 rounded-lg p-3">{error} <button onClick={handleRefresh} disabled={loading} className="underline">Retry</button></div>}
-      {!report ? <p className="text-sm text-slate-500">Dashboard metrics are unavailable.</p> : <>
+      {!report ? loading && !error ? <DashboardSkeleton presentation={presentation} /> : <p className="text-sm text-slate-500">Dashboard metrics are unavailable.</p> : <>
         {report.warnings.length > 0 && <details className="rounded-lg border border-amber-200 dark:border-amber-900/40 p-3 text-xs text-slate-600 dark:text-slate-300">
           <summary className="cursor-pointer font-medium text-amber-800 dark:text-amber-400">Reporting warnings ({new Set(report.warnings).size})</summary>
           <ul className="mt-2 list-disc space-y-1 pl-4">{Array.from(new Set(report.warnings)).map(warning => <li key={warning}>{warning}</li>)}</ul>

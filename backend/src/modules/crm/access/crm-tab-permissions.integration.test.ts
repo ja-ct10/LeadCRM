@@ -110,6 +110,17 @@ describe.skipIf(!disposable)('CRM tab grants with real authenticated HTTP reques
     await grants('accounts', true); expect((await call('/crm/accounts')).status).toBe(200);
   });
 
+  it.each(['leads', 'contacts', 'accounts', 'deals'])('%s export treats unauthorized matching records as an empty dataset', async module => {
+    await grants(module, module === 'accounts', module !== 'accounts');
+    const params = new URLSearchParams({ search: module === 'accounts' ? 'foreign-record' : `${module}-other` });
+    if (module !== 'accounts') params.set('scope', 'my');
+    const list = await call(`/crm/${module}?${params}`);
+    expect(list.status).toBe(200); expect(list.body.meta.total).toBe(0);
+    const exported = await call(`/crm/${module}/export?${params}`);
+    expect(exported.status).toBe(404);
+    expect(exported.body).toEqual({ success: false, error: 'No data available to export.' });
+  });
+
   it('keeps Active inside live records and evicts a record after an authorized status change leaves that scope', async () => {
     await grants('leads', false, false, true);
     const archived = await call('/crm/leads?archived=true'); expect(archived.status).toBe(200); expect(ids(archived)).toEqual([]);

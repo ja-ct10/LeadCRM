@@ -389,7 +389,9 @@ export default function LeadsPage(): React.ReactElement {
     <>
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
-        exportAction={<ExportCsvButton module="leads" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
+        exportAction={<ExportCsvButton module="leads" hasData={highlightId ? undefined : (leadsMeta?.total ?? 0) > 0}
+          disabled={isLeadsInitialLoad || isLeadsRefreshing || (!highlightId && !!leadsError) || searchTerm !== debouncedSearch}
+          params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
         moduleId="leads"
         title="Leads"
         description="Manage and track potential customers and sales opportunities."
