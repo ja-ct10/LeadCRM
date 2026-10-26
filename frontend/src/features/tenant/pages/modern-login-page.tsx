@@ -13,6 +13,7 @@ import { CamxianBrandPanel } from './camxian-brand-panel';
 import { useLoginLockout } from '../auth/use-login-lockout';
 import { LoginLockoutDialog } from '../auth/login-lockout-dialog';
 import { PublicFooter } from '@/shared/components/public-footer';
+import { AppBrand, AppLogo } from '@/shared/components/app-logo';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { readRememberedEmail, rememberLoginEmail } from '@/shared/auth/remembered-login';
 
@@ -209,13 +210,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
       <div className="min-h-[var(--app-viewport-height)] bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white dark:bg-slate-900 p-4 sm:p-8 rounded-2xl border border-gray-200 dark:border-white/5 shadow-xl">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg ring-1 ring-slate-200 dark:ring-slate-700 flex items-center justify-center mb-4">
-              <img
-                src="/leadcrm_logo.png"
-                alt="LeadCRM Logo"
-                className="w-10 h-10"
-              />
-            </div>
+            <AppLogo className="mb-4 w-56 p-2" />
             <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white mb-2">
               {resetSuccess ? 'Password Updated' : 'Set New Password'}
             </h2>
@@ -341,14 +336,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
               onClick={() => onNavigate('login')}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
             >
-              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-                <img
-                  src="/leadcrm_logo.png"
-                  alt="LeadCRM Logo"
-                  className="w-7 h-7 object-contain"
-                />
-              </div>
-              <span className="text-xl font-bold">LeadCRM</span>
+              <AppLogo className="w-48 p-2" />
             </button>
 
             {/* Center content */}
@@ -426,14 +414,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
               onClick={() => onNavigate('login')}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
             >
-              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-                <img
-                  src="/leadcrm_logo.png"
-                  alt="LeadCRM Logo"
-                  className="w-7 h-7 object-contain"
-                />
-              </div>
-              <span className="text-xl font-bold">LeadCRM</span>
+              <AppLogo className="w-48 p-2" />
             </button>
 
             {/* Center content */}
@@ -505,13 +486,16 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
     <>
     <LoginLockoutDialog open={lockout.open} onOpenChange={lockout.setOpen} countdown={lockout.countdown} seconds={lockout.seconds} />
     <div className="min-h-[var(--app-viewport-height)] flex flex-col lg:flex-row">
-      <CamxianBrandPanel onNavigate={onNavigate} />
+      <CamxianBrandPanel />
 
       {/* Right side - Login form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 bg-white dark:bg-slate-950">
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
           <div>
+            <AppBrand className="mx-auto mb-6 w-64">
+              <AppLogo className="w-full bg-transparent p-2" />
+            </AppBrand>
             <h2 className={`${responsiveTypography.authTitle} font-display font-bold text-slate-900 dark:text-white mb-2`}>
               Login
             </h2>

@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 it('describes Camxian access without public signup or Google authentication', () => {
   render(<ModernLoginPage onNavigate={vi.fn()} />);
-  expect(screen.getByText(/CAMXIAN TECHNOLOGIES/)).toBeTruthy();
+  expect(screen.getByRole('heading', { name: /Technology that will\s+shape your future\./ })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /sign up|google/i })).toBeNull();
   expect(screen.getByLabelText(/email address/i)).toBeTruthy();
   expect(screen.getByLabelText(/^password$/i)).toBeTruthy();
@@ -72,9 +72,10 @@ it('does not replace remembered identity after a failed login', async () => {
 it('renders the login footer with brand, support, company links, and copyright', () => {
   render(<ModernLoginPage onNavigate={vi.fn()} />);
   const footer = within(screen.getByRole('contentinfo'));
-  const brand = footer.getByRole('link', { name: 'LeadCRM' });
+  const brand = footer.getByRole('link', { name: 'Camxian Technologies' });
   expect(brand.getAttribute('href')).toBe('/login');
-  expect(brand.querySelector('img')?.getAttribute('src')).toBe('/leadcrm_logo.png');
+  expect(brand.querySelector('img')?.getAttribute('src')).toBe('/camxian_logo.png');
+  expect(footer.getByText('Powered by LeadCRM')).toBeTruthy();
   expect(footer.getByText('A centralized CRM platform for Camxian Technologies, designed to manage leads, customers, sales pipelines, and automated workflows.')).toBeTruthy();
   expect(footer.getByText('Support:')).toBeTruthy();
   expect(footer.getByRole('link', { name: LEGAL_ORGANIZATION.supportEmail }).getAttribute('href')).toBe(`mailto:${LEGAL_ORGANIZATION.supportEmail}`);

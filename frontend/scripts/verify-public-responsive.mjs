@@ -113,12 +113,12 @@ try {
             overflow: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth) - innerWidth,
             titleSize: parseFloat(getComputedStyle(title).fontSize),
             inputSizes: [...document.querySelectorAll('input:not([type="checkbox"]),select,textarea')].map(element => parseFloat(getComputedStyle(element).fontSize)),
-            footer: { columns: getComputedStyle(footerGrid).gridTemplateColumns.split(' ').length, brand: box(brand), company: box(company), leadColor: getComputedStyle(brand).color, crmColor: getComputedStyle(brand.lastElementChild.lastElementChild).color,
+            footer: { columns: getComputedStyle(footerGrid).gridTemplateColumns.split(' ').length, brand: box(brand), company: box(company), poweredBy: footer.textContent.includes('Powered by LeadCRM'),
               links: [...footer.querySelectorAll('a')].map(element => ({ href: element.getAttribute('href'), bounds: box(element) })), logo: footer.querySelector('img').getAttribute('src'), copyright: footer.lastElementChild.lastElementChild.textContent },
             banner: { bounds: box(banner), title: box(bannerTitle), text: textBox(bannerTitle), lineHeight: parseFloat(getComputedStyle(bannerTitle).lineHeight), fontSize: parseFloat(getComputedStyle(bannerTitle).fontSize), whiteSpace: getComputedStyle(bannerTitle).whiteSpace,
               icon: box(banner.querySelector('.pwa-install-banner__icon')), install: box(banner.querySelector('.pwa-install-banner__install')), close: box(banner.querySelector('.pwa-install-banner__dismiss')) },
             ...(type === 'login' ? { login: { form: box(form), content: box(form.parentElement), panel: box(form.parentElement.parentElement), promo: box(document.querySelector('aside')), carouselVisible: document.querySelector('[aria-label="Our solutions"]').getClientRects().length > 0,
-              remember: box(checkbox.closest('label')), checkbox: box(checkbox), forgot: box(forgot), label: checkbox.closest('label').textContent.trim(), bodySize: parseFloat(getComputedStyle(title.nextElementSibling).fontSize) } } : {}),
+              remember: box(checkbox.parentElement.parentElement), checkbox: box(checkbox.nextElementSibling), forgot: box(forgot), label: [...checkbox.labels].map(label => label.textContent.trim()).join('').trim(), bodySize: parseFloat(getComputedStyle(title.nextElementSibling).fontSize) } } : {}),
             ...(type === 'legal' ? { legal: { main: box(main), bodySize: parseFloat(getComputedStyle(document.querySelector('article section p')).fontSize), sections: document.querySelectorAll('article section').length,
               links: [...document.querySelectorAll('article a')].map(element => ({ bounds: box(element), wrap: getComputedStyle(element).overflowWrap })) } } : {}),
             ...(type === 'help' ? { help: { columns: getComputedStyle(categories).gridTemplateColumns.split(' ').length, root: box(title.closest('[class*="root"]')), search: box(form), inputSize: parseFloat(getComputedStyle(form.querySelector('input')).fontSize) } } : {}),
@@ -131,13 +131,13 @@ try {
         const footer = metrics.footer, banner = metrics.banner;
         check(footer.columns === (width < 768 ? 1 : 2), `${label} footer columns`, footer.columns);
         check(width < 768 ? footer.company.top >= footer.brand.bottom : footer.company.left > footer.brand.right, `${label} footer placement`, footer);
-        check(footer.leadColor !== footer.crmColor, `${label} separate Lead/CRM colors`, footer);
-        check(footer.logo === '/leadcrm_logo.png' && footer.copyright === '© 2026 LeadCRM. All rights reserved.', `${label} footer identity`, footer);
+        check(footer.poweredBy, `${label} LeadCRM attribution`, footer);
+        check(footer.logo === '/camxian_logo.png' && footer.copyright === '© 2026 LeadCRM. All rights reserved.', `${label} footer identity`, footer);
         check(['/login', '/privacy-policy', '/terms-of-service', '/help', 'mailto:leadcrm.tech@gmail.com'].every(href => footer.links.some(link => link.href === href)), `${label} footer links`, footer.links);
         check(footer.links.every(link => link.bounds.left >= 0 && link.bounds.right <= width + 1), `${label} footer links fit`, footer.links);
         check(banner.whiteSpace === 'nowrap' && banner.text.height <= banner.lineHeight + 1 && banner.text.right <= banner.title.right + 1, `${label} single-line unclipped PWA title`, banner);
         check([banner.icon, banner.install, banner.close].every(bounds => bounds.width > 0 && bounds.left >= 0 && bounds.right <= width + 1), `${label} PWA controls visible`, banner);
-        check(banner.icon.right <= banner.title.left + 1 && banner.text.right <= banner.install.left + 1 && banner.install.right <= banner.close.left, `${label} PWA controls do not overlap`, banner);
+        check((width < 640 ? banner.icon.bottom <= banner.title.top + 1 : banner.icon.right <= banner.title.left + 1) && Math.max(banner.icon.right, banner.text.right) <= banner.install.left + 1 && banner.install.right <= banner.close.left, `${label} PWA controls do not overlap`, banner);
         check(banner.install.height >= 44 && banner.close.height >= 44, `${label} PWA touch targets`, banner);
         if (width >= 768) check(banner.fontSize >= 14, `${label} desktop PWA typography`, banner.fontSize);
         if (route.type === 'login') {

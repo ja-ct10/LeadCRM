@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Mail, Shield } from 'lucide-react';
+import { AppLogo } from '@/shared/components/app-logo';
 
 interface EmailPreviewProps {
   subject?: string;
@@ -30,12 +31,7 @@ export function EmailPreview({ subject, content }: EmailPreviewProps): React.Rea
       <div className="px-5 pt-5 pb-4 border-b border-gray-100 dark:border-white/5 space-y-4">
         {/* Logo row */}
         <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/leadcrm_logo.png"
-            alt="LeadCRM"
-            className="h-6 w-auto object-contain"
-          />
+          <AppLogo className="w-36 p-1" />
           <div className="h-3.5 w-px bg-gray-200 dark:bg-white/8" />
           <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
             Email Preview

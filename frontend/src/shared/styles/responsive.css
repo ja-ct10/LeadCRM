@@ -39,21 +39,22 @@
   display: flex;
   flex: 1;
   min-width: 0;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 .pwa-install-banner__icon {
   display: grid;
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
+  flex-shrink: 0;
+  width: 112px;
+  padding: 4px 6px;
   place-items: center;
   border: 1px solid #DCE6F2;
   border-radius: 12px;
   background: #FFFFFF;
   box-shadow: 0 1px 3px rgb(15 23 42 / 0.08);
 }
-.pwa-install-banner__icon img { display: block; width: 28px; height: 28px; object-fit: contain; }
+.pwa-install-banner__icon img { width: 100%; height: auto; }
 .pwa-install-banner__message {
   flex: 1;
   min-width: 0;
@@ -95,7 +96,8 @@
 }
 @media (width >= 640px) {
   .pwa-install-banner__content { gap: 16px; padding: 12px 20px; }
-  .pwa-install-banner__icon { flex-basis: 44px; width: 44px; height: 44px; }
+  .pwa-install-banner__branding { flex-direction: row; align-items: center; gap: 10px; }
+  .pwa-install-banner__icon { width: 128px; }
   .pwa-install-banner__title { font-size: 14px; line-height: 20px; }
 }
 @media (width <= 360px) {
