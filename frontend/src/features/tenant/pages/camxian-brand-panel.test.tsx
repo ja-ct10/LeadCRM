@@ -10,6 +10,19 @@ import { CamxianBrandPanel } from './camxian-brand-panel';
 beforeEach(() => { vi.useFakeTimers(); state.reduced = false; });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('Camxian solutions', () => {
+  it('keeps the Login heading and description by default', () => {
+    render(<CamxianBrandPanel />);
+    expect(screen.getByRole('heading', { name: /Technology that will\s+shape your future\./ })).toBeTruthy();
+    expect(screen.getByText('Empowering innovation and security today for a safer tomorrow!')).toBeTruthy();
+  });
+  it('uses configurable copy with the same categories and solutions', () => {
+    render(<CamxianBrandPanel heading="Secure Password Reset" description="We'll send you a secure link to reset your password. Check your inbox and spam folder." />);
+    expect(screen.getByRole('heading', { name: 'Secure Password Reset' })).toBeTruthy();
+    expect(screen.getByText("We'll send you a secure link to reset your password. Check your inbox and spam folder.")).toBeTruthy();
+    expect(screen.getByText('I.T & Business Solutions')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Our solutions' })).toBeTruthy();
+    expect(screen.queryByText('Empowering innovation and security today for a safer tomorrow!')).toBeNull();
+  });
   it('rotates and cancels its timer on unmount', () => {
     const view = render(<CamxianBrandPanel />);
     expect(screen.getByRole('heading', { name: 'CCTV Surveillance' })).toBeTruthy();

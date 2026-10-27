@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/shared/utils/toast';
 import { workflowStatusLabel, type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
-import { Eye, Edit, Copy, Activity, Pause, Play, Archive } from 'lucide-react';
+import { Eye, Edit, Copy, Activity, Pause, Play, Archive, Workflow as WorkflowIcon } from 'lucide-react';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { FilterButton } from '@/shared/components/crm/filter-button';
@@ -19,6 +19,8 @@ import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
 import { WORKFLOWS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
+import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
+import { TableRefreshContext } from '@/shared/components/crm/data-view-states';
 import { useAuth } from '@/store/AuthContext';
 import { workflowsApi, getWorkflowMetadata, withWorkflowTimeout } from '@/shared/services/workflows.api';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
@@ -69,13 +71,24 @@ export default function WorkflowsPage() {
     request.then(result => { if (!cancelled) setMetadata(result); }).catch(failure => { if (!cancelled) setMetadataError(failure instanceof Error ? failure.message : 'Unable to load workflow options.'); });
     return () => { cancelled = true; };
   }, [tenant?.id, user?.id, authLoading, authError, canView, retry]);
+  const hasActiveCriteria = Boolean(search.trim() || statuses.length || triggers.length);
   const { data, isInitialLoad, isRefreshing, error: workflowsError, refetch: refreshWorkflows } = useCachedPage({
     module: 'workflows', params: { page, pageSize, search, statuses, triggers, sort }, disabled: !canView,
-    fetchFn: () => workflowsApi.list({ sort: `${sort.field}:${sort.direction}`, page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') }),
+    fetchFn: async () => {
+      const result = await workflowsApi.list({ sort: `${sort.field}:${sort.direction}`, page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') });
+      // Filtered totals cannot establish whether the user's workflow module is empty.
+      const unfilteredTotal = hasActiveCriteria && result.meta.total === 0
+        ? (await workflowsApi.list({ page: 1, limit: 1 })).meta.total
+        : hasActiveCriteria ? undefined : result.meta.total;
+      return { ...result, unfilteredTotal };
+    },
   });
   const workflows = data?.data ?? [];
   const total = data?.meta.total ?? 0;
   const workflowsLoading = isInitialLoad || isRefreshing;
+  const correctingPage = Boolean(data && page > Math.max(1, Math.ceil(total / pageSize)));
+  const showEmptyState = Boolean(data && !workflowsError && !correctingPage && workflows.length === 0);
+  const isEmptyModule = total === 0 && (!hasActiveCriteria || data?.unfilteredTotal === 0);
   useEffect(() => { if (data && page > Math.max(1, Math.ceil(total / pageSize))) setPage(Math.max(1, Math.ceil(total / pageSize))); }, [data, total, page, pageSize]);
   const triggerLabel = (type: string) => (metadata?.triggers.find(trigger => trigger.type === type)?.label ?? type).replace(/Client Profile/gi, 'Contact');
   const clearFilters = () => { setSearch(''); setStatuses([]); setTriggers([]); setPage(1); };
@@ -109,7 +122,7 @@ export default function WorkflowsPage() {
   const [activating, setActivating] = useState<Workflow | null>(null);
   const toggleWorkflow = (workflow: Workflow) => { if (workflow.isActive) void mutate(() => workflowsApi.toggle(workflow.id, false), 'Workflow paused.'); else setActivating(workflow); };
   if (!canView) return <p className="p-6 text-[var(--text-primary)]">You do not have permission to view workflows.</p>;
-  return <div className="p-4 sm:p-6 space-y-6 text-[var(--text-primary)]">
+  return <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-6 text-[var(--text-primary)]">
     <PageHeader title="Workflows" subtitle="Automate CRM actions based on triggers and conditions." actions={canCreate && <CreateButton label="Create Workflow" disabled={!metadata || busy} onClick={() => setCreateOpen(true)} />} />
     {metadataError && <div role="alert">{metadataError} <Button variant="outline" onClick={() => setRetry(retry + 1)}>Retry options</Button></div>}
     {workflowsError && <div role="alert">{workflowsError} <Button variant="outline" onClick={() => void refreshWorkflows()}>Retry workflows</Button></div>}
@@ -126,7 +139,18 @@ export default function WorkflowsPage() {
         ]}
         onFilterToggle={(group, id) => { const setter = group === 'status' ? setStatuses : setTriggers; setter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); setPage(1); }} />
       <div className="min-w-0 flex-1">
-        {isInitialLoad ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> isRefreshing={isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canActivate || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+        {isInitialLoad || correctingPage ? <TableLoadingState label="Loading workflows..." /> : showEmptyState ? (
+          <TableRefreshContext.Provider value={isRefreshing}>
+            <ActionableEmptyState
+              icon={WorkflowIcon}
+              title={isEmptyModule ? 'No workflows yet' : 'No workflows match'}
+              description={isEmptyModule ? 'Create your first workflow to automate CRM actions.' : 'Try adjusting your search or filters.'}
+              actionLabel={isEmptyModule && canCreate ? 'Create Workflow' : undefined}
+              onAction={isEmptyModule && canCreate ? () => setCreateOpen(true) : undefined}
+              actionDisabled={!metadata || busy}
+            />
+          </TableRefreshContext.Provider>
+        ) : <DataGrid<Workflow> isRefreshing={isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canActivate || canDelete} selectedIds={selected} onSelectionChange={setSelected}
           onRowClick={workflow => setRuns(workflow)} rowActions={workflow => [
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setRuns(workflow) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),
@@ -134,8 +158,8 @@ export default function WorkflowsPage() {
             ...(canActivate ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy || (!workflow.isActive && !!workflow.repairReason), onClick: () => toggleWorkflow(workflow) }] : []),
             ...(canDelete ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiving(workflow) }] : []),
           ]} enableColumnMenu ariaLabel="Workflows table"
-          summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match. Create a workflow or adjust your filters.'} />}
-        <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} loading={isInitialLoad} refreshing={isRefreshing} disabled={workflowsLoading} />
+          summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match.'} />}
+        {workflows.length > 0 && !correctingPage && <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} loading={isInitialLoad} refreshing={isRefreshing} disabled={workflowsLoading} />}
       </div>
     </div>
     <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}

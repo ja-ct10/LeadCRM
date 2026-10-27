@@ -2,7 +2,7 @@ vi.mock('@/shared/hooks/use-deal-address-options', () => ({ useDealAddressOption
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'agent', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: false } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { resolveDealAddress, type CustomFieldState } from '@leadcrm/shared';
 const fixture = vi.hoisted(() => ({ addressOptions: [] as import('@leadcrm/shared').DealAddressOption[], data: { fields: [], values: {}, files: [] } as CustomFieldState }));
 const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV', dealValue: 5000 };
@@ -64,8 +64,14 @@ it('protects a changed Deal and blocks closing and duplicate saves until the req
   const save = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
   const close = vi.fn();
   render(<SlidingDrawer isOpen onClose={close} title="Edit Deal"><DealForm mode="edit" initialData={{ title: 'History', productInterestId: product.id }} onSubmit={save} onCancel={close} /></SlidingDrawer>);
-  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Unsaved Deal' } });
+  // Let initial validation settle before changing the draft.
   await waitFor(() => expect((screen.getByRole('button', { name: 'Update Deal' }) as HTMLButtonElement).disabled).toBe(false));
+  const title = screen.getByLabelText(/Title/);
+  expect(title).toHaveProperty('value', 'History');
+  await act(async () => {
+    fireEvent.change(title, { target: { value: 'Unsaved Deal' } });
+  });
+  expect(title).toHaveProperty('value', 'Unsaved Deal');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   await screen.findByRole('alertdialog', { name: 'Discard unsaved changes?' });
   fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
