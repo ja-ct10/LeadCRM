@@ -111,7 +111,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/activity | Record authenticated foreground activity with `lastActiveAt`; cannot revive an idle-expired session |
-| POST | /auth/change-password | Verify required `currentPassword`, store strong `password`, clear first-login flag and revoke other sessions |
+| POST | /auth/change-password | Store strong `password`, clear first-login flag and revoke other sessions; require and verify `currentPassword` except for server-verified mandatory temporary/expired-password changes |
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
 | GET | /auth/onboarding/status | Canonical account state |

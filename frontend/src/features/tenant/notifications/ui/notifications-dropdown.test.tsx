@@ -6,11 +6,12 @@ import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEv
 
 const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(), markAllAsRead: vi.fn(), destination: vi.fn(), push: vi.fn(), refresh: vi.fn(),
-  mutating: false, assignment: false, record: false,
+  mutating: false, assignment: false, record: false, userRecord: false,
 }));
 vi.mock('../hooks/use-notifications', () => ({ useNotifications: () => ({
   notifications: Array.from({ length: 6 }, (_, index) => ({ id: String(index), title: `Workflow Failed ${index}`, type: 'workflow_failed', body: 'Follow-up encountered an execution failure.', isRead: index === 1, createdAt: '2026-10-13T10:00:00Z',
     ...(mocks.record && index === 0 ? { entityType: 'Deal', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a' } : {}),
+    ...(mocks.userRecord && index === 0 ? { entityType: 'User', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a', type: 'user_status_changed', title: 'Account Locked' } : {}),
     ...(mocks.assignment && index === 0 ? { title: 'Assigned Agent changed to Next Agent', type: 'lead_assigned', body: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.' } : {}) })),
   unreadCount: 5, isLoading: false, hasError: false, isMutating: mocks.mutating, ...mocks,
 }) }));
@@ -31,7 +32,7 @@ function App() {
 }
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'Notifications trigger' }));
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.mutating = false; mocks.assignment = false; mocks.record = false; headerBottom = 104;
+  vi.clearAllMocks(); mocks.mutating = false; mocks.assignment = false; mocks.record = false; mocks.userRecord = false; headerBottom = 104;
   mocks.markAsRead.mockResolvedValue(true); mocks.destination.mockResolvedValue('/workflows');
   vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 642);
   viewport = Object.assign(new EventTarget(), { width: 320, height: 642, offsetTop: 0, offsetLeft: 0 });
@@ -121,6 +122,18 @@ it('opens supported record notifications without marking read before the details
   fireEvent.click(screen.getByRole('button', { name: /Workflow Failed 0/ }));
   await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
   expect(mocks.markAsRead).not.toHaveBeenCalled();
+});
+
+it('keeps user notification reads on click and navigates to Team Management only after read success', async () => {
+  mocks.userRecord = true; mocks.markAsRead.mockResolvedValueOnce(false);
+  mocks.destination.mockResolvedValue('/settings?tab=users');
+  render(<App />); open();
+  fireEvent.click(screen.getByRole('button', { name: /Account Locked/ }));
+  await act(async () => {});
+  expect(mocks.destination).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: /Account Locked/ }));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/settings?tab=users'));
+  expect(mocks.markAsRead).toHaveBeenCalledWith('0');
 });
 
 it.each(['notification', 'footer'])('defers %s navigation and read-state actions until discard is confirmed', async target => {

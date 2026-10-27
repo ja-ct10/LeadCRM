@@ -8,7 +8,7 @@ import { useAuth } from '@/store/AuthContext';
 import { toast } from '@/shared/utils/toast';
 import { Button } from '@/shared/components/ui/button';
 
-export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?: () => void; onCancel?: () => void; onBusy?: (busy: boolean) => void }) {
+export function PasswordChangeForm({ mode = 'standard', onSuccess, onCancel, onBusy }: { mode?: 'standard' | 'mandatory'; onSuccess?: () => void; onCancel?: () => void; onBusy?: (busy: boolean) => void }) {
   const { user, applyAuthUser } = useAuth();
   const [values, setValues] = useState({ currentPassword: '', password: '', confirm: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof typeof values | 'form', string>>>({});
@@ -17,7 +17,8 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
   const [confirmTouched, setConfirmTouched] = useState(false);
   const passwordValid = StrongPasswordSchema.safeParse(values.password).success;
   // Mandatory setup lets the server identify reuse of a weak temporary credential first.
-  const canSubmit = values.currentPassword.length > 0 && (passwordValid || user?.mustChangePassword && values.password.length > 0) && values.confirm === values.password && !busy;
+  const mandatory = mode === 'mandatory';
+  const canSubmit = (mandatory || values.currentPassword.length > 0) && (passwordValid || user?.mustChangePassword && values.password.length > 0) && values.confirm === values.password && !busy;
   const confirmError = values.confirm && values.confirm !== values.password
     ? 'Passwords do not match.'
     : confirmTouched && !values.confirm ? 'Confirm your new password.' : errors.confirm;
@@ -25,7 +26,7 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
     event.preventDefault();
     if (busy || !user) return;
     const next: typeof errors = {};
-    if (!values.currentPassword) next.currentPassword = 'Old password is required.';
+    if (!mandatory && !values.currentPassword) next.currentPassword = 'Old password is required.';
     const parsed = StrongPasswordSchema.safeParse(values.password);
     if (!parsed.success && !user.mustChangePassword) next.password = parsed.error.issues[0].message;
     if (!values.confirm) next.confirm = 'Confirm your new password.';
@@ -35,7 +36,9 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
     setBusy(true);
     onBusy?.(true);
     try {
-      const response = await authApi.changePassword({ currentPassword: values.currentPassword, password: values.password });
+      const response = await authApi.changePassword(mandatory
+        ? { password: values.password }
+        : { currentPassword: values.currentPassword, password: values.password });
       applyAuthUser(response.data.user, user.id);
       setValues({ currentPassword: '', password: '', confirm: '' });
       setConfirmTouched(false);
@@ -45,11 +48,11 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
       const message = error instanceof Error ? error.message : 'Unable to change password.';
       const server = error as { code?: string; fieldErrors?: { password?: string[] } };
       const fieldMessage = server.fieldErrors?.password?.[0];
-      setErrors({ [server.code === 'CURRENT_PASSWORD_INCORRECT' ? 'currentPassword' : server.code === 'PASSWORD_REUSE' || fieldMessage || message.startsWith('Choose a password') ? 'password' : 'form']: fieldMessage ?? message });
+      setErrors({ [server.code === 'CURRENT_PASSWORD_INCORRECT' && !mandatory ? 'currentPassword' : server.code === 'PASSWORD_REUSE' || fieldMessage || message.startsWith('Choose a password') ? 'password' : 'form']: fieldMessage ?? message });
     } finally { setBusy(false); onBusy?.(false); }
   }
   return <form onSubmit={submit} noValidate className="space-y-4">
-    {([['currentPassword', 'Old Password'], ['password', 'New password'], ['confirm', 'Confirm new password']] as const).map(([key, label]) => {
+    {([['currentPassword', 'Old Password'], ['password', mandatory ? 'New Password' : 'New password'], ['confirm', mandatory ? 'Confirm New Password' : 'Confirm new password']] as const).filter(([key]) => !mandatory || key !== 'currentPassword').map(([key, label]) => {
       const error = key === 'confirm' ? confirmError : errors[key];
       return <div key={key}>
       <label className="block text-xs font-semibold mb-1.5" htmlFor={`security-${key}`}>{label} <span className="text-red-500">*</span></label>

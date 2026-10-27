@@ -15,7 +15,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => routing, usePathname: () =>
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'builder-user', tenantId: 'builder-tenant', role: 'Client Admin' }, tenant: { id: 'builder-tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key), usePermissions: () => ['*'] }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { variableFields: vi.fn(), create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn(), schedule: vi.fn(), cancelSchedule: vi.fn() } }));
-vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
+vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), delete: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'LEADS' as const, conditions: [] };
@@ -50,9 +50,14 @@ function frozenManilaAfternoon() {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-11T07:00:00.000Z'));
 }
+function chooseAudience(value: string) {
+  fireEvent.click(screen.getByLabelText(/Target Audience/));
+  const name = value === 'LEADS' ? 'All Leads' : value === 'CONTACTS' ? 'All Contacts' : value === '' ? 'Select an audience' : audience.name;
+  fireEvent.click(screen.getByRole('menuitemradio', { name }));
+}
 function fill() {
   fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'September Campaign' } });
-  fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+  chooseAudience('LEADS');
   fireEvent.change(screen.getByLabelText(/Subject Line/), { target: { value: 'Hello {{first_name}}' } });
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
@@ -62,6 +67,85 @@ function unloadPrevented() {
   return event.defaultPrevented;
 }
 const existingDraft = { id: 'saved-id', name: 'Saved campaign', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' };
+describe('custom audience deletion', () => {
+  async function openDelete() {
+    await waitFor(() => expect(audiencesApi.list).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Target Audience/));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Customers' }));
+    return screen.getByRole('alertdialog', { name: 'Delete target audience?' });
+  }
+  it('names the audience, requires confirmation, and cancels without selecting or saving it', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    const dialog = await openDelete();
+    expect(dialog.textContent).toContain('"Customers"');
+    expect(dialog.textContent).toContain('cannot be undone');
+    expect(audiencesApi.delete).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', '');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText(/Target Audience/));
+    fireEvent.click(screen.getByLabelText(/Target Audience/));
+    expect(screen.getByRole('menuitemradio', { name: 'Customers' })).toBeTruthy();
+    expect(audiencesApi.delete).not.toHaveBeenCalled(); expect(campaignsApi.create).not.toHaveBeenCalled();
+    expect(unloadPrevented()).toBe(false);
+  });
+  it('deletes by ID once, clears the selected audience and preview, and requires a valid replacement before sending', async () => {
+    let finish!: (response: { success: boolean }) => void;
+    vi.mocked(audiencesApi.delete).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    render(<CampaignBuilder onBack={vi.fn()} />); fill();
+    await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalled());
+    chooseAudience(audience.id);
+    const dialog = await openDelete();
+    const confirm = within(dialog).getByRole('button', { name: 'Delete audience' });
+    fireEvent.click(confirm); fireEvent.click(confirm);
+    expect(confirm).toHaveProperty('disabled', true);
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+    expect(audiencesApi.delete).toHaveBeenCalledExactlyOnceWith(audience.id);
+    await act(async () => { finish({ success: true }); });
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', '');
+    expect(screen.queryByText('2 eligible recipients')).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Target Audience/));
+    expect(screen.queryByRole('menuitemradio', { name: 'Customers' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Audience choices' }), { key: 'Escape' });
+    sendNow();
+    expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.send).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('Target audience permanently deleted.');
+  });
+  it('preserves another selection when deleting an unselected audience', async () => {
+    vi.mocked(audiencesApi.delete).mockResolvedValueOnce({ success: true });
+    render(<CampaignBuilder onBack={vi.fn()} />); fill();
+    const dialog = await openDelete();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete audience' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', 'LEADS');
+  });
+  it.each([409, 403])('retains the audience and selection after HTTP %s and permits cancellation', async status => {
+    const message = status === 409 ? 'This audience is used by an existing campaign.' : 'Permission denied.';
+    const displayedMessage = status === 403 ? 'You do not have permission for this action. Ask an administrator for access.' : message;
+    vi.mocked(audiencesApi.delete).mockRejectedValueOnce(Object.assign(new Error(message), { status }));
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    await waitFor(() => expect(audiencesApi.list).toHaveBeenCalled());
+    chooseAudience(audience.id);
+    const dialog = await openDelete();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete audience' }));
+    expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', displayedMessage);
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', audience.id);
+    expect(toast.error).toHaveBeenCalledTimes(1); expect(toast.success).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByLabelText(/Target Audience/));
+    expect(screen.getByRole('menuitemradio', { name: 'Customers' })).toBeTruthy();
+  });
+  it('hides deletion without campaigns.edit while still allowing audience selection', async () => {
+    access.denied.add('campaigns.edit');
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    await waitFor(() => expect(audiencesApi.list).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Target Audience/));
+    expect(screen.queryByRole('menuitem', { name: /Delete/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Customers' }));
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', audience.id);
+  });
+});
 it('starts with editable SMS footer text and preserves its deletion through save and reopening', async () => {
   const view = render(<CampaignBuilder initialType="SMS" onBack={vi.fn()} />);
   expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe(SMS_DEFAULT_FOOTER);
@@ -103,7 +187,7 @@ it('inserts the default footer once on request and sends the author’s edited t
   const edited = body.value.replace('+63 (28) 462-3488', '+63 917 123 4567');
   fireEvent.change(body, { target: { value: edited } });
   fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Editable footer' } });
-  fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+  chooseAudience('LEADS');
   await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalled());
   sendNow();
   await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
@@ -144,10 +228,14 @@ describe('campaign unsaved navigation', () => {
       if (field === 'type') {
         fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
         revert = () => fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+      } else if (field === 'audience') {
+        const previous = (screen.getByLabelText(/Target Audience/) as HTMLButtonElement).value;
+        chooseAudience('CONTACTS');
+        revert = () => chooseAudience(previous);
       } else {
         const input = screen.getByLabelText(label[field as keyof typeof label]) as HTMLInputElement;
         const previous = input.value;
-        fireEvent.change(input, { target: { value: field === 'audience' ? 'CONTACTS' : 'Changed value' } });
+        fireEvent.change(input, { target: { value: 'Changed value' } });
         revert = () => fireEvent.change(input, { target: { value: previous } });
       }
       expect(unloadPrevented()).toBe(true); expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -359,7 +447,7 @@ describe('campaign guard interactions', () => {
     const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
     fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
     fireEvent.click(screen.getByRole('button', { name: 'Email' }));
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
+    chooseAudience('CONTACTS');
     fireEvent.click(await screen.findByRole('button', { name: '{{firstName}}' }));
     expect(screen.getByLabelText(/Body/)).toHaveProperty('value', expect.stringContaining('{{firstName}}'));
     fireEvent.click(screen.getByRole('button', { name: 'Desktop preview' }));
@@ -367,7 +455,7 @@ describe('campaign guard interactions', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Schedule Send' })).toBeNull());
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Create New/ })); });
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Create Target Audience' })).getByRole('button', { name: 'Cancel' }));
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: audience.id } });
+    chooseAudience(audience.id);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Edit saved audience' })); });
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Edit Target Audience' })).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('alertdialog')).toBeNull(); expect(back).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
@@ -377,7 +465,7 @@ describe('campaign guard interactions', () => {
     const back = vi.fn(() => { expect(unloadPrevented()).toBe(false); });
     render(<CampaignBuilder onBack={back} initialType={type} />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Send campaign' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    chooseAudience('LEADS');
     if (type === 'Email') fireEvent.change(screen.getByLabelText(/Subject Line/), { target: { value: 'Subject' } });
     fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Message' } });
     expect(unloadPrevented()).toBe(true); sendNow();
@@ -389,7 +477,7 @@ describe('campaign guard interactions', () => {
 describe('campaign composer', () => {
   it.each([['Email', 'LEADS'], ['Email', 'CONTACTS'], ['SMS', 'LEADS'], ['SMS', 'CONTACTS']] as const)('inserts canonical quick fields and picker company keys for %s/%s', async (type, source) => {
     render(<CampaignBuilder onBack={vi.fn()} initialType={type} />);
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: source } });
+    chooseAudience(source);
     const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
     expect(body.placeholder).toContain('{{firstName}}');
     expect(body.placeholder).not.toContain('{{first_name}}');
@@ -416,13 +504,13 @@ describe('campaign composer', () => {
   ] as const)('limits the %s %s picker to Lead/Contact fields and preserves Quick Fields', async (type, mode) => {
     const body = 'Saved {{first_name}} {{website}} {{value}}';
     render(<CampaignBuilder onBack={vi.fn()} initialType={type} initialCampaign={mode === 'edit' ? { id: 'saved-id', name: 'Existing', type, status: 'Draft', subject: 'Saved subject', body, audienceSource: 'LEADS' } as never : undefined} />);
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    chooseAudience('LEADS');
     fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
     const search = await screen.findByLabelText('Search variables');
     await screen.findByRole('button', { name: /First Name.*firstName.*Leads, Contacts/ });
     const picker = search.closest('.max-h-80')!;
     for (const source of ['LEADS', 'CONTACTS']) {
-      fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: source } });
+      chooseAudience(source);
       expect(picker.textContent).not.toMatch(/Accounts|Deals/);
       for (const key of ['website', 'value', 'industry', 'pipelineId', 'stageId']) expect(within(picker as HTMLElement).queryByText(`{{${key}}}`)).toBeNull();
       expect(within(picker as HTMLElement).getAllByText('{{firstName}}')).toHaveLength(1);
@@ -564,8 +652,8 @@ describe('campaign composer', () => {
   });
   it('reopens an existing draft and updates the same database record', async () => {
     render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Existing', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', targetAudienceId: audience.id } as never} />);
-    await screen.findByRole('option', { name: 'Customers' });
-    expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe(audience.id);
+    await waitFor(() => expect(screen.getByLabelText(/Target Audience/).textContent).toContain('Customers'));
+    expect((screen.getByLabelText(/Target Audience/) as HTMLButtonElement).value).toBe(audience.id);
     expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Saved body');
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('saved-id', expect.objectContaining({ targetAudienceId: audience.id, body: 'Saved body' })));
@@ -588,8 +676,8 @@ describe('campaign composer', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create New/ }));
     fireEvent.change(screen.getByLabelText(/Audience Name/), { target: { value: 'New audience' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create Audience' }));
-    await screen.findByRole('option', { name: 'New audience' });
-    expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe(audience.id);
+    await waitFor(() => expect(screen.getByLabelText(/Target Audience/).textContent).toContain('New audience'));
+    expect((screen.getByLabelText(/Target Audience/) as HTMLButtonElement).value).toBe(audience.id);
     expect(audiencesApi.create).toHaveBeenCalledWith({ name: 'New audience', source: 'LEADS', matchMode: 'AND', conditions: [] });
     expect(screen.queryByRole('alertdialog')).toBeNull(); await waitFor(() => expect(unloadPrevented()).toBe(true));
   });
@@ -615,7 +703,7 @@ describe('campaign composer', () => {
     vi.mocked(campaignsApi.smsSettings).mockRejectedValueOnce(new Error('Settings unavailable'));
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    chooseAudience('LEADS');
     await screen.findByText('Hi John, your proposal is ready.');
     expect(screen.queryByText(/For inquiries regarding|This is a no-reply/)).toBeNull();
     expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
@@ -676,7 +764,7 @@ describe('campaign composer', () => {
     fireEvent.click(within(picker).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(document.body.style.overflow).not.toBe('hidden'));
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Send' }));
-    expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe('LEADS');
+    expect((screen.getByLabelText(/Target Audience/) as HTMLButtonElement).value).toBe('LEADS');
     expect((screen.getByLabelText(/Subject Line/) as HTMLInputElement).value).toBe('Hello {{first_name}}');
     expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
     await schedulePicker(); fireEvent.keyDown(window, { key: 'Escape' });
@@ -716,7 +804,7 @@ describe('campaign composer', () => {
     await schedulePicker(); fireEvent.change(screen.getByLabelText('Schedule minute'), { target: { value: '23' } });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(await screen.findByText('Campaign draft saved, but scheduling failed. No eligible recipients.')).toBeTruthy();
-    expect((screen.getByLabelText('Schedule minute') as HTMLSelectElement).value).toBe('23');
+    expect((screen.getByLabelText('Schedule minute') as HTMLButtonElement).value).toBe('23');
     expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
     expect(back).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled(); expect(campaignsApi.send).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -755,7 +843,7 @@ describe('campaign composer', () => {
     expect(campaignsApi.schedule).not.toHaveBeenCalled(); expect(campaignsApi.send).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(document.body.style.overflow).not.toBe('hidden'));
-    await schedulePicker(); expect((screen.getByLabelText('Schedule hour') as HTMLSelectElement).value).toBe('5');
+    await schedulePicker(); expect((screen.getByLabelText('Schedule hour') as HTMLButtonElement).value).toBe('5');
   });
 
   it('reschedules a locked campaign through the shared picker without creating or editing its draft', async () => {
@@ -763,7 +851,7 @@ describe('campaign composer', () => {
     const back = vi.fn(); render(<CampaignBuilder onBack={back} initialCampaign={{ id: 'saved-id', name: 'Scheduled', type: 'Email', status: 'scheduled', subject: 'Hi', body: 'Hello', audienceSource: 'LEADS', scheduledFor: '2026-10-12T07:59:00.000Z' } as never} />);
     const opener = screen.getByRole('button', { name: 'Reschedule' }); opener.focus(); fireEvent.click(opener);
     await screen.findByRole('dialog', { name: 'Reschedule Campaign' });
-    expect((screen.getByLabelText('Schedule hour') as HTMLSelectElement).value).toBe('3');
+    expect((screen.getByLabelText('Schedule hour') as HTMLButtonElement).value).toBe('3');
     fireEvent.change(screen.getByLabelText('Schedule minute'), { target: { value: '58' } });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(campaignsApi.schedule).toHaveBeenCalledWith('saved-id', '2026-10-12T07:58:00.000Z'));
@@ -774,7 +862,7 @@ describe('campaign composer', () => {
     frozenManilaAfternoon();
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{firstName}} from {{sender_name}}" />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS schedule' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
+    chooseAudience('CONTACTS');
     await screen.findByText(/Hi John from Configured SMS organization/);
     await schedulePicker(); fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(campaignsApi.schedule).toHaveBeenCalledWith('saved-id', '2026-10-11T08:00:00.000Z'));
@@ -786,7 +874,7 @@ describe('campaign composer', () => {
     const contactField = { ...getCrmFieldCatalog('contacts')[0], technicalKey: 'contactNote', label: 'Contact Note', kind: 'Custom' as const, required: false, mandatory: false };
     vi.mocked(campaignsApi.variableFields).mockResolvedValue({ success: true, data: [...CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)), contactField] });
     render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Repair schedule', type: 'Email', status: 'Draft', subject: 'Hi', body: 'Hello {{contactNote}}', audienceSource: 'LEADS', scheduleConfig: { source: 'LEADS', matchMode: 'AND', conditions: [], timezone: 'Asia/Manila', scheduleFailureReason: 'No eligible recipients.' } } as never} />);
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
+    chooseAudience('CONTACTS');
     fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
     expect(await screen.findByRole('button', { name: /Contact Note.*contactNote/ })).toBeTruthy();
     expect(screen.queryByText(/Repair unavailable variables for this source/)).toBeNull();
@@ -813,7 +901,7 @@ describe('campaign composer', () => {
   it('previews the current SMS organization identity and blocks missing sender tokens while keeping the draft savable', async () => {
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="{{sender_name}} {{sender_email}}" />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS identity' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    chooseAudience('LEADS');
     await screen.findByText(/Configured SMS organization info@example.test/);
     vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationName: 'Renamed SMS organization', organizationEmail: null } });
     act(() => invalidatePageCache('settings'));

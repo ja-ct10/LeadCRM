@@ -33,6 +33,9 @@ it('visits all eight steps and only persists completion on Finish', async () => 
   show();
   for (let step = 1; step < 8; step++) {
     expect(screen.getByText(`Step ${step} of 8`)).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Camxian Technologies' }).getAttribute('src')).toBe('/camxian_logo.png');
+    expect(screen.getByText('Powered by LeadCRM').className).toContain('text-white');
+    expect(screen.queryByRole('region', { name: 'Our solutions' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   }
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Notifications & Search');

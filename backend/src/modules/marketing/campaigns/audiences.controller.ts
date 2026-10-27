@@ -23,3 +23,6 @@ export async function campaignVariableFields(req: Request, res: Response, next: 
 export async function updateAudience(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.updateAudience(req.user!.tenantId, String(req.params.id), req.body) }); } catch (error) { next(error); }
 }
+export async function deleteAudience(req: Request, res: Response, next: NextFunction) {
+  try { await service.deleteAudience(req.user!.tenantId, String(req.params.id)); res.json({ success: true }); } catch (error) { next(error); }
+}

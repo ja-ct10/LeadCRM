@@ -45,14 +45,27 @@ describe.skipIf(!disposable).sequential('password expiration on disposable nativ
       expect(await call(path, undefined, login.token)).toMatchObject({ status: 403, body: { error: { code: 'PASSWORD_CHANGE_REQUIRED' } } });
     }
     expect((await call('/auth/me', undefined, login.token)).body.data.user.mustChangePassword).toBe(true);
-    const reuse = await call('/auth/change-password', { currentPassword: 'Previous1!', password: 'Previous1!' }, login.token);
+    const reuse = await call('/auth/change-password', { password: 'Previous1!' }, login.token);
     expect(reuse.body, JSON.stringify(reuse)).toMatchObject({ error: { code: 'PASSWORD_REUSE' } });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).passwordChangedAt).toEqual(user.passwordChangedAt);
     const second = await call('/auth/login', { email: user.email, password: 'Previous1!' });
-    const changed = await call('/auth/change-password', { currentPassword: 'Previous1!', password: 'Renewed2!' }, login.token);
+    const changed = await call('/auth/change-password', { password: 'Renewed2!' }, login.token);
     expect(changed).toMatchObject({ status: 200, body: { data: { user: { mustChangePassword: false, passwordChangedAt: now.toISOString(), onboardingCompletedAt: '2029-12-01T00:00:00.000Z' } } } });
     expect((await call('/crm/leads', undefined, login.token)).status).toBe(200);
     expect((await call('/auth/me', undefined, second.token)).status).toBe(401);
+  });
+  it('rejects unauthenticated, forged and ordinary password-only requests without changing credentials', async () => {
+    const user = await account({ passwordChangedAt: now });
+    const login = await call('/auth/login', { email: user.email, password: 'Previous1!' });
+    expect(login.status).toBe(200);
+    expect((await call('/auth/change-password', { password: 'Renewed2!' })).status).toBe(401);
+    expect((await call('/auth/change-password', { password: 'Renewed2!' }, 'invalid-session')).status).toBe(401);
+    expect(await call('/auth/change-password', { password: 'Renewed2!' }, login.token)).toMatchObject({ status: 400, body: { error: { code: 'CURRENT_PASSWORD_REQUIRED' } } });
+    expect((await call('/auth/change-password', { password: 'Renewed2!', mustChangePassword: true }, login.token)).status).toBe(400);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(stored.passwordHash).toBe(user.passwordHash);
+    expect(stored.passwordChangedAt).toEqual(now);
+    expect(await prisma.auditLog.count({ where: { userId: user.id, action: 'PASSWORD_CHANGED' } })).toBe(0);
   });
   it.each([false, true])('restricts an existing session across the exact boundary (Bearer=%s)', async bearer => {
     vi.setSystemTime(new Date(boundary.getTime() - 1));

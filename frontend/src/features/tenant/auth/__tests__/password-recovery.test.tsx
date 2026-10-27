@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 const recovery = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ requestPasswordReset: recovery, login: vi.fn(), confirmPasswordReset: vi.fn() }) }));
@@ -30,6 +30,12 @@ describe('finalized recovery UI', () => {
     expect(recovery).toHaveBeenCalledWith('staff@camxian.com'); expect(screen.getByText('25 minutes')).toBeTruthy();
     expect(screen.getByText('Password reset email requested')).toBeTruthy(); expect(screen.queryByText('Email Sent Successfully')).toBeNull();
     expect((screen.getByRole('button', { name: /Resend in/ }) as HTMLButtonElement).disabled).toBe(true);
+    const panel = within(screen.getByRole('complementary'));
+    expect(panel.getByRole('img', { name: 'Camxian Technologies' }).getAttribute('src')).toBe('/camxian_logo.png');
+    expect(panel.getByText('Powered by LeadCRM').className).toContain('text-white');
+    expect(panel.queryByRole('region', { name: 'Our solutions' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Login' }));
+    expect(screen.getByRole('heading', { name: 'Login' })).toBeTruthy();
   });
   it('C: invalid email never calls recovery', () => {
     fireEvent.submit(form('invalid')); expect(recovery).not.toHaveBeenCalled(); expect(toast.error).toHaveBeenCalledWith('Valid email required');

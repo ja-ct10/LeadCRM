@@ -17,6 +17,8 @@ export const StrongPasswordSchema = z.string().min(8, 'Use at least 8 characters
 
 export const ChangePasswordSchema = z.object({ currentPassword: z.string().min(1, 'Old password is required.').max(72), password: StrongPasswordSchema }).strict();
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+export const MandatoryPasswordChangeSchema = ChangePasswordSchema.omit({ currentPassword: true });
+export type MandatoryPasswordChangeInput = z.infer<typeof MandatoryPasswordChangeSchema>;
 
 export const RegisterSchema = z.object({
   firstName: z.string().trim().min(2, 'First name is required').max(100),

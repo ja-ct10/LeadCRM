@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Camera, Fingerprint, Network, Cable, Phone, Server, Pause, Play } from 'lucide-react';
+import { AppBrand } from '@/shared/components/app-logo';
 
 // Verified at https://camxian.com/ and https://camxian.com/product-services/.
 // Static presentation: the login page never requests the company website.
@@ -18,19 +19,20 @@ const services = [
 export function CamxianBrandPanel({
   heading = <>Technology that will<br className="hidden lg:block" /> shape your future.</>,
   description = 'Empowering innovation and security today for a safer tomorrow!',
-}: { heading?: ReactNode; description?: string }) {
+  branding, children, footer,
+}: { heading?: ReactNode; description?: string; branding?: ReactNode; children?: ReactNode; footer?: ReactNode }) {
   const reducedMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   useEffect(() => {
-    if (reducedMotion !== false || paused || focused || hovered) return;
+    if (children != null || reducedMotion !== false || paused || focused || hovered) return;
     const timer = window.setInterval(() => {
       if (!document.hidden) setIndex(current => (current + 1) % services.length);
     }, 4500);
     return () => window.clearInterval(timer);
-  }, [reducedMotion, paused, focused, hovered]);
+  }, [children, reducedMotion, paused, focused, hovered]);
   const service = services[index];
   const Icon = service.icon;
   const entrance = (order: number) => ({
@@ -39,10 +41,12 @@ export function CamxianBrandPanel({
     transition: { duration: reducedMotion ? 0 : 0.45, delay: reducedMotion ? 0 : order * 0.07 },
   });
   return (
-    <aside className="relative flex w-full flex-col overflow-hidden bg-linear-to-br from-blue-500 via-blue-600 to-blue-800 text-white lg:w-1/2">
+    <aside className="relative flex w-full min-w-0 flex-col overflow-hidden bg-linear-to-br from-blue-500 via-blue-600 to-blue-800 text-white lg:w-1/2">
       <div aria-hidden="true" className="pointer-events-none absolute -right-32 -top-32 size-96 rounded-full border border-white/10" />
       <div className="relative flex flex-1 flex-col justify-center gap-6 p-6 sm:p-8 lg:p-8 xl:p-10">
-        <div className="max-w-lg space-y-4">
+        {branding && <AppBrand className="w-48" captionClassName="text-white dark:text-white">{branding}</AppBrand>}
+        <div className="flex flex-1 flex-col justify-center">
+        {children ?? <div className="max-w-lg space-y-4">
           <motion.h1 {...entrance(2)} className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl xl:text-4xl">{heading}</motion.h1>
           <motion.p {...entrance(3)} className="hidden max-w-sm text-base leading-relaxed text-blue-100 lg:block">{description}</motion.p>
           <motion.ul {...entrance(4)} className="hidden flex-wrap gap-2 text-xs font-medium lg:flex">
@@ -68,7 +72,9 @@ export function CamxianBrandPanel({
               {services.map((item, position) => <button key={item.title} type="button" aria-label={`Show ${item.title}`} aria-pressed={index === position} onClick={() => { setIndex(position); setPaused(true); }} className="grid size-7 place-items-center rounded-md focus-visible:outline-2 focus-visible:outline-white"><span className={`size-1.5 rounded-full ${index === position ? 'bg-white' : 'bg-white/35'}`} /></button>)}
             </div>
           </motion.section>
+        </div>}
         </div>
+        {footer}
       </div>
     </aside>
   );

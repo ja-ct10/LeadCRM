@@ -46,6 +46,15 @@ it('defers record reads until the authorized destination has successfully opened
   expect(mocks.markRead).not.toHaveBeenCalled();
 });
 
+it('continues marking user notifications read when clicked before opening Team Management', async () => {
+  records[0] = { ...records[0], entityType: 'User', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a', type: 'user_created' };
+  mocks.destination.mockResolvedValue({ success: true, destination: '/settings?tab=users' });
+  render(<NotificationsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Notice 0/ }));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/settings?tab=users'));
+  expect(mocks.markRead).toHaveBeenCalledWith('0'); expect(records[0].isRead).toBe(true);
+});
+
 it('renders the complete server assignment message in the Notifications feed', async () => {
   records[0] = { ...records[0], type: 'contact_assigned', title: 'Assigned Agent changed to Next Agent',
     body: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.' };

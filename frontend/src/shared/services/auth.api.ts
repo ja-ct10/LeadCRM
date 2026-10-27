@@ -20,7 +20,7 @@ export const authApi = {
   restoreLoginLockout: (email?: string) =>
     apiClient.post<import('@leadcrm/shared').LoginLockoutResponse>('/auth/login-lockout', email ? { email } : {}),
 
-  changePassword: (payload: import('@leadcrm/shared').ChangePasswordInput) =>
+  changePassword: (payload: import('@leadcrm/shared').ChangePasswordInput | import('@leadcrm/shared').MandatoryPasswordChangeInput) =>
     apiClient.post<AuthResponse>('/auth/change-password', payload),
 
 

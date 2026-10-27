@@ -14,6 +14,37 @@ it('requires the old password and rejects an incorrect credential before any wri
   await expect(changePassword(actor, input)).rejects.toMatchObject({ code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect.' });
   expect(db.user.update).not.toHaveBeenCalled(); expect(hashPassword).not.toHaveBeenCalled();
 });
+it('accepts a password-only request for a temporary credential', async () => {
+  vi.mocked(comparePassword).mockResolvedValue(false);
+  await changePassword(actor, { password: input.password }, 'current-token');
+  expect(comparePassword).toHaveBeenCalledExactlyOnceWith(input.password, 'hash');
+  expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id }, data: { passwordHash: 'new-hash', mustChangePassword: false, passwordChangedAt: expect.any(Date) } });
+  expect(db.passwordResetToken.deleteMany).toHaveBeenCalled();
+  expect(db.auditLog.create).toHaveBeenCalled();
+});
+it('requires Old Password for an ordinary account even when the request is otherwise valid', async () => {
+  user.mustChangePassword = false;
+  await expect(changePassword(actor, { password: input.password })).rejects.toMatchObject({ code: 'CURRENT_PASSWORD_REQUIRED', message: 'Old password is required.' });
+  expect(comparePassword).not.toHaveBeenCalled();
+  expect(db.user.update).not.toHaveBeenCalled();
+  expect(hashPassword).not.toHaveBeenCalled();
+});
+it('uses the locked database state rather than a stale temporary-password requirement', async () => {
+  db.user.findFirst.mockResolvedValueOnce({ ...user, mustChangePassword: true }).mockResolvedValueOnce({ ...user, mustChangePassword: false });
+  await expect(changePassword(actor, { password: input.password })).rejects.toHaveProperty('code', 'CURRENT_PASSWORD_REQUIRED');
+  expect(db.user.update).not.toHaveBeenCalled();
+});
+it.each(['weak', 'different42', 'Strong1!' + 'é'.repeat(33)])('rejects an invalid password-only value without credential writes: %s', async password => {
+  vi.mocked(comparePassword).mockResolvedValue(false);
+  await expect(changePassword(actor, { password })).rejects.toHaveProperty('issues');
+  expect(db.user.update).not.toHaveBeenCalled();
+  expect(hashPassword).not.toHaveBeenCalled();
+});
+it('rejects password-only temporary credential reuse before strength validation', async () => {
+  vi.mocked(comparePassword).mockResolvedValue(true);
+  await expect(changePassword(actor, { password: 'first.last42' })).rejects.toMatchObject({ code: 'PASSWORD_REUSE', message: 'You cannot reuse your temporary password. Please choose a new password.' });
+  expect(db.user.update).not.toHaveBeenCalled();
+});
 it('renews an expired password at server time while preserving onboarding and the current session', async () => {
   const now = new Date('2030-04-01T12:00:00.000Z');
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now);
@@ -22,7 +53,7 @@ it('renews an expired password at server time while preserving onboarding and th
   user.onboardingCompletedAt = new Date('2029-12-01');
   db.user.update.mockImplementation(({ data }) => Object.assign(user, data));
   vi.mocked(comparePassword).mockImplementation(async password => password === 'Old1!');
-  const response = await changePassword(actor, input, 'current-token');
+  const response = await changePassword(actor, { password: input.password }, 'current-token');
   expect(user.passwordChangedAt).toEqual(now);
   expect(response).toMatchObject({ mustChangePassword: false, passwordChangedAt: now.toISOString(), onboardingCompletedAt: '2029-12-01T00:00:00.000Z' });
   expect(db.session.deleteMany).toHaveBeenCalledWith({ where: { userId: user.id, tokenHash: { not: expect.any(String) } } });

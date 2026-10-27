@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OnboardingProgressSchema = exports.CompanySetupSchema = exports.RegisterSchema = exports.ChangePasswordSchema = exports.StrongPasswordSchema = exports.ForgotPasswordSchema = exports.SessionActivitySchema = exports.LogoutSchema = void 0;
+exports.OnboardingProgressSchema = exports.CompanySetupSchema = exports.RegisterSchema = exports.MandatoryPasswordChangeSchema = exports.ChangePasswordSchema = exports.StrongPasswordSchema = exports.ForgotPasswordSchema = exports.SessionActivitySchema = exports.LogoutSchema = void 0;
 const zod_1 = require("zod");
 const security_schema_1 = require("./security.schema");
 exports.LogoutSchema = zod_1.z.object({ sessionId: zod_1.z.string().uuid().optional() }).strict();
@@ -11,6 +11,7 @@ exports.ForgotPasswordSchema = zod_1.z.object({
 }).strict();
 exports.StrongPasswordSchema = zod_1.z.string().min(8, 'Use at least 8 characters.').max(72, 'Use no more than 72 characters.').refine(value => new TextEncoder().encode(value).length <= 72, 'Password must be no more than 72 bytes.').refine(value => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/.test(value), 'Use uppercase and lowercase letters, a number, and a special character');
 exports.ChangePasswordSchema = zod_1.z.object({ currentPassword: zod_1.z.string().min(1, 'Old password is required.').max(72), password: exports.StrongPasswordSchema }).strict();
+exports.MandatoryPasswordChangeSchema = exports.ChangePasswordSchema.omit({ currentPassword: true });
 exports.RegisterSchema = zod_1.z.object({
     firstName: zod_1.z.string().trim().min(2, 'First name is required').max(100),
     lastName: zod_1.z.string().trim().min(2, 'Last name is required').max(100),

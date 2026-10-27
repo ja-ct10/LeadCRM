@@ -12,6 +12,7 @@ import { SmsMessageContent } from './sms-message-content';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, FieldError } from './audience-panel';
+import { AudienceSelect } from './audience-select';
 import type { Campaign } from '@/store/types';
 import type { AudiencePreviewResult } from '@leadcrm/shared';
 import { PaginationControls } from '@/shared/components/crm/pagination-controls';
@@ -26,12 +27,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { toast } from '@/shared/utils/toast';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useAuth } from '@/store/AuthContext';
 import { trackSmsCampaignSubmission } from '@/features/tenant/notifications/hooks/notification-requests';
 import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
-  Wand2, Monitor, Smartphone, Zap, Tags,
+  Wand2, Monitor, Smartphone, Zap,
   PanelRight, X, ChevronDown, CalendarClock,
 } from 'lucide-react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -212,10 +214,26 @@ export function CampaignBuilder({
   const [audiences, setAudiences] = useState<SavedAudience[]>([]);
   const [editingAudience, setEditingAudience] = useState<SavedAudience | undefined>();
   const [showAudiencePanel, setShowAudiencePanel] = useState(false);
+  const [deleteAudience, setDeleteAudience] = useState<SavedAudience | null>(null);
+  const [isDeletingAudience, setIsDeletingAudience] = useState(false);
   const [counts, setCounts] = useState<AudiencePreviewResult | null>(null);
   const [recipientPage, setRecipientPage] = useState(1), [recipientLimit, setRecipientLimit] = useState(25);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const requestLock = useRef(false);
+  async function confirmDeleteAudience() {
+    if (!deleteAudience || !canEdit || requestLock.current) return false;
+    const id = deleteAudience.id;
+    requestLock.current = true; setIsDeletingAudience(true);
+    try {
+      await audiencesApi.delete(id);
+      setAudiences(previous => previous.filter(audience => audience.id !== id));
+      setTargetAudience(previous => previous === id ? '' : previous);
+      toast.success('Target audience permanently deleted.');
+    } catch (error) {
+      showCrmMutationError(error, 'Unable to delete target audience.');
+      throw error;
+    } finally { requestLock.current = false; setIsDeletingAudience(false); }
+  }
   useEffect(() => {
     let cancelled = false;
     audiencesApi.list().then(res => { if (!cancelled) setAudiences(res.data); }).catch(e => { if (!cancelled) setErrors({ targetAudienceId: e.message }); });
@@ -506,18 +524,14 @@ export function CampaignBuilder({
               </div>
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label htmlFor="builder-audience" className="text-sm font-medium text-slate-700 dark:text-slate-300">Target Audience <span className="text-red-500">*</span></label>
+                  <label id="builder-audience-label" htmlFor="builder-audience" className="text-sm font-medium text-slate-700 dark:text-slate-300">Target Audience <span className="text-red-500">*</span></label>
                   <button type="button" onClick={() => { setEditingAudience(undefined); setShowAudiencePanel(true); }} className="text-xs font-bold text-primary dark:text-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                     <Plus size={11} className="stroke-[3px]" /> Create New
                   </button>
                 </div>
-                <div className="relative">
-                  <select id="builder-audience" value={targetAudience} onChange={(e) => { setTargetAudience(e.target.value); setErrors(prev => ({ ...prev, targetAudienceId: '' })); }} className={`${inputCls} appearance-none cursor-pointer pr-8`}>
-                    <option value="">Select an audience</option><option value="LEADS">All Leads</option><option value="CONTACTS">All Contacts</option>{targetAudience === 'ALL' && <option value="ALL" disabled>Legacy mixed audience — select a source</option>}
-                    {audiences.map(a => <option key={a.id} value={a.id} disabled={a.source === 'ALL' || !!a.repairReason}>{a.name}{a.source === 'ALL' || a.repairReason ? ' — repair required' : ''}</option>)}
-                  </select>
-                  <Tags size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
+                <AudienceSelect value={targetAudience} audiences={audiences} canDelete={canEdit} disabled={!canWrite || isSending || isDeletingAudience}
+                  className={`${inputCls} cursor-pointer`} onChange={value => { setTargetAudience(value); setErrors(prev => ({ ...prev, targetAudienceId: '', audienceSource: '' })); }}
+                  onDelete={audience => { if (canEdit && !requestLock.current) setDeleteAudience(audience); }} />
                 <FieldError message={errors.targetAudienceId || errors.audienceSource} />
                 {chosenAudience && canEdit && <button type="button" className="mt-2 text-xs text-primary" onClick={() => { setEditingAudience(chosenAudience); setShowAudiencePanel(true); }}>{chosenAudience.source === 'ALL' || chosenAudience.repairReason ? 'Repair saved audience' : 'Edit saved audience'}</button>}
               </div>
@@ -604,6 +618,9 @@ export function CampaignBuilder({
         </DialogContent>
       </Dialog>
       {showAudiencePanel && <AudiencePanel initialAudience={editingAudience} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
+      <ConfirmActionDialog open={!!deleteAudience} onOpenChange={open => { if (!open && !isDeletingAudience) setDeleteAudience(null); }}
+        title="Delete target audience?" description={`Permanently delete "${deleteAudience?.name ?? ''}"?`} warning="This action cannot be undone. Audiences used by existing campaigns cannot be deleted."
+        confirmLabel="Delete audience" variant="destructive" isLoading={isDeletingAudience} confirmDisabled={!canEdit} onConfirm={confirmDeleteAudience} />
       <ConfirmActionDialog open={sendConfirmation} onOpenChange={setSendConfirmation}
         title="Send campaign?" description={`Send “${campaignName}” by ${campaignType === 'SMS' ? 'SMS' : 'email'} to ${chosenAudience?.name || (targetAudience === 'LEADS' ? 'Leads' : 'Contacts')}${counts ? ` (${counts.eligible} eligible recipients)` : ''}?`}
         warning="Submitted messages cannot be recalled. Review the audience and content before sending."

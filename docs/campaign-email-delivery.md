@@ -33,9 +33,12 @@ Every marketing endpoint below retains authentication, tenant context, workspace
 | GET | `/api/v1/marketing/audiences` | `audiencesApi.list` | `audiences.controller.getAudiences` | `audiences.service.getAudiences` | `campaigns.view` |
 | POST | `/api/v1/marketing/audiences` | `audiencesApi.create` | `audiences.controller.createAudience` | `audiences.service.createAudience` | `campaigns.create` |
 | PUT | `/api/v1/marketing/audiences/:id` | `audiencesApi.update` | `audiences.controller.updateAudience` | `audiences.service.updateAudience` | `campaigns.edit` |
+| DELETE | `/api/v1/marketing/audiences/:id` | `audiencesApi.delete` | `audiences.controller.deleteAudience` | `audiences.service.deleteAudience` | `campaigns.edit` |
 | GET | `/api/v1/marketing/audiences/fields?source=LEADS` | `audiencesApi.fields` | `audiences.controller.audienceFields` | `audiences.service.audienceFields` | `campaigns.view` |
 | POST | `/api/v1/marketing/audiences/preview` | `audiencesApi.preview` | `audiences.controller.previewAudience` | `audiences.service.resolveAudience` | `campaigns.view` |
 | POST | `/api/v1/webhooks/brevo` | None; Brevo calls it | `brevo-webhook.brevoWebhookRouter` | `brevo-webhook.processBrevoEvent` | Valid configured Bearer token; production HTTPS |
+
+Custom target audience deletion returns `{ success: true }` and permanently removes only the tenant-scoped audience and its conditions. Built-in `LEADS` / `CONTACTS` identities cannot be deleted. Any referencing campaign, including another creator's or an archived campaign, blocks deletion with HTTP 409; campaign references and history remain unchanged. The builder requires explicit confirmation and clears a deleted selection before another send or schedule.
 
 Save Draft uses POST for a new draft and PUT for an existing draft. It never invokes Brevo. Send Now reuses the existing **PATCH** route. It returns HTTP 202 after the snapshot and allowance reservation commit:
 

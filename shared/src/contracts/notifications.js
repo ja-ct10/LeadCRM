@@ -32,7 +32,7 @@ exports.DeleteNotificationsSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(500).transform(ids => [...new Set(ids)]),
 }).strict();
 exports.NotificationRecordTargetSchema = zod_1.z.object({
-    entityType: zod_1.z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form']),
+    entityType: zod_1.z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User']),
     entityId: zod_1.z.string().uuid(),
 }).strict();
 exports.MarkNotificationsReadSchema = zod_1.z.object({
