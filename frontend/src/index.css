@@ -536,6 +536,7 @@ select option {
   --width: min(380px, calc(100vw - 48px)) !important;
   --feedback-surface: color-mix(in srgb, var(--primary) 8%, var(--card));
   --feedback-border: color-mix(in srgb, var(--primary) 28%, var(--border));
+  --feedback-top: var(--offset-top, 24px);
 }
 [data-sonner-toaster][data-sonner-theme="dark"] {
   --feedback-surface: color-mix(in srgb, var(--primary) 14%, var(--card));
@@ -550,7 +551,7 @@ select option {
   align-items: flex-start;
   flex-wrap: wrap;
   box-shadow: 0 6px 24px -8px rgb(0 0 0 / 0.25);
-  max-height: max(100px, calc((100dvh - var(--feedback-top, 68px) - 40px) / var(--feedback-visible, 3) - 12px));
+  max-height: max(100px, calc((100dvh - var(--feedback-top) - 40px) / 3 - 12px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -615,8 +616,8 @@ select option {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-@media (max-width: 639px) {
-  [data-sonner-toaster] { --width: calc(100vw - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))) !important; }
+@media (max-width: 600px) {
+  [data-sonner-toaster] { --feedback-top: var(--mobile-offset-top, 16px); }
 }
 
 [data-theme-container] { color-scheme: light; }
