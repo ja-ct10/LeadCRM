@@ -10,7 +10,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, replac
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { firstName: 'Preview', lastName: 'User', role: 'User' }, tenant: { name: 'Test workspace' }, logout: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: () => ['contacts.view'], PERMISSION_BRIDGE: {} }));
 vi.mock('@/shared/components/user-avatar', () => ({ UserAvatar: () => <span>PU</span> }));
-vi.mock('sonner', () => ({ toast: { info: mocks.toast } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { info: mocks.toast } }));
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 });

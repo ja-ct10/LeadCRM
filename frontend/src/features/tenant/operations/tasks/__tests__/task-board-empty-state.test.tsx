@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   columnsLoading: false, query: vi.fn(), users: [],
 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(mocks.searchParams) }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockData; } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', role: 'Client Admin' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: mocks.users, updateTask: vi.fn(), bulkTasks: vi.fn() }) }));

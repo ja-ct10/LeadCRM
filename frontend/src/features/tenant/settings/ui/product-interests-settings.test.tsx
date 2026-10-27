@@ -4,9 +4,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { ProductInterestsSettings } from './product-interests-settings';
 import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout } from '@leadcrm/shared';
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'one' }, user: { id: 'tester', tenantId: 'one' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));

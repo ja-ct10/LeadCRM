@@ -1,7 +1,7 @@
 import type { NotificationRecord } from '@leadcrm/shared';
 import { NotificationRecordTargetSchema } from '@leadcrm/shared';
 import { notificationsApi } from '@/shared/services/notifications.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export function opensNotificationRecord(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): boolean {
   // Team Management opens the directory and keeps its existing read-on-click behavior.

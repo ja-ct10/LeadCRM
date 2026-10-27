@@ -3,7 +3,7 @@ import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass,
 import { useEffect, useRef, useState } from 'react';
 import { isProductCreateAmountInput, ProductInterestCreateSchema, ProductInterestSchema, parseProductAmount, parseProductCreateAmount, PRODUCT_DEAL_VALUE_DIGITS_ERROR, PRODUCT_DEAL_VALUE_NEGATIVE_ERROR, PRODUCT_DEAL_VALUE_REQUIRED_ERROR, PRODUCT_INTEREST_NAME_MAX_ERROR, PRODUCT_INTEREST_NAME_MAX_LENGTH, PRODUCT_DESCRIPTION_MAX_LENGTH, type ProductInterest, type ProductInterestInput } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 const inputClass = panelInputClass;
 export function ProductEditor({ product, categories = [], canCreateCategory = false, onCreateCategory, busy, onSave, onCancel }: { product?: ProductInterest; categories?: string[]; canCreateCategory?: boolean; onCreateCategory?: (name: string) => Promise<void>; busy: boolean; onSave: (data: ProductInterestInput) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState(product?.name ?? '');

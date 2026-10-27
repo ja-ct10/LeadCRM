@@ -5,7 +5,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Settings, Eye, Edit, Archive } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { ProductInterest, ProductWonDeal, PaginatedResponse } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { useAuth } from '@/store/AuthContext';

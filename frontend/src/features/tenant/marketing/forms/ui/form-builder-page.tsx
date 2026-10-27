@@ -11,7 +11,7 @@ import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type
 import { ArrowLeft, EyeOff, Plus, RotateCcw } from 'lucide-react';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { FormDefinitionSchema, DEFAULT_DESIGN, DEFAULT_SETTINGS } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { RowActionsMenu } from '@/shared/components/data-grid/row-actions-menu';
@@ -40,6 +40,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   const [panel, setPanel] = useState<'Fields' | 'Design'>('Fields');
   const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [tools, setTools] = useState(false);
+  const [publication, setPublication] = useState<'publish' | 'unpublish' | null>(null);
   const [exit, setExit] = useState<NavigationAction | null>(null);
   const leaving = useRef(false), exitPending = useRef(false);
   const guardState = useRef({ dirty, saving });
@@ -94,11 +95,12 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
     const from = local.fields.findIndex(f => f.id === active), to = local.fields.findIndex(f => f.id === over);
     if (from >= 0 && to >= 0) change({ fields: arrayMove(local.fields, from, to) });
   }
-  async function save(publish = false): Promise<boolean> {
+  async function save(publish = false, confirmed = false): Promise<boolean> {
     if (saving || (dirty && !canEdit) || (publish && !canPublish) || (!publish && !canEdit)) return false; setError('');
     const parsed = FormDefinitionSchema.safeParse({ name: local.name, fields: withProductOptions(local.fields, products), design: local.design, settings: local.settings });
     setNameInvalid(!local.name.trim());
     if (!parsed.success) { setError(parsed.error.issues.map(i => i.message).join(' ')); return false; }
+    if (publish && !confirmed) { setPublication('publish'); return false; }
     setSaving(true);
     try {
       let saved = dirty ? await updateForm(local.id, { ...parsed.data, revision: local.revision }) : local;
@@ -106,7 +108,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       if (publish) { saved = await publishForm(saved.id); setLocal(saved); onFormUpdate(saved); setTab('Share'); }
       toast.success(publish ? 'Form published' : 'Draft saved');
       return true;
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save form.'); return false; } finally { setSaving(false); }
+    } catch (err) { if (confirmed) throw err; setError(err instanceof Error ? err.message : 'Unable to save form.'); return false; } finally { setSaving(false); }
   }
   async function unpublish() {
     if (saving || !canPublish) return;
@@ -119,7 +121,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       toast.success('Form unpublished.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to unpublish form.';
-      setError(message); toast.error(message);
+      throw new Error(message);
     } finally { setSaving(false); }
   }
   function discard() { setLocal({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } }); setDirty(false); setError(''); }
@@ -136,7 +138,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         <button disabled={saving || !canPublish} onClick={() => void save(true)} className="bg-primary text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
         <RowActionsMenu label="More actions" position="right" actions={[
           { id: 'discard', label: 'Discard changes', icon: <RotateCcw size={14} aria-hidden="true" />, disabled: saving || !dirty, onClick: discard },
-          ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', icon: <EyeOff size={14} aria-hidden="true" />, disabled: saving || !canPublish, onClick: () => void unpublish() }] : []),
+          ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', icon: <EyeOff size={14} aria-hidden="true" />, disabled: saving || !canPublish, onClick: () => setPublication('unpublish') }] : []),
         ]} />
       </header>
       <nav className="flex items-center border-b min-w-0">{(['Builder', 'Settings', 'Share'] as const).map(t => <button key={t} onClick={() => setTab(t)} className={'px-2 sm:px-4 py-3 text-xs ' + (tab === t ? 'text-primary border-b-2 border-primary' : '')}>{t}</button>)}
@@ -161,6 +163,11 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         <div className={panelHeaderClass + " pr-20 sm:pr-20"}><h2 className={panelTitleClass}>Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
         <div className="overflow-y-auto min-h-0">{tools && panelContent}</div>
       </DialogContent></Dialog>
+      <ConfirmActionDialog open={publication !== null} onOpenChange={open => { if (!open) setPublication(null); }}
+        title={publication === 'publish' ? 'Publish form?' : 'Unpublish form?'}
+        description={publication === 'publish' ? 'The saved form will be available through its public link and embed.' : 'The public form will stop accepting submissions. Existing submissions and linked records will be kept.'}
+        confirmLabel={publication === 'publish' ? 'Publish form' : 'Unpublish form'} isLoading={saving} confirmDisabled={!canPublish}
+        onConfirm={async () => { if (publication === 'publish') { if (!await save(true, true)) return false; } else await unpublish(); setPublication(null); }} />
       <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
         title="Discard unsaved changes?" description="Your unsaved form changes will be lost."
         variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes" isLoading={saving}

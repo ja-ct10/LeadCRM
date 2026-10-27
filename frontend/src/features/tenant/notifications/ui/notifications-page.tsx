@@ -35,7 +35,7 @@ export default function NotificationsPage() {
   useEffect(() => { setSelected(prev => prev.every(id => notifications.some(n => n.id === id)) ? prev : prev.filter(id => notifications.some(n => n.id === id))); }, [notifications]);
 
   return <div className="min-h-full bg-[var(--background)] p-3 sm:p-6">
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+    <div data-toast-clearance className="mb-5 flex flex-wrap items-start justify-between gap-4">
       <div>
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Notifications</h1>
         <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">{unreadCount ? `${unreadCount} unread notification${unreadCount === 1 ? ' needs' : 's need'} your attention.` : "You're all caught up."}</p>
@@ -99,7 +99,7 @@ export default function NotificationsPage() {
       title={deleting?.bulk ? 'Delete notifications?' : 'Delete notification?'}
       description={deleting?.bulk ? `Are you sure you want to delete ${deleting.ids.length} selected notification${deleting.ids.length === 1 ? '' : 's'}? This action cannot be undone.` : 'Are you sure you want to delete this notification? This action cannot be undone.'}
       isLoading={isMutating} onConfirm={async () => {
-        if (deleting && await deleteNotifications(deleting.ids)) {
+        if (deleting && await deleteNotifications(deleting.ids, true)) {
           setSelected(prev => prev.filter(id => !deleting.ids.includes(id)));
           setDeleting(null);
         } else {

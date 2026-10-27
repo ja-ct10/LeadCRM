@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { NotificationMutationResponse, NotificationsResponse } from '@leadcrm/shared';
 import { notificationsApi } from '@/shared/services/notifications.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 
 // A single clock and request per authenticated scope; feed consumers share in-flight reads.
@@ -85,7 +85,8 @@ export function useNotificationCounts(scope: string, tenantId: string, userId: s
             const message = update.body || update.title;
             if (update.type === 'sms_campaign_sent' || update.type === 'sms_campaign_delivered') toast.success(message, options);
             else if (update.type === 'sms_campaign_failed') toast.error(message, options);
-            else if (['sms_campaign_partial', 'sms_campaign_unconfirmed', 'sms_campaign_progress'].includes(update.type)) toast.warning(message, options);
+            else if (update.type === 'sms_campaign_progress') toast.info(message, options);
+            else if (['sms_campaign_partial', 'sms_campaign_unconfirmed'].includes(update.type)) toast.warning(message, options);
           }
           if (changedCampaigns.size) {
             invalidatePageCache('campaigns', tenantId);

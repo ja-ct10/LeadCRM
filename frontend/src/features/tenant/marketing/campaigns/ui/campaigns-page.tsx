@@ -22,7 +22,7 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { FieldError } from './audience-panel';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Archive, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
 import { FilterButton } from '@/shared/components/crm/filter-button';
@@ -353,7 +353,7 @@ export default function CampaignsPage() {
                 <Dialog open={!!repairDuplicate} onOpenChange={open => { if (!open) setRepairDuplicate(null); }}><DialogContent aria-label="Repair legacy campaign source"><h2 className="text-lg font-semibold">Choose the copy’s source</h2><p className="text-sm">This legacy campaign mixed Leads and Contacts. Select one source for its new draft.</p><div className="flex gap-2"><button className="rounded border px-3 py-2" onClick={() => repairDuplicate && void handleDuplicate(repairDuplicate, 'LEADS')}>Leads</button><button className="rounded border px-3 py-2" onClick={() => repairDuplicate && void handleDuplicate(repairDuplicate, 'CONTACTS')}>Contacts</button></div></DialogContent></Dialog>
                 <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
                   if (!archiving) return;
-                  try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
+                  try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); try { await refetchCampaigns(); toast.success('Campaign archived.'); } catch { toast.warning('Campaign archived. Refresh the list to see the changes.'); } }
                   catch (e) { throw new Error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
                 }} />
 

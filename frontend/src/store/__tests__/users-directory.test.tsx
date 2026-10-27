@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EMPTY_PERMISSION_FLAGS, hasModulePermission, type ResolvedPermissions } from '@leadcrm/shared';
 import { DataProvider, useData } from '../DataContext';
 import { clearPageCache, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 const state = vi.hoisted(() => ({
   id: 'actor', tenant: 'tenant', role: 'Sales Associate', ready: true, loading: false,
@@ -23,7 +23,7 @@ vi.mock('../AuthContext', () => ({ useAuth: () => {
   };
 } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const person = (id = 'staff') => ({ id, tenantId: state.tenant, firstName: id, lastName: 'User', role: 'Sales', status: 'ACTIVE' });
 const response = (data: unknown, status = 200, hasMore = false) => new Response(JSON.stringify({

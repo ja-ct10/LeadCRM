@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 import { ManageFieldGroups } from './manage-field-groups';
 import { SortableFieldLayoutItem } from './sortable-field-layout';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { matchesSearch } from '@/shared/utils/search';
 import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
 
@@ -180,8 +180,8 @@ export function ClosingFieldsSettings() {
   const deleteField = async () => {
     if (!canDelete || saving.current || !deleteTarget?.customFieldId) return false;
     saving.current = true; setPending(true);
-    try { await apiClient.delete(`${endpoint}/${deleteTarget.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted'); }
-    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete field'); }
+    try { await apiClient.delete(`${endpoint}/${deleteTarget.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted.'); }
+    catch (error) { throw error; }
     finally { saving.current = false; setPending(false); }
   };
   const mutateLayout = async (input: FieldLayoutAction): Promise<boolean> => {

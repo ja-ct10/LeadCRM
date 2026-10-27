@@ -18,7 +18,7 @@ vi.mock('../confirm-action-dialog', () => ({ ConfirmActionDialog: () => null }))
 vi.mock('../crm-record-view', () => ({ CrmRecordPanel: ({ module, id, initialTab, onOpenChange }: any) => <div role="dialog" data-record-module={module} data-record-id={id} data-initial-tab={initialTab}><input aria-label="Deal title" defaultValue={mocks.deal.title} /><button onClick={() => onOpenChange(false)}>Cancel</button></div> }));
 vi.mock('@/features/tenant/operations/tasks/ui/task-editor', () => ({ TaskEditor: ({ links, onClose }: any) => <div role="dialog" data-deal-id={links.dealIds[0]}><input aria-label="Task title" /><button onClick={onClose}>Close</button></div> }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const sales = { id: 'sales-id', tenantId: 'tenant', name: 'Sales Pipeline', stages: [
   { id: 'lead', name: 'Lead', order: 0 }, { id: 'qualified', name: 'Qualified', order: 1 },

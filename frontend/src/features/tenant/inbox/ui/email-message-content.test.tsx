@@ -5,7 +5,7 @@ import { EmailMessageContent } from './email-message-content';
 import type { GmailEmail } from '../services/gmail.service';
 const mocks = vi.hoisted(() => ({ content: vi.fn(), attachment: vi.fn(), toast: vi.fn() }));
 vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment }));
-vi.mock('sonner', () => ({ toast: { error: mocks.toast } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.toast } }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const email: GmailEmail = { id: 'message-id', threadId: 'thread', from: 'sender@example.test', to: ['owner@example.test'], subject: 'Quotation', snippet: 'Saved body', body: '<p>Saved body</p>', date: '2026-10-18T00:00:00Z', labels: ['INBOX'], isRead: true };
 const pdf = { id: 'pdf-id', filename: 'QT-2026-00124.pdf', mimeType: 'application/pdf', size: 2048 };

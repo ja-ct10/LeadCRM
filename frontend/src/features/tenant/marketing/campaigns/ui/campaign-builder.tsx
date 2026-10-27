@@ -18,7 +18,7 @@ import type { AudiencePreviewResult } from '@leadcrm/shared';
 import { PaginationControls } from '@/shared/components/crm/pagination-controls';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
+import { campaignPreviewDocument, prepareCampaignBody } from '../services/campaign-html';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { Button } from '@/shared/components/ui/button';
@@ -26,7 +26,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/shared/components/ui/dialog';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useAuth } from '@/store/AuthContext';
 import { trackSmsCampaignSubmission } from '@/features/tenant/notifications/hooks/notification-requests';
 import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
@@ -107,6 +107,7 @@ export function CampaignBuilder({
   guardState.current = { dirty };
   useEffect(() => { leaving.current = false; }, [draftSnapshot]);
   function leaveBuilder() {
+    setSendConfirmation(false);
     leaving.current = true; exitPending.current = false; setExit(null); onBack();
   }
   useEffect(() => {
@@ -187,7 +188,8 @@ export function CampaignBuilder({
   const emailSettings = useCachedPage<CampaignEmailSettings>({ module: 'settings', params: { campaignSender: 'EMAIL' }, disabled: campaignType !== 'Email', revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.emailSettings()).data });
   const smsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: campaignType !== 'SMS', revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
   const emailSender = emailSettings.data;
-  const { isDark: previewDark } = useTheme();
+  const { resolved: previewTheme, accent: previewAccent } = useTheme();
+  const [sendConfirmation, setSendConfirmation] = useState(false);
   function insertVariable(token: string) {
     if (!canWrite || isSending) return;
     const field = campaignType === 'Email' ? activeField.current : 'body';
@@ -269,7 +271,7 @@ export function CampaignBuilder({
   }, [variableCatalog.refetch, emailSettings.refetch, smsSettings.refetch]);
   const getPreviewText = (text: string) => renderEmailVariables(text, previewVariables);
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
-  const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:#2563eb;text-decoration:underline}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
+  const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={campaignPreviewDocument(messageContent, previewVariables, previewTheme, previewAccent)} />;
   let smsPreview = '', smsLengthPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
     smsPreview = buildFinalSms({ body: messageContent, variables: previewVariables });
@@ -284,7 +286,7 @@ export function CampaignBuilder({
     setScheduledTime(next); setScheduleSession(previous => previous + 1); setErrors({}); setShowVarDropdown(false); setScheduleOpen(true);
   }
   function closeSchedule() { if (!requestLock.current) setScheduleOpen(false); }
-  async function save(intent: SaveIntent, scheduleValue?: string) {
+  async function save(intent: SaveIntent, scheduleValue?: string, confirmed = false) {
     const send = intent !== 'draft';
     if (requestLock.current || (send ? !maySend : !canWrite)) return;
     if (send && initialCampaign && initialCampaign.status.toLowerCase() !== 'draft') return;
@@ -308,6 +310,7 @@ export function CampaignBuilder({
     if (send && campaignVariableKeys(messageContent + '\n' + (campaignType === 'Email' ? emailSubject : '')).some(key => key in senderValues && !senderValues[key as keyof typeof senderValues])) { setErrors({ form: 'Configure the sender before using sender variables.' }); return; }
     if (send && campaignType === 'Multi-Channel') { setErrors({ form: 'Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.' }); return; }
     if (send && campaignType === 'SMS' && smsPreviewError) { setErrors({ form: smsPreviewError }); return; }
+    if (intent === 'send' && !confirmed) { setErrors({}); setSendConfirmation(true); return; }
     requestLock.current = true; setIsSending(true); setPendingIntent(intent); setErrors({});
     let draftSaved = false;
     try {
@@ -354,6 +357,10 @@ export function CampaignBuilder({
       for (const [field, messages] of Object.entries(error.fieldErrors || {})) if (messages[0]) next[field] = messages[0];
       if (!Object.keys(next).length) next.form = error.message || 'Could not save campaign.';
       if (intent === 'schedule' && draftSaved) next.form = `Campaign draft saved, but scheduling failed. ${error.message || 'Unable to schedule campaign.'}`;
+      if (confirmed) {
+        setErrors(Object.fromEntries(Object.entries(next).filter(([field]) => field !== 'form')));
+        throw new Error(next.form || 'Check the highlighted fields before sending.');
+      }
       setErrors(next);
     } finally { requestLock.current = false; setIsSending(false); setPendingIntent(null); }
   }
@@ -456,7 +463,7 @@ export function CampaignBuilder({
   return (
     <div className="w-full min-w-0 h-full flex flex-col">
       {/* Top Bar */}
-      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
+      <div data-toast-clearance className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <button disabled={isSending} onClick={() => requestNavigation(onBack)} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <ArrowLeft size={18} />
@@ -614,6 +621,11 @@ export function CampaignBuilder({
       <ConfirmActionDialog open={!!deleteAudience} onOpenChange={open => { if (!open && !isDeletingAudience) setDeleteAudience(null); }}
         title="Delete target audience?" description={`Permanently delete "${deleteAudience?.name ?? ''}"?`} warning="This action cannot be undone. Audiences used by existing campaigns cannot be deleted."
         confirmLabel="Delete audience" variant="destructive" isLoading={isDeletingAudience} confirmDisabled={!canEdit} onConfirm={confirmDeleteAudience} />
+      <ConfirmActionDialog open={sendConfirmation} onOpenChange={setSendConfirmation}
+        title="Send campaign?" description={`Send “${campaignName}” by ${campaignType === 'SMS' ? 'SMS' : 'email'} to ${chosenAudience?.name || (targetAudience === 'LEADS' ? 'Leads' : 'Contacts')}${counts ? ` (${counts.eligible} eligible recipients)` : ''}?`}
+        warning="Submitted messages cannot be recalled. Review the audience and content before sending."
+        confirmLabel="Send campaign" cancelLabel="Keep editing" isLoading={isSending} confirmDisabled={!maySend}
+        onConfirm={async () => { await save('send', undefined, true); return false; }} />
       <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
         title="Discard unsaved changes?" description="Your unsaved campaign changes will be lost."
         variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes"

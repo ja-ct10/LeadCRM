@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/shared/utils/toast';
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Archive, Calendar, ChevronDown, ListTodo, MoreHorizontal, Pencil, User, X } from 'lucide-react';
@@ -87,7 +88,7 @@ export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', r
       const canonical = await updateTask(recordId, { ...updates, ...(saved.updatedAt ? { expectedUpdatedAt: saved.updatedAt } : {}) });
       // The pipeline returns the same canonical record used to refresh the Task lists.
       if (!canonical) throw new Error('Unable to refresh the saved Task. Reload before making another change.');
-      detail.setData(canonical); setSaved(canonical);
+      detail.setData(canonical); setSaved(canonical); toast.success(updates.status === 'completed' ? 'Task completed.' : 'Task updated.');
     } catch (reason) {
       if ((reason as { status?: number })?.status === 409) { setSaveConflict(true); void detail.refetch(); }
       throw reason;
@@ -120,7 +121,7 @@ export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', r
   const archive = async () => {
     if (!mutable || !canArchive || pending || inline.field || mutationPending.current) return false;
     mutationPending.current = true; setBusy(true);
-    try { await deleteTask(recordId); onClose(); } finally { mutationPending.current = false; setBusy(false); }
+    try { await deleteTask(recordId); toast.success('Task archived.'); onClose(); } finally { mutationPending.current = false; setBusy(false); }
   };
   const reload = () => {
     if (!detail.data || pending) return;

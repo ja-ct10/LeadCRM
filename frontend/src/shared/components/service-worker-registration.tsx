@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 /**
  * Registers the LeadCRM service worker for PWA support (offline cache, installability).

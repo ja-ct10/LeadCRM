@@ -5,7 +5,7 @@ import { campaignFields, CUSTOM_FIELD_MODULES, getCrmFieldCatalog, SMS_DEFAULT_F
 import { CampaignBuilder } from '../campaign-builder';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { clearPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useLayout } from '@/features/tenant/layout/use-layout';
@@ -16,7 +16,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'builder-u
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key), usePermissions: () => ['*'] }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { variableFields: vi.fn(), create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn(), schedule: vi.fn(), cancelSchedule: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), delete: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'LEADS' as const, conditions: [] };
 beforeEach(() => {
@@ -38,6 +38,8 @@ afterEach(() => { cleanup(); clearPageCache(); vi.useRealTimers(); });
 function sendNow() {
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Send Now' }));
+  const confirm = screen.queryByRole('button', { name: 'Send campaign' });
+  if (confirm) fireEvent.click(confirm);
 }
 async function schedulePicker() {
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -617,6 +619,7 @@ describe('campaign composer', () => {
     vi.mocked(campaignsApi.send).mockReturnValue(new Promise(resolve => { finish = resolve; }));
     render(<CampaignBuilder onBack={vi.fn()} />); fill();
     fireEvent.click(screen.getByRole('button', { name: 'Send' })); const send = screen.getByRole('menuitem', { name: 'Send Now' }); fireEvent.click(send); fireEvent.click(send);
+    const confirm = screen.getByRole('button', { name: 'Send campaign' }); fireEvent.click(confirm); fireEvent.click(confirm);
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledTimes(1));
     expect((screen.getByRole('button', { name: 'Sending...' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => finish({ success: true, data: { campaignId: 'saved-id', eligibleRecipients: 2, submittedRecipients: 1, failedRecipients: 1, status: 'PARTIALLY_SENT' } }));
@@ -660,7 +663,8 @@ describe('campaign composer', () => {
     const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
     sendNow();
     expect(await screen.findByText('Daily allowance reached.')).toBeTruthy(); expect(back).not.toHaveBeenCalled();
-    expect(unloadPrevented()).toBe(true); expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(unloadPrevented()).toBe(true); expect(screen.getByRole('alertdialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
     expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('saved-id', expect.any(Object)));
@@ -908,4 +912,16 @@ describe('campaign composer', () => {
     await waitFor(() => expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ body: '{{sender_name}} {{sender_email}}' })));
   });
 
+});
+
+
+it('confirms the Campaign audience before any write and cancels without sending', async () => {
+  render(<CampaignBuilder onBack={vi.fn()} />); fill();
+  await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'Send' })); fireEvent.click(screen.getByRole('menuitem', { name: 'Send Now' }));
+  const dialog = screen.getByRole('alertdialog');
+  expect(dialog.textContent).toContain('September Campaign'); expect(dialog.textContent).toContain('eligible recipients');
+  expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.send).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+  expect(screen.queryByRole('alertdialog')).toBeNull(); expect(campaignsApi.send).not.toHaveBeenCalled();
 });

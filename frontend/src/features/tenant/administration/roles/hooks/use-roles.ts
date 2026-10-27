@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { RoleListItem, RoleDetail } from '@/store/types/roles.types';
 import { rolesService } from '../services/roles.service';
 import { matchesSearch } from '@/shared/utils/search';

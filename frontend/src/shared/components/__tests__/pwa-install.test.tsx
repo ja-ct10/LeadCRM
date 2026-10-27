@@ -2,7 +2,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const feedback = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-vi.mock('sonner', () => ({ toast: feedback }));
+vi.mock('@/shared/utils/toast', () => ({ toast: feedback }));
 import { INSTALL_DISMISSAL_KEY, INSTALLED_APP_KEY, PwaInstallProvider, type InstallPromptEvent } from '@/shared/providers/pwa-install-provider';
 import { updateAppearance } from '@/lib/appearance';
 import { type ThemeMode } from '@/lib/appearance-config';

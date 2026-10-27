@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import { clearPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { clearNotificationTracking } from '@/features/tenant/notifications/hooks/notification-requests';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { NotificationRecord, UnreadNotificationRecord } from '@leadcrm/shared';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn(), archive: vi.fn(), impact: vi.fn(), deactivate: vi.fn(), unlock: vi.fn(), groups: vi.fn(), counts: vi.fn(), notificationList: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(), refreshPermissions: vi.fn(), permissionsLoaded: true, permissionsError: null as string | null, rolesLoading: false, rolesError: '', denied: new Set<string>(), role: 'Client Admin' }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
@@ -14,7 +14,7 @@ vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], rolesLoading: mocks.rolesLoading, rolesError: mocks.rolesError, refreshRoles: vi.fn() }) }));
 vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive, deactivationImpact: mocks.impact, deactivate: mocks.deactivate, unlock: mocks.unlock } }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: { counts: mocks.counts, list: mocks.notificationList, markRead: mocks.markRead, markAllRead: mocks.markAllRead, delete: mocks.delete } }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { UsersSubTab } from '../team-management-users';
 let notifications: NotificationRecord[];
 function notificationSummary() {
@@ -80,7 +80,7 @@ it('retains failed deactivation for retry and lets cancellation end the reassign
   render(<UsersSubTab />);
   fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Review deactivation' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Deactivate' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Permission denied');
   expect(screen.getByRole('alertdialog', { name: 'Deactivate this user?' })).toBeTruthy();
@@ -103,7 +103,7 @@ it('confirms activation and deactivation, updates the persisted row immediately,
   expect(screen.queryByRole('menuitem', { name: 'Activate' })).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
   expect(mocks.update).not.toHaveBeenCalled();
-  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Review deactivation' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Deactivate' }));
   await waitFor(() => expect(mocks.deactivate).toHaveBeenCalledWith('a', null));
   expect(await screen.findByText('inactive')).toBeTruthy();
@@ -184,9 +184,9 @@ it('the header reuses impact, replacement, confirmation, mutation and immediate 
   const dialog = await screen.findByRole('alertdialog', { name: 'Reassign Records and Tasks' });
   expect(within(dialog).queryByText('accounts')).toBeNull();
   expect(mocks.impact).toHaveBeenCalledExactlyOnceWith('a');
-  expect(within(dialog).getByRole('button', { name: 'Continue' })).toHaveProperty('disabled', true);
+  expect(within(dialog).getByRole('button', { name: 'Review deactivation' })).toHaveProperty('disabled', true);
   fireEvent.change(within(dialog).getByRole('combobox', { name: /Assigned Agent/ }), { target: { value: 'replacement' } });
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Review deactivation' }));
   fireEvent.click(within(screen.getByRole('alertdialog', { name: 'Deactivate this user?' })).getByRole('button', { name: 'Deactivate' }));
   await waitFor(() => expect(mocks.deactivate).toHaveBeenCalledExactlyOnceWith('a', 'replacement'));
   const panel = screen.getByRole('dialog', { name: 'User Details' });

@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Pencil, ListPlus, StickyNote, Mail, CheckCircle2, XCircle, ArrowLeftRight, Archive, MoreHorizontal } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { CrmEmailSchema, closingValueError, type ClosingRequirementsState } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
@@ -139,7 +139,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
       const incomplete = state.fields.filter(field => field.active).some(field => state.errors[field.id] || closingValueError(field, state.values[field.id]) || field.type === 'File Upload' && state.values[field.id] && !state.files.some(file => file.id === state.values[field.id]));
       if (incomplete) { show('won'); return; }
       setAction(null);
-      confirm({ title: 'Mark as Closed Deal?', description: 'The closing evidence will be validated and locked.', confirmLabel: 'Mark as Closed Deal', onConfirm: async () => { const next = await data.moveDealStage(dealId, won[0].id); changed(next); toast.success('Deal closed'); } });
+      confirm({ title: 'Mark as Closed Deal?', description: 'The closing evidence will be validated and locked.', confirmLabel: 'Mark as Closed Deal', onConfirm: async () => { const next = await data.moveDealStage(dealId, won[0].id); changed(next); toast.success('Deal closed.'); } });
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to check closing evidence.'); }
     finally { submitting.current = false; setPending(false); }
   };
@@ -155,7 +155,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
         {(canEmailLead || canEmailContact) && item('Send an email', Mail, () => recipients.length === 1 ? send(recipients[0]) : show('recipient'), emailReason)}
         {canEdit && <><DropdownMenuSeparator />{item('Mark as Closed Deal', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as Cancelled', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason)}</>}
         {canArchive && <><DropdownMenuSeparator /><DropdownMenuItem destructive disabled={pending || !!unavailable} onSelect={() => {
-          setOpen(false); confirm({ title: 'Archive deal?', description: 'This Deal will leave active views. You can restore it from Archived Data.', confirmLabel: 'Archive', variant: 'destructive', onConfirm: async () => { await (onArchive ?? data.deleteDeal)(dealId); changed(deal ? { ...deal, isArchived: true } : undefined); toast.success('Deal archived'); } });
+          setOpen(false); confirm({ title: 'Archive deal?', description: 'This Deal will leave active views. You can restore it from Archived Data.', confirmLabel: 'Archive', variant: 'destructive', onConfirm: async () => { await (onArchive ?? data.deleteDeal)(dealId); changed(deal ? { ...deal, isArchived: true } : undefined); toast.success('Deal archived.'); } });
         }}><Archive className="h-4 w-4" />Archive</DropdownMenuItem></>}
       </DropdownMenuContent>
     </DropdownMenu>}
@@ -163,8 +163,8 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
       {action === 'edit' && deal && <CrmRecordPanel module="deals" id={dealId} open initialTab="details" onOpenChange={value => { if (!value) { closeAction(); changed(); } }} />}
       {action === 'task' && <TaskEditor links={{ dealIds: [dealId] }} preserveContextLinks onClose={closeAction} />}
       {(action === 'note' || action === 'won') && <CrmRecordPanel module="deals" id={dealId} open onOpenChange={value => { if (!value) { closeAction(); changed(); } }} focusNote={action === 'note'} focusClosing={action === 'won'} />}
-      {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={closeAction} onMove={async stageId => { const next = await data.moveDealStage(dealId, stageId); changed(next); toast.success('Deal stage updated'); }} />}
-      {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={closeAction} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal cancelled'); }} />}
+      {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={closeAction} onMove={async stageId => { const next = await data.moveDealStage(dealId, stageId); changed(next); toast.success('Deal stage updated.'); }} />}
+      {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={closeAction} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal cancelled.'); }} />}
       {action === 'recipient' && <Dialog open onOpenChange={value => { if (!value) closeAction(); }}><DialogContent aria-label="Choose an email recipient" className="max-w-sm"><DialogHeader><DialogTitle>Choose an email recipient</DialogTitle></DialogHeader><div className="space-y-2">{recipients.map(person => <Button key={person.email} variant="outline" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => send(person)}>{person.name} · {person.email}</Button>)}</div><Button variant="ghost" onClick={closeAction}>Cancel</Button></DialogContent></Dialog>}
     </>}
     <ConfirmActionDialog {...dialogProps} />

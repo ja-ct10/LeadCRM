@@ -4,7 +4,7 @@ import { useReadRecordNotifications } from '@/features/tenant/notifications/hook
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Link2, Mail, Send, Target, Users } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { CampaignClickedLink, CampaignRecipient } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
 import { campaignsApi, type CampaignReportResponse } from '@/shared/services/campaigns.api';

@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { Settings2, Columns3, Check, Loader2, ArrowUpDown } from 'lucide-react';
 import type { RecordSort, TableSortOption } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 import type { ViewMode } from '@/shared/hooks/use-table-preferences';
 import { SortTableDialog } from './sort-table-dialog';
@@ -30,7 +30,7 @@ export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onView
   const reset = async () => {
     if (pending.current || !onResetColumnSize) return;
     pending.current = true; setResetting(true);
-    try { await onResetColumnSize(); toast.success('Column sizes reset'); }
+    try { await onResetColumnSize(); toast.success('Column sizes reset.'); }
     catch { toast.error('Unable to reset column sizes. Please try again.'); }
     finally { pending.current = false; setResetting(false); }
   };

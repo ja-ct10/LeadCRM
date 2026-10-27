@@ -5,7 +5,7 @@ import { Archive, UserX } from 'lucide-react';
 const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), reset: vi.fn(), success: vi.fn(), error: vi.fn(), getGroups: vi.fn(), denied: new Set<string>(), actor: { role: 'User', tenantId: 't' } }));
 vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { create: mocks.create, update: mocks.update, sendPasswordReset: mocks.reset } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: (module: string, action: string) => !mocks.denied.has(`${module}.${action}`), user: mocks.actor }) }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 vi.mock('@/shared/services/groups.api', () => ({ groupsApi: { getAll: mocks.getGroups } }));
 import { UserPanel } from '../user-panel';
 import type { User } from '@/store/types';

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Briefcase, ChevronDown } from 'lucide-react';
 import type { Deal, Stage } from '@/store/types';
 import { DEAL_PRIORITY_COLORS } from '../constants/deal.constants';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 interface DealsTableProps {
   deals: Deal[];

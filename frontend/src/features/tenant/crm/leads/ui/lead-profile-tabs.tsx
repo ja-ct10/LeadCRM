@@ -17,7 +17,7 @@ import { LeadSmsTab } from './tabs/lead-sms-tab';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { CustomerJourneyTimeline } from './customer-journey-timeline';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForLead } from '@/lib/utils';
 
 interface Props {
@@ -146,7 +146,7 @@ export const ClientProfileTabs = ({
   const handleSaveNotes = async () => {
     try {
       await updateLead(lead.id, { notes: leadNotes, internalNotes: internalNotes });
-      toast.success('Successfully committed notes changes!');
+      toast.success('Successfully committed notes changes.');
       addActivityLog(`Wrote and saved updated profile internal notes.`, 'note');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to update notes");

@@ -11,7 +11,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
 }) }));
 vi.mock('../use-layout', () => ({ useLayout: () => ({ navigate: mocks.navigate }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, replace: mocks.replace }), usePathname: () => '/dashboard' }));
-vi.mock('sonner', () => ({ toast: mocks }));
+vi.mock('@/shared/utils/toast', () => ({ toast: mocks }));
 vi.mock('motion/react', () => ({
   motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children,
 }));

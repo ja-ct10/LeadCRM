@@ -6,7 +6,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, useSortable, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { Button } from '@/shared/components/ui/button';
@@ -88,7 +88,7 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
   const mutate = async (operation: () => Promise<unknown>, propagateError = false) => {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError('');
-    try { await operation(); setRemoving(undefined); await reload(); await onChanged(); toast.success('Pipeline stages updated'); }
+    try { await operation(); setRemoving(undefined); await reload(); await onChanged(); toast.success('Pipeline stages updated.'); }
     catch (e) { if (propagateError) throw e; setError(e instanceof Error ? e.message : 'Unable to update stages'); }
     finally { pending.current = false; setBusy(false); }
   };
@@ -104,7 +104,7 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
       const result = await pipelinesApi.reorderStages(pipelineId, ordered.map(stage => stage.id));
       setStages([...result.data.stages].sort((a, b) => a.order - b.order));
       await onChanged().catch(() => setError('Order saved, but Deals could not refresh. Refresh Deals to see the changes.'));
-      toast.success('Pipeline stages updated');
+      toast.success('Pipeline stages updated.');
     } catch (failure) {
       setStages(previous);
       setError(failure instanceof Error ? failure.message : 'Unable to reorder stages');

@@ -1,9 +1,9 @@
 'use client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { FormRecord } from '../types/form.types';
 
 export function FormSharePanel({ form, dirty, shareLink, embedCode }: { form: FormRecord; dirty: boolean; shareLink: string; embedCode: string }) {
-  const copy = async (value: string) => { try { await navigator.clipboard.writeText(value); toast.success('Copied'); } catch { toast.error('Unable to copy'); } };
+  const copy = async (value: string) => { try { await navigator.clipboard.writeText(value); toast.success('Copied.'); } catch { toast.error('Unable to copy'); } };
   return <div className="grid w-full min-w-0 gap-5 lg:grid-cols-2">
     {(dirty || form.publishedRevision !== form.revision) && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 lg:col-span-2">This form has unpublished edits. Publish it in order to see the latest changes.</p>}
     {!form.publishedVersion ? <p className="text-sm text-muted-foreground lg:col-span-2">Publish this form to enable its public link and embed code.</p> : <>

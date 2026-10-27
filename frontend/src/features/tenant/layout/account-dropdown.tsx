@@ -4,7 +4,7 @@ import { UserAvatar } from '@/shared/components/user-avatar';
 import React from 'react';
 import { Shield, LogOut, Check } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_AUTH } from '@/lib/config';
 import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';

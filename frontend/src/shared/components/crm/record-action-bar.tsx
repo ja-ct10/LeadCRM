@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Mail, Phone, MessageSquare, Activity, MoreHorizontal } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import {

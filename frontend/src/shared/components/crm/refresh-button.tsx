@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 /** Refresh control extracted from the Leads workspace toolbar. */

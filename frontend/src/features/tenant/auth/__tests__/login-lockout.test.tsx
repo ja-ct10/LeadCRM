@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ login: vi.fn(), restore: vi.fn(), toast: { err
 vi.mock('@/lib/config', () => ({ USE_MOCK_AUTH: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ login: mocks.login, requestPasswordReset: vi.fn(), confirmPasswordReset: vi.fn() }) }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { restoreLoginLockout: mocks.restore } }));
-vi.mock('sonner', () => ({ toast: mocks.toast }));
+vi.mock('@/shared/utils/toast', () => ({ toast: mocks.toast }));
 import ModernLoginPage from '../../pages/modern-login-page';
 import { countdownDeadline, formatLoginCountdown } from '../use-login-lockout';
 
@@ -58,17 +58,17 @@ describe('login lockout presentation and lifecycle', () => {
     mocks.login.mockRejectedValue(Object.assign(new Error(message), { status: 423, code: 'AUTH_ACCOUNT_LOCKED' }));
     await submit(element);
     expect(screen.queryByRole('timer')).toBeNull(); expect(screen.queryByRole('dialog')).toBeNull();
-    expect(mocks.toast.error).toHaveBeenCalledWith(message, { id: 'leadcrm-login-error' });
+    expect(screen.getByRole('alert').textContent).toBe(message); expect(mocks.toast.error).not.toHaveBeenCalled();
   });
   it('keeps five normal errors and opens only on the structured sixth response, without a duplicate toast', async () => {
     const { form: element } = await form();
     mocks.login.mockRejectedValue(new Error('Invalid email or password.'));
     for (let i = 0; i < 5; i++) { await submit(element); expect(screen.queryByRole('dialog')).toBeNull(); }
-    expect(mocks.toast.error).toHaveBeenCalledTimes(5);
+    expect(mocks.toast.error).not.toHaveBeenCalled();
     mocks.login.mockRejectedValue(lockedError()); await submit(element);
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
     expect(screen.getByRole('heading', { name: 'Too Many Login Attempts' })).toBeTruthy();
-    expect(screen.getByRole('timer').textContent).toBe('05:00'); expect(mocks.toast.error).toHaveBeenCalledTimes(5);
+    expect(screen.getByRole('timer').textContent).toBe('05:00'); expect(mocks.toast.error).not.toHaveBeenCalled();
     expect(mocks.toast.dismiss).toHaveBeenCalledWith('leadcrm-login-error');
     expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('');
   });
@@ -115,7 +115,7 @@ describe('login lockout presentation and lifecycle', () => {
   });
   it('preserves ordinary IP-rate errors without showing an account lockout modal', async () => {
     const { form: element } = await form(); mocks.login.mockRejectedValue(Object.assign(new Error('Too many sign-in requests.'), { code: 'AUTH_LOGIN_RATE_LIMITED', status: 429 }));
-    await submit(element); expect(screen.queryByRole('dialog')).toBeNull(); expect(mocks.toast.error).toHaveBeenCalledWith('Too many sign-in requests.', { id: 'leadcrm-login-error' });
+    await submit(element); expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.getByRole('alert').textContent).toBe('Too many sign-in requests.'); expect(mocks.toast.error).not.toHaveBeenCalled();
   });
   it('formats boundaries and corrects server clock differences', () => {
     expect([300, 299, 30, 1, 0].map(formatLoginCountdown)).toEqual(['05:00', '04:59', '00:30', '00:01', '00:00']);

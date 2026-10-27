@@ -13,7 +13,7 @@ vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post, get: mocks.g
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshDeals: mocks.refresh, refreshContacts: mocks.refresh, refreshOrganizations: mocks.refresh }) }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, warning: mocks.warning, error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, warning: mocks.warning, error: mocks.error } }));
 import ImportPage from './import-page';
 import ImportDetailsPage from './import-details-page';
 

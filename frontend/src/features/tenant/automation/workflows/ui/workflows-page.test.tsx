@@ -79,6 +79,7 @@ it('wires menus to view, edit, duplicate, pause, resume and confirmed archive', 
   await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', false));
   await screen.findByText('Paused');
   action('Resume');
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Activate workflow' }));
   await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', true));
   await screen.findByRole('grid');
   await waitFor(() => expect((screen.getByLabelText('Resume workflow') as HTMLButtonElement).disabled).toBe(false));
@@ -139,6 +140,7 @@ it('quick icons duplicate and toggle the same workflow while showing only the su
   await waitFor(() => expect((screen.getByLabelText('Resume workflow') as HTMLButtonElement).disabled).toBe(false));
   expect(screen.queryByLabelText('Pause workflow')).toBeNull();
   fireEvent.click(screen.getByLabelText('Resume workflow'));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Activate workflow' }));
   await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', true));
 });
 

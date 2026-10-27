@@ -9,7 +9,7 @@ import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), tenantId: 'tenant-a', userId: 'user-a', canRestore: true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: state.tenantId }, userCan: () => state.canRestore, user: { id: state.userId, tenantId: state.tenantId, role: 'Client Admin' } }) }));
-vi.mock('sonner', () => ({ toast: { success: state.success, error: state.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: state.success, error: state.error } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshRoles: vi.fn(), refreshPipelines: vi.fn(), refreshDeals: vi.fn(), refreshOrganizations: vi.fn() }) }));
 let rows: ArchivedRecord[];
 let failIds: Set<string>;

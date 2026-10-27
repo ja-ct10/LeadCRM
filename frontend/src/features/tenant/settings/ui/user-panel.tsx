@@ -4,7 +4,7 @@ import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelPrimaryActi
 import { useAuth } from '@/store/AuthContext';
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EmployeeEmailSchema } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
@@ -102,7 +102,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       const response = await usersService.create(result.data as Partial<User>);
       const persisted = response.data!;
       onSaved(persisted);
-      toast.success('User created successfully.');
+      toast.success('User created.');
       onClose();
     } catch (reason) {
       const error = reason as Error & { fieldErrors?: Record<string, string[]>; status?: number; code?: string };
@@ -136,7 +136,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       if (!response.data) throw new Error('Unable to save user.');
       setSaved(response.data);
       onSaved(response.data);
-      toast.success('User updated');
+      toast.success('User updated.');
     } catch (reason) {
       const error = reason as Error & { fieldErrors?: Record<string, string[]> };
       throw new Error(error.fieldErrors?.[field]?.[0] || error.message || 'Unable to save field.');

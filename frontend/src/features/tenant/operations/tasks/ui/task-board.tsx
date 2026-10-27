@@ -1,6 +1,6 @@
 "use client";
 import { useTablePreferences } from "@/shared/hooks/use-table-preferences";
-import { toast } from "sonner";
+import { toast } from '@/shared/utils/toast';
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from 'next/navigation';
 import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
@@ -257,7 +257,7 @@ export default function TaskBoard() {
             : { operation, ids };
       const result = await bulkTasks(request);
       if (started !== identity.current) return;
-      if (operation === "archive" && result.succeeded.length) toast.success(`${result.succeeded.length} task(s) archived.`);
+      if (operation === "archive" && result.succeeded.length && !result.failed.length) toast.success(`${result.succeeded.length} ${result.succeeded.length === 1 ? "task" : "tasks"} archived.`);
       setNotice(
         `${result.succeeded.length} task(s) ${operation === "archive" ? "archived" : "updated"}.`,
       );
@@ -274,7 +274,7 @@ export default function TaskBoard() {
       );
       if (!result.failed.length) {
         setBulkAction(null);
-        if (operation !== 'archive') toast.success(`${result.succeeded.length} task(s) updated.`);
+        if (operation !== 'archive') toast.success(`${result.succeeded.length} ${result.succeeded.length === 1 ? "task" : "tasks"} updated.`);
       }
       setArchiveIds(operation === "archive" ? result.failed.map(failure => failure.id) : []);
       if (operation === "archive" && result.failed.length) throw new Error(result.failed.map(failure => failure.error).join(" "));

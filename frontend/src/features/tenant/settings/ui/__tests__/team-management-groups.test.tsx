@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ getAll: vi.fn(), create: vi.fn(), update: vi.f
 vi.mock('@/shared/services/groups.api', () => ({ groupsApi: mocks }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { role: mocks.role }, userCan: () => true }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('sonner', () => ({ toast: mocks }));
+vi.mock('@/shared/utils/toast', () => ({ toast: mocks }));
 const user = { id: 'julie', firstName: 'Julie Ann', lastName: 'Tiron', email: 'julie@example.com', role: 'Sales Marketing', roleNames: ['Sales Marketing'], status: 'ACTIVE', avatarUrl: null };
 const group = (members = true): TenantGroup => ({ id: 'sales', tenantId: 'tenant', name: 'Sales', createdAt: '', updatedAt: '', members: members ? [{ id: 'membership', userId: user.id, isHead: false, canBeHead: false, user }] : [] });
 const mount = () => render(<GroupsSubTab tenantUsers={[user] as never} />);
@@ -42,7 +42,7 @@ it('requires trimmed names and creates a group with zero optional members, witho
   fireEvent.change(field, { target: { value: ' Support ' } }); fireEvent.click(screen.getByRole('button', { name: 'Create Group' }));
   fireEvent.submit(field.closest('form')!); expect(mocks.create).toHaveBeenCalledExactlyOnceWith('Support');
   await act(async () => resolve({ data: { ...group(false), id: 'support', name: 'Support' } }));
-  expect(mocks.success).toHaveBeenCalledWith('Group created successfully.'); expect(mocks.addMembers).not.toHaveBeenCalled(); expect(screen.getByRole('heading', { name: 'Support' })).toBeTruthy();
+  expect(mocks.success).toHaveBeenCalledWith('Group created.'); expect(mocks.addMembers).not.toHaveBeenCalled(); expect(screen.getByRole('heading', { name: 'Support' })).toBeTruthy();
 });
 it.each(['Julie', 'Tiron', 'Julie Ann Tiron', 'julie@example', 'Sales Marketing'])('searches actual group members by %s', async query => {
   // Deliberately omit tenantUsers: the group response is the complete membership source.
@@ -62,12 +62,12 @@ it('requires removal confirmation, traps focus, cancels safely and updates membe
   const remove = within(dialog).getByRole('button', { name: 'Remove Member' }); remove.focus(); fireEvent.keyDown(document, { key: 'Tab' }); expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close confirmation' }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' })); expect(mocks.removeMember).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Julie Ann Tiron' })); fireEvent.click(screen.getByRole('button', { name: 'Remove Member' }));
-  await waitFor(() => expect(mocks.removeMember).toHaveBeenCalledWith('sales', 'julie')); await waitFor(() => expect(screen.queryByText('Julie Ann Tiron')).toBeNull()); expect(mocks.success).toHaveBeenCalledWith('Member removed successfully.');
+  await waitFor(() => expect(mocks.removeMember).toHaveBeenCalledWith('sales', 'julie')); await waitFor(() => expect(screen.queryByText('Julie Ann Tiron')).toBeNull()); expect(mocks.success).toHaveBeenCalledWith('Member removed.');
 });
 it('blocks nonempty deletion and confirms empty deletion with the requested toast', async () => {
   const view = mount(); await screen.findByText('Sales'); fireEvent.click(screen.getByRole('button', { name: 'Delete Sales' })); expect(mocks.remove).not.toHaveBeenCalled(); expect(mocks.error).toHaveBeenCalledWith('Remove all members from this group before deleting it.');
   view.unmount(); mocks.getAll.mockResolvedValue({ data: [group(false)] }); mount(); await screen.findByText('Sales'); fireEvent.click(screen.getByRole('button', { name: 'Delete Sales' })); expect(mocks.remove).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Delete Group' })); await screen.findByText('No groups yet.'); expect(mocks.success).toHaveBeenCalledWith('Group deleted successfully.');
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Group' })); await screen.findByText('No groups yet.'); expect(mocks.success).toHaveBeenCalledWith('Group deleted.');
 });
 it('disables deletion of the default Sales group even when empty', async () => {
   mocks.getAll.mockResolvedValue({ data: [{ ...group(false), isDefault: true }] });
@@ -88,7 +88,7 @@ it('renames a group and adds only available members with a success toast', async
   await screen.findByRole('heading', { name: 'Sales team' }); expect(mocks.update).toHaveBeenCalledWith('sales', 'Sales team');
   fireEvent.click(screen.getByRole('button', { name: 'Add Members' })); const dialog = screen.getByRole('dialog'); fireEvent.click(within(dialog).getByLabelText('Select Julie Ann Tiron'));
   mocks.getAll.mockResolvedValue({ data: [group()] }); fireEvent.click(within(dialog).getByRole('button', { name: 'Add Members' }));
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Member added successfully.')); expect(mocks.addMembers).toHaveBeenCalledExactlyOnceWith('sales', ['julie']);
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Member added.')); expect(mocks.addMembers).toHaveBeenCalledExactlyOnceWith('sales', ['julie']);
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); fireEvent.click(screen.getByRole('button', { name: 'Add Members' })); expect(screen.getByText('No users available.')).toBeTruthy();
 });
 
@@ -118,7 +118,7 @@ it('saves three selected users once and immediately renders confirmed members, c
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   for (const person of batchUsers) expect(screen.getByText(`${person.firstName} ${person.lastName}`)).toBeTruthy();
   expect(screen.getByText('3 Members')).toBeTruthy();
-  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Member added successfully.');
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Member added.');
   expect(mocks.error).not.toHaveBeenCalled();
   expect(mocks.getAll).toHaveBeenCalledTimes(1); // The response updates the UI without waiting for a GET.
   fireEvent.click(screen.getByRole('button', { name: 'Add Members' }));
@@ -150,7 +150,7 @@ it.each(['Unable to save members.', 'This group changed while saving. Refresh th
   await act(async () => complete({ data: savedBatch() }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(screen.getByText('3 Members')).toBeTruthy();
-  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Member added successfully.');
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Member added.');
 });
 
 it('ignores a pre-save Group response and coalesces invalidations without overwriting confirmed members', async () => {
@@ -188,7 +188,7 @@ it('uses one batch and one toast when creating a Group with optional members', a
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create Group' }));
   await screen.findByText('3 Members');
   expect(mocks.addMembers).toHaveBeenCalledExactlyOnceWith('sales', ['julie', 'mica', 'mark']);
-  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Group created successfully.');
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Group created.');
 });
 
 const managers = [

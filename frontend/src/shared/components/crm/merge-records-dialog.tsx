@@ -4,7 +4,7 @@ import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/s
 import React, { useState, useEffect, useRef } from 'react';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { apiClient } from '@/lib/api/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { useData } from '@/store/DataContext';
 import {
@@ -151,7 +151,7 @@ export function MergeRecordsDialog({
         fieldResolutions,
       });
 
-      toast.success('Records merged successfully');
+      toast.success('Records merged.');
       // Refresh the appropriate module
       if (entityType === 'account') {
         await refreshOrganizations().catch(() => {});

@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 const MAX_SELECTION = 100;
 

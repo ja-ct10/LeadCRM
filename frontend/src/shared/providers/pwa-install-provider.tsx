@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useOverlayState } from '@/shared/lib/overlay-state';
 import { ThemeScope } from '@/shared/components/theme-scope';
 import { AppLogo } from '@/shared/components/app-logo';

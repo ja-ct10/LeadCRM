@@ -16,7 +16,7 @@ import {
   Plus,
   Activity,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { DataLoadingSkeleton } from './data-view-states';
@@ -134,7 +134,7 @@ function NoteComposer({ module, recordId, onCreated, focusNote }: { focusNote?: 
         const response = await activitiesService.create({ type: 'note', title: value.slice(0, 255), ...(value.length > 255 ? { description: value } : {}), ...(module === 'leads' ? { leadId: recordId } : module === 'contacts' ? { contactId: recordId } : module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
         activity = response.data;
       }
-      onCreated?.(activity); setDraft(''); toast.success('Note saved');
+      onCreated?.(activity); setDraft(''); toast.success('Note saved.');
     } catch (error) { showCrmMutationError(error, 'Failed to save note'); }
     finally { submitting.current = false; setSaving(false); }
   };

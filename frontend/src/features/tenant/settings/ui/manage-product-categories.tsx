@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/compo
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { panelInputClass } from '@/shared/components/side-panel-styles';
 import { responsiveTypography } from '@/shared/styles/typography';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export function ManageProductCategories({ open, onOpenChange, categories, pending, ready, canCreate, canEdit, canDelete, mutate }: {
   open: boolean; onOpenChange: (open: boolean) => void; categories: string[]; pending: boolean; ready: boolean;
@@ -35,7 +35,7 @@ export function ManageProductCategories({ open, onOpenChange, categories, pendin
       if (action === 'add') setName(''); else setEditing(null);
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : 'Unable to save category.';
-      setError(message); toast.error(message);
+      setError(message);
     }
   }
   return <>

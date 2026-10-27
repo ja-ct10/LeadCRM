@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({ draw: vi.fn(), error: vi.fn() }));
-vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.error } }));
 vi.mock('react-easy-crop', () => ({ default: ({ aspect, onCropComplete }: any) => (
   <button onClick={() => onCropComplete({}, { x: 20, y: 30, width: 200, height: 200 })}>Adjust {aspect}:1 crop</button>
 ) }));

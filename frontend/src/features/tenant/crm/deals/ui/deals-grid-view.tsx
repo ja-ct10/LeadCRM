@@ -8,7 +8,7 @@ import { mapToDealCardData } from '@/shared/components/crm/deal-card.utils';
 import type { DealCardData } from '@/shared/components/crm/deal-card.utils';
 import type { Deal } from '@/store/types';
 import { useData } from '@/store/DataContext';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export function DealsGridView({ deals, onEdit, onDelete }: DealsGridViewProps): 
       await onDelete(dealId);
     } else {
       await deleteDeal(dealId);
-      toast.success('Deal archived');
+      toast.success('Deal archived.');
     }
   }, [onDelete, deleteDeal]);
 

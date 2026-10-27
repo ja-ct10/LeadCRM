@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -273,7 +273,7 @@ export function QuickActionBar({ module, recordId, onActivityCreated }: QuickAct
         title: text,
         ...entityFk,
       });
-      toast.success('Note added');
+      toast.success('Note added.');
       setActiveComposer(null);
       onActivityCreated();
     } catch {
@@ -292,7 +292,7 @@ export function QuickActionBar({ module, recordId, onActivityCreated }: QuickAct
         ...entityFk,
         metadata: { outcome },
       });
-      toast.success('Call logged');
+      toast.success('Call logged.');
       setActiveComposer(null);
       onActivityCreated();
     } catch {
@@ -311,7 +311,7 @@ export function QuickActionBar({ module, recordId, onActivityCreated }: QuickAct
         ...entityFk,
         metadata: dueDate ? { dueDate: `${dueDate}T00:00:00.000Z` } : undefined,
       });
-      toast.success('Task created');
+      toast.success('Task created.');
       setActiveComposer(null);
       onActivityCreated();
     } catch {

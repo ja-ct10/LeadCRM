@@ -29,7 +29,7 @@ import { useRouter } from 'next/navigation';
 // import { ImportAccountsDrawer } from './import-accounts-drawer';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { ColumnsPopover } from '@/shared/components/data-grid';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { Building2 } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
@@ -348,7 +348,7 @@ export default function AccountsPage(): React.ReactElement {
         throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
       close();
-      toast.success('Account archived');
+      toast.success('Account archived.');
     },
   });
 

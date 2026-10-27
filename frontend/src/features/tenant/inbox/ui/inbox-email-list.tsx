@@ -8,7 +8,7 @@ import { trashGmailConversations, archiveGmailConversations, restoreGmailConvers
 import { Badge } from '@/shared/components/ui/badge';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import type { MailboxBulkActionResult } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 interface InboxEmailListProps {
   view?: 'inbox' | 'archived';
@@ -174,8 +174,8 @@ export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, o
                 onClick={() => setConfirmOpen(true)}
                 disabled={refreshDisabled || busy}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
-                aria-label="Delete Permanently"
-                title="Delete Permanently — move selected messages to Gmail Trash"
+                aria-label="Move to Gmail Trash"
+                title="Move to Gmail Trash — move selected messages to Gmail Trash"
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-destructive" />}
               </button>
@@ -309,9 +309,9 @@ export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, o
         })}
         </>}
       </div>
-      <ConfirmActionDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete Permanently"
+      <ConfirmActionDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Move to Gmail Trash"
         description="Remove the selected email conversation(s) from LeadCRM Inbox? The messages will be moved to Gmail Trash and can be recovered there."
-        confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" isLoading={isDeleting} onConfirm={handleDelete} />
+        confirmLabel="Move to Trash" cancelLabel="Cancel" variant="destructive" isLoading={isDeleting} onConfirm={handleDelete} />
     </div>
   );
 }

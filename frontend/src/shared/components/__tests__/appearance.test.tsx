@@ -10,7 +10,7 @@ import { APPEARANCE_INIT_SCRIPT } from '@/lib/appearance-script';
 import { ACCENT_COLORS } from '@/lib/accent-colors';
 import { usesWorkspaceAppearance } from '@/lib/appearance-config';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn() } }));
 let dark = false;
 let mediaListeners: Set<() => void>;
 beforeEach(() => {

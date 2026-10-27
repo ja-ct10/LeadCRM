@@ -5,7 +5,7 @@ import { PasswordStrengthMeter } from '@/shared/components/password-strength-met
 import { StrongPasswordSchema } from '@leadcrm/shared';
 import { authApi } from '@/shared/services/auth.api';
 import { useAuth } from '@/store/AuthContext';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Button } from '@/shared/components/ui/button';
 
 export function PasswordChangeForm({ mode = 'standard', onSuccess, onCancel, onBusy }: { mode?: 'standard' | 'mandatory'; onSuccess?: () => void; onCancel?: () => void; onBusy?: (busy: boolean) => void }) {
@@ -42,7 +42,7 @@ export function PasswordChangeForm({ mode = 'standard', onSuccess, onCancel, onB
       applyAuthUser(response.data.user, user.id);
       setValues({ currentPassword: '', password: '', confirm: '' });
       setConfirmTouched(false);
-      toast.success('Password updated successfully.');
+      toast.success('Password updated.');
       onSuccess?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to change password.';

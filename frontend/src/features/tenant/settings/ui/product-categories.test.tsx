@@ -6,7 +6,7 @@ import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
 import type { ProductInterestResponse } from '@/shared/hooks/use-product-interests';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'tester', tenantId: 'one' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => permissions.has(permission) }));

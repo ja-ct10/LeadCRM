@@ -4,9 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { defaultContactForm } from '@leadcrm/shared';
 import { FormSharePanel } from './form-share-panel';
 import { formsApi } from '@/shared/services/forms.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 vi.mock('@/shared/services/forms.api', () => ({ formsApi: { submissions: vi.fn() } }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const form = { ...defaultContactForm(), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 1, publishedRevision: 1, publishedVersion: 1, status: 'published' as const, createdAt: '', updatedAt: '' };
 const mount = (extra = {}) => render(<FormSharePanel form={form} dirty={false} shareLink="https://example.test/forms/public" embedCode="<iframe />" {...extra} />);
 beforeEach(() => { vi.clearAllMocks(); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => {}) } }); });

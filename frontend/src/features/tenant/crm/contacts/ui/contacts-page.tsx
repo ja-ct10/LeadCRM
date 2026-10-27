@@ -25,7 +25,7 @@ import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
 import { ContactFormSheet } from './contact-form';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Users } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
@@ -311,7 +311,7 @@ export default function ContactsPage(): React.ReactElement {
         throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
       close();
-      toast.success('Contact archived');
+      toast.success('Contact archived.');
     },
   });
 
@@ -515,12 +515,12 @@ export default function ContactsPage(): React.ReactElement {
         try {
           if (editingContact) {
             await contactsV2Api.update(editingContact.id, data);
-            toast.success('Contact updated successfully');
+            toast.success('Contact updated.');
           } else {
             const intent = JSON.stringify(data);
             if (contactCreation.current?.intent !== intent) contactCreation.current = { intent, requestId: crypto.randomUUID() };
             await contactsV2Api.create({ ...data, requestId: contactCreation.current.requestId });
-            toast.success('Contact created successfully');
+            toast.success('Contact created.');
           }
           await syncContacts();
         } catch (err: unknown) {

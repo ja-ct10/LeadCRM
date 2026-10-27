@@ -5,7 +5,7 @@ import { Badge } from '@/shared/components/ui/badge';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, restoreGmailConversations, type GmailEmail } from '../services/gmail.service';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { MailboxConversationDetail } from '@leadcrm/shared';
 import { conversationNames, emailAddress, forwardDraft, replyDraft, type MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
@@ -115,7 +115,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">Email Thread</span>
       {busy && <Loader2 aria-label="Updating conversation" className="h-4 w-4 animate-spin text-muted-foreground" />}
       <button type="button" title={originView === 'archived' ? 'Restore to Inbox' : 'Archive conversation'} aria-label={originView === 'archived' ? 'Restore conversation' : 'Archive conversation'} disabled={loading || busy || paused || !latest || originView === 'inbox' && email.canArchive === false} className={mailboxIconButton} onClick={() => void mutate(archive, true).then(success => { if (success) toast.success(originView === 'archived' ? 'Messages restored to Inbox' : 'Messages archived'); })}>{originView === 'archived' ? <Inbox size={18} /> : <Archive size={18} />}</button>
-      <button type="button" title="Delete Permanently — move messages to Gmail Trash" aria-label="Delete Permanently" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => setConfirmOpen(true)}><Trash2 size={18} /></button>
+      <button type="button" title="Move to Gmail Trash — move messages to Gmail Trash" aria-label="Move to Gmail Trash" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => setConfirmOpen(true)}><Trash2 size={18} /></button>
     </div>
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <header className="space-y-1 border-b border-border px-3 py-3 sm:px-6">
@@ -135,7 +135,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
           <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={loading || busy || paused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem disabled={loading || busy || paused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(archive, true)}><Archive size={16} />{originView === 'archived' ? 'Restore to Inbox' : 'Archive this conversation'}</DropdownMenuItem>
-            <DropdownMenuItem destructive disabled={loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => setConfirmOpen(true)}><Trash2 size={16} />Delete Permanently</DropdownMenuItem>
+            <DropdownMenuItem destructive disabled={loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => setConfirmOpen(true)}><Trash2 size={16} />Move to Gmail Trash</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu> : undefined}
         associationControls={associationMessages.get(message.threadId) === message.id ? <>
@@ -146,11 +146,11 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
       />)}
       {nextPageToken && <div className="px-3 py-3 sm:px-6"><button type="button" className={control} disabled={loading || busy || paused} onClick={() => void loadMore()}>Load more messages</button></div>}
     </div>
-    <ConfirmActionDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete Permanently"
+    <ConfirmActionDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Move to Gmail Trash"
       description="Remove the selected email conversation(s) from LeadCRM Inbox? The messages will be moved to Gmail Trash and can be recovered there."
-      confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" isLoading={busy} onConfirm={async () => {
+      confirmLabel="Move to Trash" cancelLabel="Cancel" variant="destructive" isLoading={busy} onConfirm={async () => {
         if (!await mutate(remove, true)) throw new Error('Some messages could not be moved to Gmail Trash. Refresh and retry.');
-        toast.success('Messages moved to Gmail Trash');
+        toast.success('Messages moved to Gmail Trash.');
       }} />
     <ComposeModal isOpen={!!draft} initialDraft={draft} retryAt={Math.max(retryAt, cooldown)} onClose={() => setDraft(null)} onSent={() => { onEmailsChanged(); setRefresh(value => value + 1); }} />
   </div>;

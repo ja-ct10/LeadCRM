@@ -8,7 +8,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
   user: { firstName: 'Test', lastName: 'User', email: 'test@example.test', role: 'Sales' },
   switchDemoAccount: state.switchAccount, logout: vi.fn(),
 }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import AccountDropdown from '../account-dropdown';
 import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: () => ({ replace: vi.fn() }) }));

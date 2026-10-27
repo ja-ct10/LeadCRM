@@ -39,7 +39,7 @@ import { useRouter } from 'next/navigation';
 // import { ImportLeadsDrawer } from './import-leads-drawer';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { Target } from 'lucide-react';
@@ -377,7 +377,7 @@ export default function LeadsPage(): React.ReactElement {
         throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
       close();
-      toast.success('Lead archived');
+      toast.success('Lead archived.');
     },
   });
 
@@ -498,7 +498,7 @@ export default function LeadsPage(): React.ReactElement {
               );
               try {
                 await saveColumns(updated);
-                toast.success('Column hidden');
+                toast.success('Column hidden.');
               } catch {
                 toast.error('Failed to hide column. Reverted.');
               }
@@ -534,10 +534,10 @@ export default function LeadsPage(): React.ReactElement {
           try {
             if (editingLead) {
               await updateLead(editingLead.id, data);
-              toast.success('Lead updated');
+              toast.success('Lead updated.');
             } else {
               await addLead(data as any);
-              toast.success('Lead created');
+              toast.success('Lead created.');
             }
             setIsFormOpen(false);
             setEditingLead(undefined);

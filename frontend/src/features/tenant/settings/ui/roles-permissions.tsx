@@ -9,7 +9,7 @@ import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, 
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { RoleDefinition, Permission } from '@/store/types';
 import { PERMISSION_GROUPS, PERMISSION_MODULES, PERMISSION_ACTION_LABELS, togglePermissionSelection, type PermissionAction } from '@leadcrm/shared';
 import { Button, CreateButton } from '@/shared/components/ui/button';
@@ -364,7 +364,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
       toast.success(`Role "${name}" created`);
     } else if (selectedRole) {
       await updateRole(selectedRole.id, { name, description, permissions: permIds });
-      toast.success('Role updated');
+      toast.success('Role updated.');
     }
     goList();
   };
@@ -380,7 +380,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   const handleDeleteConfirm = async (id: string) => {
     if (!canView || !canArchive) throw new Error('You do not have permission to delete roles.');
     try {
-      await deleteRole(id); toast.success('Role deleted'); setDeleteConfirmId(null);
+      await deleteRole(id); toast.success('Role deleted.'); setDeleteConfirmId(null);
       if (view === 'edit' && selectedRole?.id === id) goList();
     } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to delete role.'); }
   };

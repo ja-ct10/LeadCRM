@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useAuth } from '@/store/AuthContext';
 import {
   tablePreferencesApi,

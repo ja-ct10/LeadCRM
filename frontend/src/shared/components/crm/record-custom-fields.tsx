@@ -1,5 +1,5 @@
 'use client';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { feedbackError } from '@/shared/utils/feedback-error';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CUSTOM_FIELD_BUILT_IN_GROUPS, isClosedWonField, CLOSING_FILE_MAX_BYTES, closingValueError, customFieldNameKey, defaultFieldLayout, type ClosingField, type ClosingValues, type CustomFieldModule, type CustomFieldState, type RecordFileMetadata, type FieldLayout } from '@leadcrm/shared';
 import { apiClient, type ApiRequestError } from '@/lib/api/client';
@@ -7,7 +7,7 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { PanelSectionHeading, panelInputClass } from '@/shared/components/side-panel-styles';
 import { Button } from '@/shared/components/ui/button';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { InlineEditRows } from './inline-edit-rows';
 
 async function uploadCustomFieldFile(module: CustomFieldModule, recordId: string | undefined, file: File) {
@@ -53,7 +53,7 @@ export function useRecordCustomFields(module: CustomFieldModule, recordId?: stri
     try {
       const uploaded = await uploadCustomFieldFile(module, recordId, file);
       setUploads(prev => ({ ...prev, [uploaded.id]: uploaded })); update(field.id, uploaded.id);
-    } catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Upload failed.'); setErrors(prev => ({ ...prev, [field.id]: error instanceof Error ? error.message : 'Upload failed.' })); }
+    } catch (error) { setErrors(prev => ({ ...prev, [field.id]: feedbackError(error, 'Unable to upload this file. Please try again.') })); }
     finally { setUploadCount(count => count - 1); }
   };
   return { module, fields, dirty: Object.keys(edits).some(id => edits[id] !== String(query.data?.values[id] ?? '')), layout: query.data?.layout ?? defaultFieldLayout(module), value, update, payload, validate, errors, blocked, uploadCount, upload, query, files: [...(query.data?.files ?? []), ...Object.values(uploads)] };
@@ -121,7 +121,6 @@ export function useRecordCustomFieldDetails(module: CustomFieldModule, recordId:
     try { await apiClient.put(`/crm/${module}/${encodeURIComponent(recordId)}`, { customFieldValues: { [field.id]: value } }); }
     catch (error) {
       const status = (error as { status?: number }).status;
-      if (status === 403) showCrmMutationError(error, 'Unable to save field.');
       if (latest.current.module === module && latest.current.recordId === recordId && [401, 403, 404].includes(status ?? 0)) {
         // An assignment denial does not revoke the separately authorized read.
         if (status !== 403) latest.current.query.setData({ fields: [], values: {}, files: [] });
@@ -160,11 +159,11 @@ export function RecordCustomFieldInlineRow({ details, fieldId, canEdit }: { deta
     renderEditor: props => <CustomFieldControl field={field} module={details.module} value={props.value} onChange={next => { setUploadError(''); props.onChange(next); }} files={files} disabled={props.disabled} uploading={uploading} error={props.error || uploadError} inline onSave={props.onSave} onCancel={() => { setUploadError(''); props.onCancel(); }} onUpload={async selected => {
       setUploading(true); setUploadError('');
       try { const uploaded = await uploadCustomFieldFile(details.module, details.recordId, selected); setUploads(previous => [...previous, uploaded]); props.onChange(uploaded.id); }
-      catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Upload failed.'); setUploadError(error instanceof Error ? error.message : 'Upload failed. Try again.'); }
+      catch (error) { setUploadError(feedbackError(error, 'Unable to upload this file. Please try again.')); }
       finally { setUploading(false); }
     }} />,
   }]} onSave={async (_id, raw) => {
     await details.save(field, inlineValue(field, String(raw)));
-    toast.success('Field updated');
+    toast.success('Field updated.');
   }} />;
 }
