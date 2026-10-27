@@ -1,7 +1,7 @@
 'use client';
 import { DealAddressSourceSchema, dealAddressKey, resolveDealAddress, dealAddressMessage, dealCustomerAddressMessage } from '@leadcrm/shared';
 import { useDealAddressOptions } from '@/shared/hooks/use-deal-address-options';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { applyCrmAssociationError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { LEAD_SOURCES, defaultFieldGroupId, type DealAssociationChange } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
@@ -277,7 +277,12 @@ export function DealForm({
     submitting.current = true; setSubmitError('');
     setIsSaving(true);
     try { await onSubmit(cleaned as DealFormData); }
-    catch (error) { if (error instanceof Error && error.message.startsWith('Customer Address:')) setError('addressSource', { type: 'server', message: error.message }); showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
+    catch (error) {
+      applyCrmAssociationError(error, setError, 'associationId');
+      if (error instanceof Error && error.message.startsWith('Customer Address:')) setError('addressSource', { type: 'server', message: error.message });
+      showCrmMutationError(error, 'Unable to save Deal.');
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.');
+    }
     finally { submitting.current = false; setIsSaving(false); }
   };
 

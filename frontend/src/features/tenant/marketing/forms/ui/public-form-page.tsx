@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { EMAIL_AVAILABILITY_MESSAGES, FORM_TRACKING_KEYS, publicSubmissionContent, validateFormValues, type PublicFormDefinition } from '@leadcrm/shared';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 import { FormInput } from './form-input';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 const textTypes = new Set(['single-line', 'multi-line', 'email', 'contact-email', 'phone', 'contact-phone', 'url', 'company-website', 'contact-name', 'company-name']);
 export default function PublicFormPage({ publicId }: { publicId: string }) {
   const receipt = useRef<{ content: string; requestId: string } | undefined>(undefined);
@@ -51,7 +52,7 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
           const fieldErrors: Record<string, string> = {};
           for (const field of form.fields) {
             const message = body.fieldErrors[field.id];
-            if (field.id === emailField?.id && message === EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED) emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
+            if (field.id === emailField?.id && emailValue.trim() && message === EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED) emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
             else if (typeof message === 'string' && currentValues.current[field.id] === values[field.id]) fieldErrors[field.id] = message;
           }
           setErrors(fieldErrors); return;
@@ -59,7 +60,12 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
         throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Submission failed. Please try again.');
       }
       setDone(true);
-    } catch (err) { if (isCurrentForm()) setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.'); } finally { setBusy(false); submitting.current = false; }
+    } catch (err) {
+      if (isCurrentForm()) {
+        setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.');
+        showCrmMutationError(err, 'Unable to submit. Please retry.');
+      }
+    } finally { setBusy(false); submitting.current = false; }
   }
   return <main className="min-h-[var(--app-viewport-height)] bg-slate-100 px-3 py-6 sm:p-8 text-slate-900">
     <div className="w-full max-w-2xl mx-auto min-w-0">

@@ -1,4 +1,5 @@
 import type { Deal, Prisma } from '@prisma/client';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { crmScope } from '../leads/lead-automation.service';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { ConflictError } from '../../../shared/errors/http-error';
@@ -20,6 +21,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
   const contactLinks = await tx.contactDeal.findMany({ where: { ...scope, dealId: deal.id }, include: { contact: true } });
   for (const { contact } of contactLinks) {
     if (contact.isArchived) throw conflict();
+    await assertExternalCustomerEmail(tx, deal.tenantId, contact.email, ['contactIds']);
     if (contact.accountId && accountId && contact.accountId !== accountId) throw conflict();
     let linkedAccount = contact.accountId ?? accountId;
     if (!linkedAccount && contact.companyName?.trim()) {

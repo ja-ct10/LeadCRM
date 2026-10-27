@@ -1,5 +1,4 @@
 'use client';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { LEAD_SOURCES, formatLeadName, reconcileTableColumns } from '@leadcrm/shared';
@@ -542,7 +541,6 @@ export default function LeadsPage(): React.ReactElement {
             setIsFormOpen(false);
             setEditingLead(undefined);
           } catch (err: unknown) {
-            showCrmMutationError(err, 'Failed to save lead');
             throw err;
           }
         }}

@@ -1,4 +1,5 @@
 import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { productRelationData } from '../leads/product-relations';
 import { serializeLead } from '../leads/lead-serializer';
 import prisma from '../../../config/database.config';
@@ -123,6 +124,7 @@ async function executeLeadMerge(
     if (secondary.isArchived || secondary.deletedAt || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary Lead is archived, converted or already merged.');
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
+    await assertExternalCustomerEmail(tx, tenantId, mergedData.email !== undefined ? mergedData.email as string | null : primary.email);
     if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
       (fieldResolutions.companyName === 'secondary' ? secondary : primary).companyFromAccount;
 
@@ -217,6 +219,7 @@ async function executeContactMerge(
     if (!secondary) throw new NotFoundError('Secondary contact');
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
+    await assertExternalCustomerEmail(tx, tenantId, mergedData.email !== undefined ? mergedData.email as string | null : primary.email);
     if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
       (fieldResolutions.companyName === 'secondary' ? secondary : primary).companyFromAccount;
 

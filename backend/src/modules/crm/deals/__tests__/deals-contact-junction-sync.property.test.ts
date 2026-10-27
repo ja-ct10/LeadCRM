@@ -40,12 +40,14 @@ const contactIdSetArb = fc.uniqueArray(fc.uuid(), { minLength: 0, maxLength: 20 
 
 function setupMocksForIteration(currentIds: string[], targetIds: string[], currentSet: Set<string>): void {
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
-    const txClient = { deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact };
+    const txClient = { deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact,
+      leadDeal: { findMany: vi.fn().mockResolvedValue([]) }, user: { findMany: vi.fn().mockResolvedValue([]) } };
     return cb(txClient);
   });
   mockContactDeal.findMany.mockResolvedValue(currentIds.map((id) => ({ contactId: id })));
   const expectedAdditions = targetIds.filter((id) => !currentSet.has(id));
-  mockContact.findMany.mockResolvedValue(expectedAdditions.map((id) => ({ id })));
+  mockContact.findMany.mockImplementation(async ({ select }) =>
+    (select.email ? targetIds : expectedAdditions).map(id => ({ id, email: `${id}@customer.example.test` })));
   mockContactDeal.deleteMany.mockResolvedValue({ count: 0 });
   mockContactDeal.createMany.mockResolvedValue({ count: 0 });
 }
@@ -117,17 +119,18 @@ describe('Feature: deal-contact-association-fix, Contact Junction Sync Set Equal
           resetMocks();
           const currentSet = new Set(currentIds);
           setupMocksForIteration(currentIds, targetIds, currentSet);
-          const leadDeal = { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() };
-          const lead = { findMany: vi.fn() };
+          const leadDeal = { findMany: vi.fn().mockResolvedValue([{ leadId: 'retained-lead' }]), deleteMany: vi.fn(), createMany: vi.fn() };
+          const lead = { findMany: vi.fn().mockResolvedValue([{ email: 'retained@customer.example.test' }]) };
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
-            cb({ deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact, leadDeal, lead }));
+            cb({ deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact, leadDeal, lead,
+              user: { findMany: vi.fn().mockResolvedValue([]) } }));
 
           await syncContactAssociations(dealId, tenantId, targetIds, userId);
 
-          expect(leadDeal.findMany).not.toHaveBeenCalled();
+          expect(leadDeal.findMany).toHaveBeenCalledWith({ where: { tenantId, dealId }, select: { leadId: true } });
           expect(leadDeal.deleteMany).not.toHaveBeenCalled();
           expect(leadDeal.createMany).not.toHaveBeenCalled();
-          expect(lead.findMany).not.toHaveBeenCalled();
+          expect(lead.findMany).toHaveBeenCalledWith({ where: { tenantId, id: { in: ['retained-lead'] } }, select: { email: true } });
         }),
       { numRuns: 50 },
     );

@@ -27,6 +27,8 @@ vi.mock('../../../../config/database.config', () => {
       $transaction: async (work: (tx: unknown) => unknown) => work(client),
       productInterest: { findMany: async () => [{ id: '11111111-1111-4111-8111-111111111111', name: 'CCTV', dealValue: 30000, active: true }] },
       stage: { findFirst: async () => ({ id: "initial-lead-stage" }) },
+      lead: { findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map(id => ({ email: `${id}@customer.example.test` })) },
+      user: { findMany: async () => [] },
       deal: {
         create: (...args: unknown[]) => mockDealCreate(...args),
       },
@@ -65,7 +67,7 @@ import { duplicateDeal } from '../deals.service';
 
 /** Relation fields that Prisma returns from findDealById but can't be in create data */
 const RELATION_FIELDS = [
-  'stage', 'pipeline', 'organization', 'assignedUser', 'owner', 'leadDeals', 'stageHistories',
+  'stage', 'pipeline', 'organization', 'assignedUser', 'owner', 'leadDeals', 'contactDeals', 'stageHistories',
 ] as const;
 
 /** Generator for a UUID-like string */
@@ -123,6 +125,7 @@ const sourceDealArb = fc.record({
   assignedUser: fc.constant({ id: 'user-1', firstName: 'John', lastName: 'Doe', email: 'j@x.com' }),
   owner: fc.constant({ id: 'user-2', firstName: 'Jane', lastName: 'Smith', email: 's@x.com' }),
   leadDeals: fc.constant([]),
+  contactDeals: fc.constant([]),
   stageHistories: fc.constant([]),
 });
 
@@ -307,7 +310,7 @@ describe('Feature: deals-module-modernization, Property 13: Deal Duplication Fie
       await fc.assert(
         fc.asyncProperty(sourceDealArb, associationsArb, async (sourceDeal, associations) => {
           setupMocks();
-          vi.mocked(repo.findDealById).mockResolvedValue(sourceDeal as never);
+          vi.mocked(repo.findDealById).mockResolvedValue({ ...sourceDeal, leadDeals: associations } as never);
           mockLeadDealFindMany.mockResolvedValue(associations);
 
           await duplicateDeal(sourceDeal.id, TENANT_ID, USER_ID);

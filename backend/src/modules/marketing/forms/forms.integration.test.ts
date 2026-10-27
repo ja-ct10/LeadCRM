@@ -31,7 +31,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     prisma.$use(async (params, next) => {
       if (params.model === 'FormSubmission' && params.action === 'create' && params.args.data.email === rejectSubmissionEmail) throw new Error('Simulated submission persistence failure');
       if (rejectInquiryDealTitle && params.model === 'Deal' && params.action === 'create' && params.args.data.automationKey?.startsWith('form:') && params.args.data.title === rejectInquiryDealTitle) throw new Error('Simulated inquiry Deal failure');
-      if (rejectEmailLookupEmail && params.model === 'User' && params.action === 'findFirst' && params.args.where.email?.equals === rejectEmailLookupEmail) throw new Error('Simulated staff lookup failure');
+      if (rejectEmailLookupEmail && params.model === 'User' && params.action === 'findMany' && params.args.where.email?.contains === rejectEmailLookupEmail) throw new Error('Simulated staff lookup failure');
       return next(params);
     });
     tenantId = (await prisma.tenant.create({ data: { name: 'Forms test', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;

@@ -6,7 +6,7 @@ import { InlineDealForm } from '../inline-deal-form';
 const mocks = vi.hoisted(() => ({ stages: [
   { id: 'qualified', name: 'Qualified', isDefault: true }, { id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true },
 ] }));
-vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ entityType, value, onChange }: any) => <select aria-label={`Search ${entityType}`} value={value ?? ''} onChange={event => onChange(event.target.value)}><option value="">Choose</option><option value="selected-person">Person</option></select> }));
+vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ entityType, value, onChange, error }: any) => <><select aria-label={`Search ${entityType}`} value={value ?? ''} onChange={event => onChange(event.target.value)}><option value="">Choose</option><option value="selected-person">Person</option></select>{error && <p role="alert">{error}</p>}</> }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'sales', name: 'Sales Pipeline', stages: mocks.stages }] }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [{ id: '11111111-1111-4111-8111-111111111111', name: 'CCTV', dealValue: 500 }], loading: false }) }));
 vi.mock('../record-custom-fields', () => ({
@@ -14,6 +14,29 @@ vi.mock('../record-custom-fields', () => ({
   CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null,
 }));
 afterEach(cleanup);
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as employeeMessage } from '@leadcrm/shared';
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
+it('shows employee association errors inline with one toast, preserves values and allows retry', async () => {
+  vi.clearAllMocks();
+  const save = vi.fn().mockRejectedValueOnce(Object.assign(new Error(employeeMessage), { status: 400, fieldErrors: { leadIds: [employeeMessage] } })).mockResolvedValue(undefined);
+  const close = vi.fn();
+  render(<InlineDealForm relatedRecord={{ type: 'lead', id: 'selected-person' }} onSubmit={save} onCancel={close} />);
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Customer opportunity' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'CCTV' }));
+  const form = screen.getByLabelText(/Title/).closest('form')!;
+  fireEvent.submit(form);
+  await screen.findByText(employeeMessage);
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith(employeeMessage);
+  expect(toast.success).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+  expect(screen.getByLabelText(/Title/)).toHaveProperty('value', 'Customer opportunity');
+  expect(screen.getByRole('combobox', { name: 'Search leads' })).toHaveProperty('value', 'selected-person');
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+});
 beforeEach(() => { mocks.stages = [{ id: 'qualified', name: 'Qualified', isDefault: true }, { id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }]; });
 it('shows the enforced Lead starting stage and submits its configured ID', async () => {
   const submitted = vi.fn().mockResolvedValue(undefined);

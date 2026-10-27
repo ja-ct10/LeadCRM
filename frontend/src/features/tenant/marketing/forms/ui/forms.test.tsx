@@ -9,6 +9,9 @@ import * as service from '../services/forms.service';
 import { FieldPalette, paletteFieldsFromCatalog } from './field-palette';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useLayout } from '@/features/tenant/layout/use-layout';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as employeeMessage } from '@leadcrm/shared';
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: (email: string) => ({ available: true, blocked: false, confirm: () => true, email: email.trim(), retry: vi.fn(), reject: vi.fn() }) }));
 vi.mock('../services/forms.service', () => ({ getLeadFormFieldCatalog: vi.fn(), updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
@@ -46,6 +49,31 @@ const form = { ...defaultContactForm(), fields: withProductOptions(defaultContac
 beforeEach(() => { vi.resetAllMocks(); productCatalog.products = []; productCatalog.categories = []; permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  it('keeps a rejected employee email submission open with one inline error and corrected retry', async () => {
+    const definition = defaultContactForm();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...definition, fields: definition.fields.filter(field => field.mapToField !== 'productInterest'), version: 1, trackUrlParams: false } }) })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: employeeMessage, fieldErrors: { email: employeeMessage } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PublicFormPage publicId="public" />);
+    await screen.findByText('Contact Us');
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } });
+    fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Visitor' } });
+    const email = screen.getByLabelText(/Email Address/);
+    fireEvent.change(email, { target: { value: 'employee@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findAllByText(employeeMessage);
+    expect(email).toHaveProperty('value', 'employee@example.test');
+    expect(email.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByText('Thank you!')).toBeNull();
+    expect(screen.getAllByText(employeeMessage)).toHaveLength(1);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    fireEvent.change(email, { target: { value: 'customer@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findByText('Thank you!');
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).values.email).toBe('customer@example.test');
+  });
   it('keeps the request ID for unchanged retries and changes it for a distinct inquiry', async () => {
     const definition = defaultContactForm();
     const payloads: Array<{ requestId: string; values: Record<string, unknown> }> = [];

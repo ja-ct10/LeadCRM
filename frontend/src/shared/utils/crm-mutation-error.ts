@@ -14,6 +14,12 @@ export function applyCrmFieldErrors<T extends FieldValues>(error: unknown, setEr
   for (const field of fields) if (errors[field]?.[0]) setError(field, { type: 'server', message: errors[field][0] });
 }
 
+export function applyCrmAssociationError<T extends FieldValues>(error: unknown, setError: UseFormSetError<T>, field: FieldPath<T>) {
+  const errors = (error as ApiRequestError)?.fieldErrors;
+  const message = errors?.leadIds?.[0] ?? errors?.contactIds?.[0] ?? errors?.primaryAssociation?.[0];
+  if (message) setError(field, { type: 'server', message });
+}
+
 export function showCrmMutationError(error: unknown, fallback: string) {
   if (isStaffEmailError(error)) return;
   const message = feedbackError(error, fallback);

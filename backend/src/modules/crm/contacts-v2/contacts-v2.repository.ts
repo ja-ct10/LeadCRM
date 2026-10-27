@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { salesActivityDates } from '../sales-activity';
 import { assertCustomerStatusEdit, classifyCustomerRecord, prepareCustomerStatus } from '../customer-classification.service';
 import { createLinkedAccount } from '../companies/organization-creation';
@@ -168,6 +169,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   return salesTransaction(async tx => {
     await assertCrmRecordMutation(tx, 'contacts', id, 'edit', dto);
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
+    await assertExternalCustomerEmail(tx, tenantId, dto.email !== undefined ? dto.email as string | null : current.email);
     if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
     let status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Contact changed. Reload its current status before saving.');

@@ -7,6 +7,8 @@ import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
 import { ContactFormSheet as ContactForm } from '@/features/tenant/crm/contacts/ui/contact-form';
 import type { Lead } from '@/store/types';
 import { AccountFormSheet } from '@/features/tenant/crm/accounts/ui/account-form';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm/shared';
+import { toast } from '@/shared/utils/toast';
 
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { clientAdmin: true } }) }));
@@ -22,6 +24,32 @@ vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn
 afterEach(cleanup);
 
 const forms = [{ name: 'Lead', Form: LeadFormSheet }, { name: 'Contact', Form: ContactForm }] as const;
+
+it.each(forms.flatMap(form => [false, true].map(edit => ({ ...form, edit }))))('$name employee email rejection preserves the draft, shows one toast and inline error, and retries (edit=$edit)', async ({ Form, edit }) => {
+  vi.clearAllMocks();
+  const message = INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR;
+  const save = vi.fn().mockRejectedValueOnce(Object.assign(new Error(message), { status: 400, fieldErrors: { email: [message] } })).mockResolvedValue(undefined);
+  const close = vi.fn();
+  render(<Form isOpen onClose={close} onSave={save} initialData={edit ? { id: 'legacy', firstName: 'Ada', lastName: 'Reyes', email: 'original@example.test', status: 'Inquiry' } as any : undefined} />);
+  fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Ada' } });
+  fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Reyes' } });
+  fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'employee@example.test' } });
+  const form = screen.getByLabelText('First Name *').closest('form')!;
+  fireEvent.submit(form);
+  await waitFor(() => expect(screen.getByLabelText('Email *').getAttribute('aria-invalid')).toBe('true'));
+  const email = screen.getByLabelText('Email *');
+  expect(document.getElementById(email.getAttribute('aria-describedby')!)?.textContent?.trim()).toBe(message);
+  expect(email).toHaveProperty('value', 'employee@example.test');
+  expect(screen.getByLabelText('First Name *')).toHaveProperty('value', 'Ada');
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  fireEvent.change(email, { target: { value: 'external@example.test' } });
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1][0].email).toBe('external@example.test');
+});
 const changeDraft = {
   name: () => fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Ada' } }),
   phone: () => fireEvent.change(screen.getByPlaceholderText('9xxxxxxxxx'), { target: { value: '9123456789' } }),

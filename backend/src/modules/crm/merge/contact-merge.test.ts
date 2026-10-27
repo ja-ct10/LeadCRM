@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-  db: { contact: { findFirst: vi.fn(), update: vi.fn() }, contactProductInterest: { findMany: vi.fn() }, activity: { create: vi.fn() }, auditLog: { create: vi.fn() } },
+  db: { user: { findMany: vi.fn() }, contact: { findFirst: vi.fn(), update: vi.fn() }, contactProductInterest: { findMany: vi.fn() }, activity: { create: vi.fn() }, auditLog: { create: vi.fn() } },
   reassign: vi.fn(), validateOwner: vi.fn(),
 }));
 vi.mock('../../../config/database.config', () => ({ default: mocks.db }));
@@ -13,6 +13,7 @@ beforeEach(() => {
   mocks.db.contact.update.mockImplementation(({ where, data }: any) => Promise.resolve({ ...data, id: where.id }));
   mocks.reassign.mockResolvedValue({ deals: 2 });
   mocks.db.contactProductInterest.findMany.mockResolvedValue([]);
+  mocks.db.user.findMany.mockResolvedValue([]);
 });
 
 it('validates a selected secondary owner before moving relationships or writing records', async () => {
