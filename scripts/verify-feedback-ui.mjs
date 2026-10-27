@@ -32,6 +32,10 @@ try {
   browser = await chromium.launch({ headless: true, channel: 'chrome', args: ['--no-proxy-server'] });
   const page = await browser.newPage();
   page.on('pageerror', error => errors.push(error.message));
+  const dismissToasts = async () => {
+    const closeButtons = page.locator('[data-sonner-toast][data-visible="true"]:not([data-removed="true"]) [data-close-button]');
+    while (await closeButtons.count()) await closeButtons.first().click();
+  };
   await page.route('https://**/*', route => route.abort());
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
@@ -64,13 +68,15 @@ try {
       results.push({ viewport, mode, accent, metrics, preview });
       await page.waitForTimeout(250);
       await page.screenshot({ animations: 'disabled', path: resolve(output, `${viewport.width}-${mode}-${accent}.png`), fullPage: true });
+      await dismissToasts();
       await page.getByRole('button', { name: 'Long toast', exact: true }).click();
       await page.waitForTimeout(650);
       const overflow = await page.locator('[data-sonner-toast][data-visible="true"]:not([data-removed="true"])').evaluateAll(nodes => nodes.some(node => node.scrollWidth > node.clientWidth + 1));
       assert(!overflow, 'Long messages must wrap');
+      await dismissToasts();
       await page.getByRole('button', { name: 'Dismiss all', exact: true }).click();
     }
-    for (const mode of ['Classic', 'System']) { await page.getByRole('button', { name: mode, exact: true }).click(); await page.getByRole('button', { name: 'Success toast', exact: true }).click(); await page.getByRole('button', { name: 'Dismiss all', exact: true }).click(); }
+    for (const mode of ['Classic', 'System']) { await page.getByRole('button', { name: mode, exact: true }).click(); await page.getByRole('button', { name: 'Success toast', exact: true }).click(); await dismissToasts(); await page.getByRole('button', { name: 'Dismiss all', exact: true }).click(); }
     await page.getByRole('button', { name: 'Open drawer', exact: true }).click();
     await page.getByRole('button', { name: 'Archive record in drawer', exact: true }).click();
     await page.getByRole('alertdialog').waitFor();

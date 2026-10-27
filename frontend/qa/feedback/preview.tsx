@@ -35,7 +35,7 @@ function Preview() {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="space-y-3 rounded-xl border border-border bg-card p-4"><AppBrand><AppLogo className="w-44 p-1" /></AppBrand><h1 className="text-lg font-semibold">Email preview</h1><iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="h-72 w-full border-0" srcDoc={campaignPreviewDocument(body, {}, theme.resolved, theme.accent)} /></section>
-        <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Record details</h2><p className="mt-3 text-muted-foreground">Notifications remain clear of the header, actions, and selection controls.</p></section>
+        <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Record details</h2><p className="mt-3 text-muted-foreground">Notifications use the original fixed top-right position.</p></section>
       </div>
     </main>
     <SelectedRowsBar count={2} onClear={() => {}}><button className={control} onClick={() => setDialog(true)}>Archive selected</button></SelectedRowsBar>

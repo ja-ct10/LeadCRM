@@ -5,7 +5,7 @@ The implementation reuses Sonner, ConfirmActionDialog, Dialog, ThemeScope and th
 ## Shared standards
 
 - All existing frontend toast imports use one adapter backed by the existing Sonner store. Success/info default to 4 seconds, warning/error to 8 seconds and action-bearing messages to 12 seconds; explicit durations, loading IDs, dismissal and persistent update notices remain supported.
-- Toasts use opaque accent-tinted card surfaces, semantic status icons, responsive widths, 12px stack spacing and header/action clearance. Long text wraps, excessive content scrolls within the viewport, and action/close controls retain keyboard focus styling.
+- Toasts use opaque accent-tinted card surfaces, semantic status icons, responsive widths and 12px stack spacing. At the user's follow-up request, the original fixed top-right position is restored with Sonner's default 24px desktop and 16px mobile offsets; headers and toolbars no longer move the notifications. Long text wraps, excessive content scrolls within the viewport, and action/close controls retain keyboard focus styling.
 - Unexpected transport/database details receive friendly fallback wording. Field and confirmation errors stay inline; duplicate permission toasts were removed from the shared confirmation.
 - Dialog titles/descriptions are associated automatically. Explicit accessible names and IDs take precedence. Existing pending locks, cancellation, scroll locking and focus behavior remain in place.
 
@@ -48,6 +48,7 @@ The browser fixture uses actual shared production components and CSS with in-mem
 - Preview iframe widths measured 662px on the desktop fixture and 324px on mobile. Both modes render the expected body background and foreground; personalization, image markup and outgoing-body separation have unit coverage. Existing brand components/assets have no diff.
 - `git diff --check` passes. Existing unrelated setup documentation and prior verification outputs were preserved.
 - Before pushing, the task commit was reconciled with the latest upstream changes. CSV export availability/cache safeguards and the added Inbox Deal/no-Deal grouping coverage were preserved. Workspace lint and **145 focused tests across ten files pass** on the reconciled commit. The unrelated setup-document edit was restored with an identical file hash and excluded from the commit.
+- Toast-position follow-up: frontend TypeScript and all three shared toast tests pass. The browser fixture passes all 12 theme/accent/viewport combinations again, including long messages and modal checks, with no script errors. Measured top/right offsets match the original 24px desktop and 16px mobile placement. The runner dismisses notifications before accessing fixture controls beneath them.
 
 Artifacts: `data/outputs/feedback-ui-tests.json`, `feedback-ui-regressions.json`, `feedback-ui-final-checks.log`, `feedback-ui-build.log`, `feedback-ui-lint.log`, and `feedback-ui-verification/results.json` plus screenshots. Reproduce browser verification with `node scripts/verify-feedback-ui.mjs`; it bundles the real shared UI/CSS into an offline page. `--reuse-bundle` is available only for rerunning assertions against that existing fixture bundle.
 
