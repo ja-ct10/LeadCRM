@@ -27,6 +27,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { toast } from '@/shared/utils/toast';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useAuth } from '@/store/AuthContext';
 import { trackSmsCampaignSubmission } from '@/features/tenant/notifications/hooks/notification-requests';
 import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
@@ -229,8 +230,7 @@ export function CampaignBuilder({
       setTargetAudience(previous => previous === id ? '' : previous);
       toast.success('Target audience permanently deleted.');
     } catch (error) {
-      // The shared confirmation handles Access Denied toasts and keeps failures open.
-      if ((error as { status?: number })?.status !== 403) toast.error(error instanceof Error ? error.message : 'Unable to delete target audience.');
+      showCrmMutationError(error, 'Unable to delete target audience.');
       throw error;
     } finally { requestLock.current = false; setIsDeletingAudience(false); }
   }

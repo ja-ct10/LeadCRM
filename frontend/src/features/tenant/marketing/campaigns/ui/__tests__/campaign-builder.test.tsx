@@ -122,13 +122,14 @@ describe('custom audience deletion', () => {
   });
   it.each([409, 403])('retains the audience and selection after HTTP %s and permits cancellation', async status => {
     const message = status === 409 ? 'This audience is used by an existing campaign.' : 'Permission denied.';
+    const displayedMessage = status === 403 ? 'You do not have permission for this action. Ask an administrator for access.' : message;
     vi.mocked(audiencesApi.delete).mockRejectedValueOnce(Object.assign(new Error(message), { status }));
     render(<CampaignBuilder onBack={vi.fn()} />);
     await waitFor(() => expect(audiencesApi.list).toHaveBeenCalled());
     chooseAudience(audience.id);
     const dialog = await openDelete();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete audience' }));
-    expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', message);
+    expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', displayedMessage);
     expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', audience.id);
     expect(toast.error).toHaveBeenCalledTimes(1); expect(toast.success).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
