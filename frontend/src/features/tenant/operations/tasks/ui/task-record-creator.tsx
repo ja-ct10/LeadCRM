@@ -3,7 +3,6 @@ import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
-import { Button } from "@/shared/components/ui/button";
 import { TaskRelatedRecordCreator } from "./task-related-record-creator";
 import { ContactFormInner } from "@/features/tenant/crm/contacts/ui/contact-form";
 const LeadForm = dynamic(() =>
@@ -36,15 +35,13 @@ export function TaskRecordCreator({
   onCancel: () => void;
   onBusy: (busy: boolean) => void;
 }) {
-  const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const submit = async (data: object) => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     onBusy(true);
-    setError("");
     try {
       const path = {
         lead: "leads",
@@ -69,9 +66,6 @@ export function TaskRecordCreator({
           row.title ||
           [row.firstName, row.lastName].filter(Boolean).join(" "),
       });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to create record.");
-      throw e;
     } finally {
       pending.current = false;
       setBusy(false);
@@ -101,14 +95,6 @@ export function TaskRecordCreator({
             This deal will be linked to the {leadIds.length} selected
             {leadIds.length === 1 ? " lead" : " leads"}. You can add other leads
             below.
-          </p>
-        )}
-        {error && (
-          <p
-            role="alert"
-            className="mt-2 rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
-          >
-            {error}
           </p>
         )}
       </div>
