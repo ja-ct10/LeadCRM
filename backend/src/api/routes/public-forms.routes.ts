@@ -5,4 +5,5 @@ export const publicFormsRouter = Router();
 export const formSubmissionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false,
   message: { success: false, error: 'Too many submissions. Please try again later.' } });
 publicFormsRouter.get('/:publicId', controller.get);
+publicFormsRouter.get('/:publicId/email-availability', controller.emailAvailability);
 publicFormsRouter.post('/:publicId/submissions', formSubmissionLimiter, json({ limit: '64kb' }), controller.submit);

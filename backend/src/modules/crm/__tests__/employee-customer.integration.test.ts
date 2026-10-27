@@ -4,7 +4,7 @@ import type { Server } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient } from '@prisma/client';
-import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as message } from '@leadcrm/shared';
+import { EMAIL_AVAILABILITY_MESSAGES, INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as message } from '@leadcrm/shared';
 import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
 import { installTenantScoping } from '../../../core/tenant/tenant-prisma';
 import { installProductProjections } from '../../../core/tenant/product-projections';
@@ -41,7 +41,10 @@ async function effects() {
 async function rejected(path: string, method: string, body: unknown, field = 'email') {
   const before = await effects();
   const result = await call(path, method, body);
-  expect(result, JSON.stringify(result)).toMatchObject({ status: 400, body: { success: false, error: message, fieldErrors: { [field]: [message] } } });
+  const creatingCustomer = method === 'POST' && ['/crm/leads', '/crm/contacts'].includes(path);
+  expect(result, JSON.stringify(result)).toMatchObject({ status: 400, body: creatingCustomer
+    ? { success: false, error: { code: 'STAFF_EMAIL_NOT_ALLOWED', message: EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED } }
+    : { success: false, error: message, fieldErrors: { [field]: [message] } } });
   expect(await effects()).toEqual(before);
 }
 async function legacy(kind: 'lead' | 'contact', email = employeeEmail) {
@@ -86,7 +89,7 @@ describe('employee customer guard over authenticated HTTP and disposable SQL', (
     const staffToken = (await (await import('../../../core/auth/auth-session')).issueAuthSession(staff)).token;
     const create = await call('/crm/leads', 'POST', person(employeeEmail), staffToken);
     expect(create.status, JSON.stringify(create.body)).toBe(400);
-    expect(create.body).toMatchObject({ error: message, fieldErrors: { email: [message] } });
+    expect(create.body).toMatchObject({ error: { code: 'STAFF_EMAIL_NOT_ALLOWED', message: EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED } });
     const hidden = await legacy('lead');
     const deal = await db.deal.create({ data: { tenantId, title: 'Visible Deal / hidden customer', pipelineId, stageId, assignedUserId: staff.id,
       leadDeals: { create: { leadId: hidden.id } } } });
@@ -213,14 +216,14 @@ describe('employee customer guard over authenticated HTTP and disposable SQL', (
     const values = { firstName: 'Test', lastName: 'Visitor', email: 'EMPLOYEE@example.test', productInterest: productId, address: 'Makati' };
     const result = await call(`/public/forms/${form.publicId}/submissions`, 'POST', { requestId: randomUUID(), version: published.publishedVersion, values }, false);
     expect(result.status, JSON.stringify(result.body)).toBe(400);
-    expect(result.body).toMatchObject({ error: message, fieldErrors: { email: message } });
+    expect(result.body).toMatchObject({ error: 'Please check the highlighted fields.', fieldErrors: { email: EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED } });
     expect(await effects()).toEqual(before);
     const existing = await legacy('contact');
     await db.contact.update({ where: { id: existing.id }, data: { phone: '+639123456789' } });
     const returned = await call(`/public/forms/${form.publicId}/submissions`, 'POST', { requestId: randomUUID(), version: published.publishedVersion,
       values: { ...values, email: 'external-visitor@example.test', phone: '9123456789' } }, false);
     expect(returned.status, JSON.stringify(returned.body)).toBe(400);
-    expect(returned.body.error).toBe(message);
+    expect(returned.body).toMatchObject({ error: 'Please check the highlighted fields.', fieldErrors: { email: EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED } });
     expect(await db.formSubmission.count()).toBe(0);
   });
 });

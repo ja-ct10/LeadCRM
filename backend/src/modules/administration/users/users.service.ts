@@ -20,6 +20,7 @@ import { hashPassword } from '../../../shared/helpers/crypto';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { Prisma } from '@prisma/client';
 import { buildSearchClauses } from '../../../shared/helpers/search';
+import { findUserByEmail } from './users.repository';
 
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
@@ -72,7 +73,7 @@ export async function getAvatar(id: string, tenantId: string, avatarId: string) 
 export async function create(tenantId: string, actorId: string, dto: CreateAdministrationUserInput) {
   dto = CreateUsersSchema.parse(dto);
   requireStaffIdentity({ email: dto.email, role: dto.role });
-  const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
+  const existing = await findUserByEmail(dto.email, tenantId);
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
   const temporaryPassword = generateTemporaryPassword(dto.firstName, dto.lastName);

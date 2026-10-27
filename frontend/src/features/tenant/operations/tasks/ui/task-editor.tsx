@@ -81,6 +81,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                       className={panelInputClass}
                       required
                       maxLength={255}
+                      placeholder="Enter task title..."
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                     />
@@ -134,6 +135,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                     <textarea
                       rows={5}
                       maxLength={10000}
+                      placeholder="Describe the task..."
                       className={panelInputClass}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}

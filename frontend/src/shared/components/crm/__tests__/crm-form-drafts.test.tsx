@@ -1,5 +1,6 @@
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 import React from 'react';
+vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: () => ({ available: true, blocked: false, confirm: () => true, retry: vi.fn(), reject: vi.fn() }) }));
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';

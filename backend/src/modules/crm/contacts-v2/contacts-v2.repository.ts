@@ -16,6 +16,7 @@ import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { assertClosedStatus, cancelOpenDeals, contactStatusValue, finalizeContactLifecycle, recordCustomerStatusChange } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { assertCustomerEmail } from '../../administration/users/user-email';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { createAssignedContact } from './contact-creation';
@@ -149,7 +150,12 @@ export async function findContactById(id: string, tenantId: string) {
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   if (!actorId) throw new ValidationError('An authenticated Contact creator is required.');
-  return salesTransaction(tx => createAssignedContact(tx, tenantId, dto, actorId, String(dto.requestId)));
+  return salesTransaction(async tx => {
+    const requestId = String(dto.requestId);
+    const receipt = await tx.contactCreationReceipt.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });
+    if (!receipt) await assertCustomerEmail(tenantId, String(dto.email), tx);
+    return createAssignedContact(tx, tenantId, dto, actorId, requestId);
+  });
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {

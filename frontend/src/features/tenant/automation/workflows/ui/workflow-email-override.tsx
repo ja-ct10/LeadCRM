@@ -19,8 +19,8 @@ export function WorkflowEmailOverride({ field, label, value, entity, options, cl
   return <div className="space-y-2">
     <label className="block space-y-1" htmlFor={id}>{label}{field === 'message' && <span className="text-red-600" aria-hidden="true"> *</span>}</label>
     {field === 'subject'
-      ? <input ref={subject} id={id} aria-label={label} aria-invalid={!!issue} aria-describedby={issue ? `${id}-error` : `${id}-hint`} className={className} maxLength={200} value={value} onChange={event => onChange(event.target.value)} />
-      : <textarea ref={body} id={id} aria-label={label} aria-required={field === 'message' || undefined} aria-invalid={!!issue} aria-describedby={issue ? `${id}-error` : `${id}-hint`} className={className} rows={4} maxLength={field === 'message' ? 1600 : 10000} value={value} onChange={event => onChange(event.target.value)} />}
+      ? <input ref={subject} id={id} aria-label={label} aria-invalid={!!issue} aria-describedby={issue ? `${id}-error` : `${id}-hint`} className={className} placeholder="Leave empty to use the template subject" maxLength={200} value={value} onChange={event => onChange(event.target.value)} />
+      : <textarea ref={body} id={id} aria-label={label} aria-required={field === 'message' || undefined} aria-invalid={!!issue} aria-describedby={issue ? `${id}-error` : `${id}-hint`} className={className} placeholder={field === 'message' ? 'Enter SMS message...' : 'Leave empty to use the template message'} rows={4} maxLength={field === 'message' ? 1600 : 10000} value={value} onChange={event => onChange(event.target.value)} />}
     <div className="flex flex-wrap items-center gap-2">
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" aria-label={`Insert Variable into ${label}`}>Insert Variable</Button></DropdownMenuTrigger>

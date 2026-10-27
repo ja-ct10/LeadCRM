@@ -8,7 +8,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import * as service from './forms.service';
 import { getPublicForm, submitPublicForm } from './public-forms.service';
 import app from '../../../app';
-import { ClosingFieldInputSchema, FORM_PRODUCT_INTERESTS, LEAD_SOURCES, leadCatalogFormField, type FormField } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, EMAIL_AVAILABILITY_MESSAGES, FORM_PRODUCT_INTERESTS, LEAD_SOURCES, leadCatalogFormField, type FormField } from '@leadcrm/shared';
 import { ensureSalesGroup } from '../../administration/groups/sales-group';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_forms_test_\d+$/.test(url.pathname);
@@ -16,6 +16,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   let tenantId: string, otherTenant: string, userId: string, token: string, denied: string, base: string, server: Server;
   let rejectSubmissionEmail = '';
   let rejectInquiryDealTitle = '';
+  let rejectEmailLookupEmail = '';
   const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const draft = () => scoped(() => service.createForm(tenantId, userId, { name: 'Contact Us' }));
   const publish = (id: string) => scoped(() => service.publishForm(id, tenantId, userId));
@@ -24,12 +25,13 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   const submit = (publicId: string, data: Record<string, string | boolean | string[]> = values(), version = 1) => submitPublicForm(publicId, { requestId: randomUUID(), version, values: data });
   async function request(path: string, method = 'GET', body?: unknown, auth = token) {
     const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer ' + auth } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-    return { status: r.status, body: await r.json() };
+    return { status: r.status, body: await r.json(), headers: r.headers };
   }
   beforeAll(async () => {
     prisma.$use(async (params, next) => {
       if (params.model === 'FormSubmission' && params.action === 'create' && params.args.data.email === rejectSubmissionEmail) throw new Error('Simulated submission persistence failure');
       if (rejectInquiryDealTitle && params.model === 'Deal' && params.action === 'create' && params.args.data.automationKey?.startsWith('form:') && params.args.data.title === rejectInquiryDealTitle) throw new Error('Simulated inquiry Deal failure');
+      if (rejectEmailLookupEmail && params.model === 'User' && params.action === 'findMany' && params.args.where.email?.contains === rejectEmailLookupEmail) throw new Error('Simulated staff lookup failure');
       return next(params);
     });
     tenantId = (await prisma.tenant.create({ data: { name: 'Forms test', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
@@ -111,10 +113,12 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: answers.email } });
       expect(lead).toMatchObject({ firstName: 'Test', lastName: 'Visitor', address: 'Makati' });
       const rows = await prisma.customFieldValue.findMany({ where: { tenantId, module: 'leads', leadId: lead.id } });
-      expect(rows).toHaveLength(5); expect(rows.find(row => row.fieldId === definitions[0].id)?.value).toBe(30);
+      expect(rows).toHaveLength(5); expect(rows.find(row => row.fieldId === definitions[0].id)?.value).toBe(29);
       expect(rows.map(row => row.fieldId).sort()).toEqual(definitions.map(field => field.id).sort());
       expect(await prisma.lead.count({ where: { tenantId, email: answers.email } })).toBe(1);
-      expect(await prisma.auditLog.count({ where: { tenantId, entityId: lead.id, action: 'custom_field.values_updated' } })).toBe(2);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityId: lead.id, action: 'custom_field.values_updated' } })).toBe(1);
+      const repeat = await prisma.formSubmission.findFirstOrThrow({ where: { tenantId, formId: form.id, values: { path: ['custom0'], equals: '30' } } });
+      expect(repeat.values).toHaveProperty('custom0', '30');
       await vi.waitFor(async () => {
         const history = await prisma.auditLog.findMany({ where: { tenantId, entityId: form.id }, select: { action: true } });
         expect(history.map(entry => entry.action)).toEqual(expect.arrayContaining(['form.created', 'form.updated', 'form.published']));
@@ -259,7 +263,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const history = await scoped(() => service.getSubmissions(form.id, tenantId, {})); expect(history.data).toHaveLength(2);
     expect(history.data.map(s => (s.values as Record<string, string>).productInterest).sort()).toEqual([productIds.Biometrics, productIds['Smart Lock']].sort());
     const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: v.email } });
-    expect(lead.productInterestIds.sort()).toEqual([productIds.Biometrics, productIds['Smart Lock']].sort());
+    expect(lead.productInterestIds).toEqual([productIds['Smart Lock']]);
     const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } });
     expect(deals).toHaveLength(2);
     await submit(form.publicId, v);
@@ -366,7 +370,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await prisma.lead.create({ data: { tenantId, firstName: 'Historic', lastName: 'Person', email: v.email, productInterest: [], contactId: c.id } });
     await submit(form.publicId, v);
     expect(await prisma.formSubmission.findFirst({ where: { formId: form.id } })).toMatchObject({ contactId: c.id, leadId: null });
-    expect(await prisma.contactProductInterest.count({ where: { contactId: c.id, productInterestId: productIds['Smart Lock'] } })).toBe(1);
+    expect(await prisma.contactProductInterest.count({ where: { contactId: c.id, productInterestId: productIds['Smart Lock'] } })).toBe(0);
     const product = await prisma.productInterest.findUniqueOrThrow({ where: { id: productIds['Smart Lock'] } });
     const deals = await prisma.deal.findMany({ where: { contactDeals: { some: { contactId: c.id } } } });
     expect(deals).toHaveLength(1); expect(deals[0].value).toBe(Number(product.dealValue));
@@ -536,6 +540,114 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect((await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId: unassigned.id } } } }))[0].assignedUserId).toBeNull();
     expect(await prisma.activity.count({ where: { tenantId, leadId: unassigned.id, type: 'assignment', title: 'Lead awaiting assignment' } })).toBe(1);
     expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value).toBe(beforeReturn);
+  });
+  it('checks only staff ownership anonymously within the published tenant without exposing account details', async () => {
+    const form = await draft();
+    const check = (email: string, id = form.publicId) => request(`/public/forms/${id}/email-availability?${new URLSearchParams({ email })}`, 'GET', undefined, '');
+    expect((await check('forms-admin@camxian.com')).status).toBe(404);
+    await publish(form.id);
+    const denied = await check('  FORMS-ADMIN@CAMXIAN.COM  ');
+    expect(denied.status).toBe(200); expect(denied.headers.get('cache-control')).toBe('no-store');
+    expect(denied.body).toEqual({ success: true, data: { available: false, reason: 'STAFF_EMAIL_NOT_ALLOWED' } });
+    const inactiveEmail = randomUUID() + '@example.com';
+    await prisma.user.create({ data: { tenantId, email: inactiveEmail, firstName: 'Inactive', lastName: 'Staff', role: 'Sales', status: 'INACTIVE' } });
+    expect((await check(inactiveEmail)).body).toEqual(denied.body);
+    const customerEmail = randomUUID() + '@example.com';
+    await prisma.lead.create({ data: { tenantId, email: customerEmail, firstName: 'Existing', lastName: 'Lead' } });
+    await prisma.contact.create({ data: { tenantId, email: customerEmail, firstName: 'Existing', lastName: 'Contact' } });
+    expect((await check(customerEmail)).body).toEqual({ success: true, data: { available: true } });
+    const foreignEmail = randomUUID() + '@camxian.com';
+    await prisma.user.create({ data: { tenantId: otherTenant, email: foreignEmail, firstName: 'Foreign', lastName: 'Staff', role: 'Sales' } });
+    expect((await check(foreignEmail)).body).toEqual({ success: true, data: { available: true } });
+    await submit(form.publicId, values(foreignEmail));
+    expect(await prisma.lead.count({ where: { tenantId, email: foreignEmail } })).toBe(1);
+    for (const query of ['email=bad', 'email=one%40example.com&email=two%40example.com', 'email=valid%40example.com&tenantId=other']) {
+      expect((await request(`/public/forms/${form.publicId}/email-availability?${query}`, 'GET', undefined, '')).status).toBe(400);
+    }
+    expect((await check(customerEmail, randomUUID())).status).toBe(404);
+    await scoped(() => service.unpublishForm(form.id, tenantId, userId));
+    expect((await check(customerEmail)).status).toBe(404);
+    await publish(form.id);
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+    try { expect((await check(customerEmail)).status).toBe(404); }
+    finally { await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } }); }
+    await prisma.marketingForm.update({ where: { id: form.id }, data: { isArchived: true } });
+    expect((await check(customerEmail)).status).toBe(404);
+  });
+  it('rejects staff submissions below the configured email field even when a customer already shares that email', async () => {
+    const form = await draft();
+    await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: 0, fields: (form.fields as FormField[]).map(field => field.mapToField === 'email' ? { ...field, id: 'visitorEmail' } : field) }));
+    await publish(form.id);
+    const staffEmail = randomUUID() + '@camxian.com';
+    await prisma.user.create({ data: { tenantId, email: staffEmail, firstName: 'Protected', lastName: 'Staff', role: 'Sales' } });
+    const lead = await prisma.lead.create({ data: { tenantId, email: staffEmail, firstName: 'Historical', lastName: 'Lead' } });
+    const contact = await prisma.contact.create({ data: { tenantId, email: staffEmail, firstName: 'Historical', lastName: 'Contact' } });
+    const { email, ...rest } = values(staffEmail);
+    const response = await request(`/public/forms/${form.publicId}/submissions`, 'POST', { requestId: randomUUID(), version: 1, values: { ...rest, visitorEmail: ` ${email.toUpperCase()} ` } }, '');
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ success: false, error: 'Please check the highlighted fields.', fieldErrors: { visitorEmail: EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED } });
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).toEqual(lead);
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).toEqual(contact);
+    expect(await prisma.deal.count({ where: { tenantId, OR: [{ leadDeals: { some: { leadId: lead.id } } }, { contactDeals: { some: { contactId: contact.id } } }] } })).toBe(0);
+  });
+  it('fails safely when staff lookup fails without accepting or persisting the inquiry', async () => {
+    const form = await publish((await draft()).id), answer = values(); rejectEmailLookupEmail = answer.email;
+    try {
+      const response = await request(`/public/forms/${form.publicId}/email-availability?${new URLSearchParams({ email: answer.email })}`, 'GET', undefined, '');
+      expect(response.status).toBe(500); expect(JSON.stringify(response.body)).not.toContain('Simulated staff lookup failure');
+      await expect(submit(form.publicId, answer)).rejects.toThrow('Simulated staff lookup failure');
+    } finally { rejectEmailLookupEmail = ''; }
+    expect(await prisma.lead.count({ where: { tenantId, email: answer.email } })).toBe(0);
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
+  });
+  it.each(['lead', 'contact'] as const)('preserves the returning %s profile and associates every selected Product Deal with its existing Account', async kind => {
+    const form = await publish((await draft()).id), answer = values();
+    const account = await prisma.account.create({ data: { tenantId, name: 'Existing account' } });
+    const profile = { tenantId, accountId: account.id, firstName: 'Saved', lastName: 'Customer', email: ` ${answer.email.toUpperCase()} `, address: 'Saved address', phone: '+639551112233', companyName: 'Saved company', assignedUserId: userId };
+    const customer = kind === 'lead' ? await prisma.lead.create({ data: { ...profile, productInterest: ['Original interest'] } })
+      : await prisma.contact.create({ data: { ...profile, productInterests: ['Original interest'] } });
+    const selected = [productIds['Smart Lock'], productIds.Biometrics];
+    for (let i = 0; i < 2; i++) await submit(form.publicId, { ...answer, company: 'Visitor company', address: 'Visitor address', productInterest: selected });
+    const saved = kind === 'lead' ? await prisma.lead.findUniqueOrThrow({ where: { id: customer.id } }) : await prisma.contact.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(saved).toMatchObject({ ...profile, ...(kind === 'lead' ? { productInterest: ['Original interest'] } : { productInterests: ['Original interest'] }) });
+    const relation = kind === 'lead' ? { leadDeals: { some: { leadId: customer.id } } } : { contactDeals: { some: { contactId: customer.id } } };
+    const deals = await prisma.deal.findMany({ where: { tenantId, ...relation } });
+    expect(deals).toHaveLength(4);
+    expect(deals.every(deal => deal.accountId === account.id && deal.assignedUserId === userId && deal.ownerId === userId)).toBe(true);
+    expect(deals.map(deal => deal.productInterestId).sort()).toEqual([...selected, ...selected].sort());
+    expect(await prisma.lead.count({ where: { tenantId, email: { contains: answer.email, mode: 'insensitive' } } })).toBe(kind === 'lead' ? 1 : 0);
+    expect(await prisma.contact.count({ where: { tenantId, email: { contains: answer.email, mode: 'insensitive' } } })).toBe(kind === 'contact' ? 1 : 0);
+  });
+  it('reuses one new customer across concurrent distinct inquiries through different published forms', async () => {
+    const first = await publish((await draft()).id), second = await publish((await draft()).id), answer = values();
+    await Promise.all([
+      submit(first.publicId, answer),
+      submit(second.publicId, { ...answer, email: answer.email.toUpperCase() }),
+    ]);
+    const people = await prisma.lead.findMany({ where: { tenantId, email: answer.email } });
+    expect(people).toHaveLength(1);
+    expect(await prisma.contact.count({ where: { tenantId, email: answer.email } })).toBe(0);
+    expect(await prisma.formSubmission.count({ where: { tenantId, leadId: people[0].id } })).toBe(2);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: people[0].id } } } })).toBe(2);
+  });
+  it('replays concurrent first-submission retries without creating duplicate people or Deals', async () => {
+    const form = await publish((await draft()).id), answer = values(), requestId = randomUUID();
+    const body = { requestId, version: 1, values: answer };
+    await Promise.all([submitPublicForm(form.publicId, body), submitPublicForm(form.publicId, body)]);
+    const people = await prisma.lead.findMany({ where: { tenantId, email: answer.email } });
+    expect(people).toHaveLength(1);
+    expect(await prisma.formSubmission.count({ where: { tenantId, formId: form.id, requestKey: requestId } })).toBe(1);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: people[0].id } } } })).toBe(1);
+  });
+  it('does not consume submission allowance during live email checks', async () => {
+    const form = await publish((await draft()).id);
+    for (let i = 0; i < 25; i++) {
+      const result = await request(`/public/forms/${form.publicId}/email-availability?email=visitor%40example.com`, 'GET', undefined, '');
+      expect(result.status).toBe(200);
+    }
+    const response = await request(`/public/forms/${form.publicId}/submissions`, 'POST', { requestId: randomUUID(), version: 1, values: values() }, '');
+    expect(response.status).toBe(201);
   });
   it('rate limits anonymous submissions with 429', async () => {
     let status = 0;

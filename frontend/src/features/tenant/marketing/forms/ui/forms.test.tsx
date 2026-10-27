@@ -13,6 +13,7 @@ import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as employeeMessage } from '@lead
 import { toast } from '@/shared/utils/toast';
 vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: (email: string) => ({ available: true, blocked: false, confirm: () => true, email: email.trim(), retry: vi.fn(), reject: vi.fn() }) }));
 vi.mock('../services/forms.service', () => ({ getLeadFormFieldCatalog: vi.fn(), updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('next/navigation', () => ({ useRouter: () => routing, useSearchParams: () => new URLSearchParams(), usePathname: () => '/settings' }));
 
@@ -48,7 +49,7 @@ const form = { ...defaultContactForm(), fields: withProductOptions(defaultContac
 beforeEach(() => { vi.resetAllMocks(); productCatalog.products = []; productCatalog.categories = []; permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
-  it('keeps a rejected employee email submission open with one toast, inline error and corrected retry', async () => {
+  it('keeps a rejected employee email submission open with one inline error and corrected retry', async () => {
     const definition = defaultContactForm();
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...definition, fields: definition.fields.filter(field => field.mapToField !== 'productInterest'), version: 1, trackUrlParams: false } }) })
       .mockResolvedValueOnce({ ok: false, json: async () => ({ error: employeeMessage, fieldErrors: { email: employeeMessage } }) })
@@ -65,7 +66,8 @@ describe('Forms UI', () => {
     expect(email).toHaveProperty('value', 'employee@example.test');
     expect(email.getAttribute('aria-invalid')).toBe('true');
     expect(screen.queryByText('Thank you!')).toBeNull();
-    expect(toast.error).toHaveBeenCalledExactlyOnceWith(employeeMessage);
+    expect(screen.getAllByText(employeeMessage)).toHaveLength(1);
+    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     fireEvent.change(email, { target: { value: 'customer@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));

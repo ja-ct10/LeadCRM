@@ -1,4 +1,5 @@
 import React from 'react';
+vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: (email: string) => ({ available: true, blocked: false, confirm: () => true, email: email.trim().toLowerCase(), retry: vi.fn(), reject: vi.fn() }) }));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Archive, UserX } from 'lucide-react';

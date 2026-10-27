@@ -19,6 +19,7 @@ import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals, recordCustomerStatusChange } from '../engagement.service';
 import { assertCustomerStatusEdit, classifyCustomerRecord, prepareCustomerStatus } from '../customer-classification.service';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
+import { assertCustomerEmail } from '../../administration/users/user-email';
 import prisma from '../../../config/database.config';
 import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
@@ -157,7 +158,7 @@ export async function createContact(
   if (dto.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
-    if (!existing) await assertExternalCustomerEmail(tx, tenantId, fields.email);
+    if (!existing) await assertCustomerEmail(tenantId, dto.email, tx);
     if (!existing) await assertContactAccountSelection(tx, tenantId, fields.accountId);
     if (!existing && newAccount) {
       const account = await createLinkedAccount(tx, tenantId, newAccount, createdById);

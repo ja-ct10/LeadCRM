@@ -177,8 +177,8 @@ function DataGridRowInner<T>({
         highlighted
           ? 'bg-blue-50 dark:bg-primary/15'
           : selected
-            ? 'bg-blue-50 dark:bg-primary/10'
-            : 'hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50',
+            ? 'bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]'
+            : 'hover:bg-muted',
       )}
       style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
       onClick={event => {
@@ -194,8 +194,8 @@ function DataGridRowInner<T>({
           className={cn(
             'grid-pinned-cell sticky left-0 z-10 px-1 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
-              ? 'bg-blue-50/60 dark:bg-primary/5'
-              : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
+              ? 'bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]'
+              : 'bg-card group-hover/row:bg-muted',
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -211,8 +211,8 @@ function DataGridRowInner<T>({
           className={cn(
             'grid-pinned-cell sticky z-10 px-3 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
-              ? 'bg-blue-50/60 dark:bg-primary/5'
-              : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
+              ? 'bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]'
+              : 'bg-card group-hover/row:bg-muted',
             pinnedLeftColumns.length === 0 && isScrolled
               ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
               : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
@@ -243,8 +243,8 @@ function DataGridRowInner<T>({
             className={cn(
               'grid-pinned-cell sticky z-10 px-3 border-r border-[#eef0f3] dark:border-slate-800',
               selected
-                ? 'bg-blue-50/60 dark:bg-primary/5'
-                : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
+                ? 'bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]'
+                : 'bg-card group-hover/row:bg-muted',
               isLastPinned && isScrolled
                 ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
                 : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
@@ -316,8 +316,8 @@ function DataGridRowInner<T>({
             className={cn(
               'grid-pinned-cell sticky z-10 px-3',
               selected
-                ? 'bg-blue-50/60 dark:bg-primary/5'
-                : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
+                ? 'bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]'
+                : 'bg-card group-hover/row:bg-muted',
               'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
               col.align === 'right' && 'text-right',
               col.align === 'center' && 'text-center',

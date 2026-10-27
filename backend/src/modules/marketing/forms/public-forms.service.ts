@@ -2,11 +2,11 @@ import { fireDealCreated } from '../../automation/triggers/triggers.service';
 import { ZodError } from 'zod';
 import { assertExternalCustomerEmail } from '../../crm/record-validation';
 import { classifyCustomerRecord } from '../../crm/customer-classification.service';
-import { productRelationData } from '../../crm/leads/product-relations';
+import { customerEmailAvailability } from '../../administration/users/user-email';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
-import { FormDefinitionSchema, FormFieldSchema, PublicSubmissionSchema, publicSubmissionContent, validateFormValues, withProductOptions } from '@leadcrm/shared';
+import { EMAIL_AVAILABILITY_MESSAGES, FormDefinitionSchema, FormFieldSchema, PublicSubmissionSchema, publicSubmissionContent, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -22,6 +22,11 @@ export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>, message = 'Please check the highlighted fields.') { super(message); }
 }
 const publicWhere = (publicId: string) => ({ publicId, isArchived: false, status: 'published', publishedVersion: { gt: 0 }, tenant: { status: { in: ['ACTIVE', 'SANDBOX'] as ('ACTIVE' | 'SANDBOX')[] } } });
+export async function publicFormEmailAvailability(publicId: string, email: string) {
+  const form = await prisma.marketingForm.findFirst({ where: publicWhere(publicId), select: { tenantId: true, publishedConfig: true } });
+  if (!form?.publishedConfig) throw new NotFoundError('Form');
+  return tenantContext.run({ tenantId: form.tenantId }, () => customerEmailAvailability(form.tenantId, email));
+}
 export async function getPublicForm(publicId: string): Promise<PublicFormDefinition> {
   const form = await prisma.marketingForm.findFirst({ where: publicWhere(publicId) });
   if (!form?.publishedConfig) throw new NotFoundError('Form');
@@ -66,6 +71,12 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           config.fields = withProductOptions(config.fields, await productConfiguration(tx, scope.tenantId));
           const validated = validateFormValues(config.fields, input.values);
           if (Object.keys(validated.errors).length) throw new SubmissionValidationError(validated.errors);
+          const emailField = config.fields.find(field => field.mapToField === 'email');
+          const customerEmail = emailField && validated.values[emailField.id];
+          if (emailField && typeof customerEmail === 'string' && customerEmail) {
+            const availability = await customerEmailAvailability(scope.tenantId, customerEmail, tx);
+            if (!availability.available) throw new SubmissionValidationError({ [emailField.id]: EMAIL_AVAILABILITY_MESSAGES[availability.reason] });
+          }
           const mapped: Record<string, string> = {};
           for (const field of config.fields) if (field.mapToField && typeof validated.values[field.id] === 'string') mapped[field.mapToField] = validated.values[field.id] as string;
           const productField = config.fields.find(field => field.mapToField === 'productInterest');
@@ -77,8 +88,9 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             try { await assertExternalCustomerEmail(tx, scope.tenantId, customerEmail); }
             catch (error) {
               if (!(error instanceof ZodError)) throw error;
-              const message = error.issues[0].message;
-              throw new SubmissionValidationError(Object.fromEntries(config.fields.filter(field => field.mapToField === 'email').map(field => [field.id, message])), message);
+              const message = EMAIL_AVAILABILITY_MESSAGES.STAFF_EMAIL_NOT_ALLOWED;
+              const field = config.fields.find(field => field.mapToField === 'email') ?? config.fields.find(field => field.mapToField === 'phone');
+              throw new SubmissionValidationError(field ? { [field.id]: message } : {});
             }
           };
           await assertCustomer(email);
@@ -137,12 +149,6 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             }
           }
           if (contactId) leadId = null;
-          if (leadId && lead && !contactId) {
-            // A repeat inquiry can add interests, but must never replace historical Deals or owners.
-            await tx.lead.update({ where: { id: leadId, ...scope }, data: {
-              ...await productRelationData(tx, 'lead', scope.tenantId, { names: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])] }, lead, true),
-            } });
-          }
           if (!leadId && !contactId) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
@@ -152,9 +158,8 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             newWebsiteLead = true;
           }
           const customFields = config.fields.filter(field => field.customFieldId);
-          if (customFields.length && leadId) {
-            // Returning Contacts retain answers in the inquiry snapshot. Lead definitions
-            // never become Contact values or revive a converted Lead during duplicate matching.
+          if (customFields.length && leadId && newWebsiteLead) {
+            // Returning customers retain new answers only in the inquiry snapshot.
             const customValues = Object.fromEntries(customFields.map(field => {
               const answer = validated.values[field.id];
               return [field.customFieldId!, field.type === 'number' && typeof answer === 'string' && answer ? Number(answer) : answer || null];
@@ -177,8 +182,6 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           if ((contactId || leadId && !newWebsiteLead) && resolvedProducts.length) {
             const customer = contactId ? await tx.contact.findFirstOrThrow({ where: { ...scope, id: contactId } })
               : await tx.lead.findFirstOrThrow({ where: { ...scope, id: leadId! } });
-            if (contactId && 'productInterests' in customer) await tx.contact.update({ where: { ...scope, id: customer.id }, data: await productRelationData(tx, 'contact', scope.tenantId,
-              { names: [...new Set([...customer.productInterests, ...resolvedProducts.map(p => p.name)])] }, customer, true) });
             const { pipeline, initial } = await salesPipeline(tx, scope.tenantId);
             // Each accepted inquiry is a new opportunity. requestId retries return above,
             // while later purchases of the same Product remain legitimate separate Deals.

@@ -3,9 +3,10 @@ import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelPrimaryActi
 
 import { useAuth } from '@/store/AuthContext';
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
+import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 import { toast } from '@/shared/utils/toast';
-import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EmployeeEmailSchema } from '@leadcrm/shared';
+import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EmployeeEmailSchema, StaffEmailSchema } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
@@ -62,6 +63,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
   const locked = useRef(false);
   const form = useRef<HTMLFormElement>(null);
   const creating = !user;
+  const emailCheck = useEmailAvailability(draft.email, 'users', creating && canEdit && canAssign);
   useEffect(() => {
     if (user) setSaved(user);
   }, [user]);
@@ -74,14 +76,14 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       const field = issue.path[0] as keyof Draft | 'groupIds';
       if (!next[field]) next[field] = issue.message;
     }
-    if (creating && result.success && actor?.role !== 'Client Admin' && !EmployeeEmailSchema.safeParse(value.email).success) next.email = 'Only Client Admin users can approve an external staff email.';
+    if (creating && StaffEmailSchema.safeParse(value.email).success && actor?.role !== 'Client Admin' && !EmployeeEmailSchema.safeParse(value.email).success) next.email = 'Only Client Admin users can approve an external staff email.';
     if (value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
     return next;
   };
   const change = (key: keyof Draft, value: string, interact = false) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
-    if (touched[key] || errors[key] || interact) {
+    if (key === 'email' || touched[key] || errors[key] || interact) {
       setTouched(prev => ({ ...prev, [key]: true }));
       setErrors(prev => ({ ...prev, [key]: validation(next)[key] }));
     }
@@ -97,6 +99,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
     }
     const result = parse(draft);
     if (!result.success) return;
+    if (!emailCheck.confirm(result.data.email)) return;
     locked.current = true; setBusy(true);
     try {
       const response = await usersService.create(result.data as Partial<User>);
@@ -106,6 +109,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       onClose();
     } catch (reason) {
       const error = reason as Error & { fieldErrors?: Record<string, string[]>; status?: number; code?: string };
+      if (error.status === 409) emailCheck.reject('EMAIL_IN_USE');
       if (error.fieldErrors) setErrors(Object.fromEntries(Object.entries(error.fieldErrors).map(([key, messages]) => [key, messages[0]])));
       else if (creating && (error.status === 409 || error.code === 'EMPLOYEE_ACCOUNT_REQUIRED')) setErrors({ email: error.message });
       else if (/role/i.test(error.message)) setErrors({ role: error.message });
@@ -185,10 +189,10 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
   ];
   const input = (key: keyof Draft, required = false) => {
     const id = `user-${key}`;
-    const error = errors[key];
+    const error = key === 'email' ? emailCheck.error || errors.email : errors[key];
     const props = { id, placeholder: placeholders[key], value: draft[key], disabled: busy || !canEdit || (key === 'email' && !creating), required,
       'aria-invalid': !!error, 'aria-describedby': error ? `${id}-error` : undefined,
-      onBlur: () => { setTouched(prev => ({ ...prev, [key]: true })); setErrors(prev => ({ ...prev, [key]: validation(draft)[key] })); },
+      onBlur: () => { setTouched(prev => ({ ...prev, [key]: true })); setErrors(prev => ({ ...prev, [key]: validation(draft)[key] })); if (key === 'email') emailCheck.retry(); },
       className: `w-full min-w-0 rounded-xl border px-3 py-2.5 text-sm bg-white dark:bg-slate-800 ${error ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`,
     };
     return <div key={key} className="min-w-0 space-y-1.5">
@@ -196,7 +200,10 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       {key === 'phone' ? <PhilippinePhoneInput id={id} required={required} disabled={busy || !canEdit} value={draft.phone} onChange={value => change(key, value, true)} onBlur={props.onBlur} error={error} />
         : key === 'role' ? <select {...props} disabled={busy || !canAssign} onChange={event => change(key, event.target.value, true)}>
           <option value="">Select role</option>{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}
-        </select> : <input {...props} type={key === 'email' ? 'email' : 'text'} autoCapitalize={key === 'email' ? 'none' : undefined} autoCorrect={key === 'email' ? 'off' : undefined} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
+        </select> : key === 'email' ? <div className="relative">
+          <input {...props} className={props.className + ' pr-10'} type="email" autoCapitalize="none" autoCorrect="off" maxLength={254} onChange={event => change(key, event.target.value)} />
+          {emailCheck.available && !error && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
+        </div> : <input {...props} type="text" maxLength={100} onChange={event => change(key, event.target.value)} />}
       {key !== 'phone' && error && <p id={`${id}-error`} className="text-xs text-red-500" role="alert">{error}</p>}
     </div>;
   };
@@ -232,7 +239,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       </div>
       <div className={panelFooterClass + " justify-end"}>
         <button type="button" disabled={busy} onClick={onClose} className={panelSecondaryActionClass}>Cancel</button>
-        <button disabled={busy} type="submit" className={panelPrimaryActionClass}>{busy && <Loader2 className="animate-spin" size={16} />}Create User</button>
+        <button disabled={busy || emailCheck.blocked} type="submit" className={panelPrimaryActionClass}>{busy && <Loader2 className="animate-spin" size={16} />}Create User</button>
       </div>
     </form> : <div className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
       <div className={panelBodyClass + ' space-y-3'}>

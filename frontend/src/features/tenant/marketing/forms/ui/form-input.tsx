@@ -2,14 +2,14 @@
 import type { CSSProperties } from 'react';
 import type { FormField, FormDesign, FormProductCatalog } from '@leadcrm/shared';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
-export function FormInput({ field: f, value = '', onChange, error, design, productCatalog }: { field: FormField; value?: string | boolean | string[]; onChange: (v: string | boolean | string[]) => void; error?: string; design: FormDesign; productCatalog?: FormProductCatalog }) {
+export function FormInput({ field: f, value = '', onChange, onBlur, error, design, productCatalog }: { field: FormField; value?: string | boolean | string[]; onChange: (v: string | boolean | string[]) => void; onBlur?: () => void; error?: string; design: FormDesign; productCatalog?: FormProductCatalog }) {
   const id = 'input-' + f.id;
   if (f.type === 'header' || f.type === 'heading') return <h2 className="text-2xl font-bold break-words">{f.label}</h2>;
   if (f.type === 'paragraph') return <p className="whitespace-pre-wrap break-words">{f.label}</p>;
   if (f.type === 'divider') return <hr />;
   const style: CSSProperties = { backgroundColor: design.fieldBg || '#ffffff', borderColor: design.fieldBorder || '#cbd5e1', color: design.fieldText || '#0f172a',
     borderRadius: { none: 0, sm: 4, md: 6, lg: 12, full: 24 }[design.fieldRadius], padding: design.fieldSize === 'lg' ? 12 : design.fieldSize === 'sm' ? 6 : 9 };
-  const props = { id, 'aria-invalid': !!error, 'aria-describedby': error ? id + '-error' : undefined, required: f.required, className: 'w-full min-w-0 max-w-full border focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm', style };
+  const props = { id, onBlur, 'aria-invalid': !!error, 'aria-describedby': error ? id + '-error' : undefined, required: f.required, className: 'w-full min-w-0 max-w-full border focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm', style };
   const phone = ['phone', 'contact-phone'].includes(f.type);
   const string = typeof value === 'string' ? value : '';
   return <div className="min-w-0" style={{ accentColor: design.buttonBg || '#2563eb', '--primary': design.buttonBg || '#2563eb', '--ring': design.buttonBg || '#2563eb' } as CSSProperties}>

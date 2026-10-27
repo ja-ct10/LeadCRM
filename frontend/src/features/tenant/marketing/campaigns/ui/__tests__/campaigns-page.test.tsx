@@ -35,6 +35,9 @@ beforeEach(() => {
 it('shows only supported Campaign views and switches between them', async () => {
   render(<CampaignsPage />);
   const navigation = screen.getByRole('group', { name: 'Campaign views' });
+  expect(screen.queryByText('SMS replies requiring review')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Refresh replies' })).toBeNull();
+  expect(screen.queryByText('No replies require review.')).toBeNull();
   expect(within(navigation).getAllByRole('button').map(button => button.textContent)).toEqual(['All Campaigns', 'Email Templates', 'SMS Templates']);
   expect(within(navigation).getByRole('button', { name: 'All Campaigns' }).getAttribute('aria-pressed')).toBe('true');
   for (const type of ['Email', 'SMS']) {

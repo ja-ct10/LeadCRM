@@ -82,15 +82,15 @@ function DraggableItem({ field, onAddField, disabled, dragEnabled = true }: Drag
       onClick={() => onAddField(field)}
       title={dragEnabled ? `Add ${field.label} — or drag onto canvas` : `Add ${field.label}`}
       className={cn(
-        'relative flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all select-none group disabled:opacity-40 disabled:cursor-not-allowed',
+        'relative flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all select-none group disabled:opacity-65 disabled:cursor-not-allowed',
         dragEnabled ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
-        'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-white/[0.07]',
-        'hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10',
+        'bg-muted border-border',
+        'enabled:hover:border-primary enabled:hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
         isDragging && 'opacity-40 scale-95',
       )}
     >
       {isLayout ? (
-        <div className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 group-hover:bg-blue-100 dark:group-hover:bg-blue-500/20 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors text-sm">
+        <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center font-bold text-secondary-foreground group-hover:bg-accent transition-colors text-sm">
           {field.icon}
         </div>
       ) : (
@@ -98,8 +98,8 @@ function DraggableItem({ field, onAddField, disabled, dragEnabled = true }: Drag
           {field.icon}
         </div>
       )}
-      {dragEnabled && <GripVertical aria-hidden="true" size={14} className="absolute right-2 top-2 text-slate-400" />}
-      <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+      {dragEnabled && <GripVertical aria-hidden="true" size={14} className="absolute right-2 top-2 text-muted-foreground" />}
+      <span className="text-[10px] font-semibold text-foreground text-center leading-tight transition-colors">
         {field.label}
       </span>
     </button>
@@ -133,11 +133,11 @@ export function FieldPalette({ onAddField, catalog, catalogError, loading, field
   return (
     <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar flex-1">
       {loading && <p role="status" className="text-xs text-muted-foreground">Loading Lead fields…</p>}
-      {catalogError && <div role="alert" className="text-xs text-red-600">{catalogError}{onRetry && <button type="button" onClick={onRetry} className="block underline mt-2">Retry loading fields</button>}</div>}
+      {catalogError && <div role="alert" className="text-xs text-red-600 dark:text-red-400">{catalogError}{onRetry && <button type="button" onClick={onRetry} className="block underline mt-2">Retry loading fields</button>}</div>}
 
       {/* Layout */}
       <div>
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">LAYOUT</p>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">LAYOUT</p>
         <div className="grid grid-cols-2 gap-2">
           {layout.map((f) => <DraggableItem key={f.type} field={f} onAddField={onAddField} dragEnabled={dragEnabled} />)}
         </div>
@@ -145,8 +145,8 @@ export function FieldPalette({ onAddField, catalog, catalogError, loading, field
 
       {/* Standard Lead system fields */}
       <div>
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">STANDARD FIELDS</p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-2">Lead System fields from Customize Fields.</p>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">STANDARD FIELDS</p>
+        <p className="text-[10px] text-muted-foreground mb-2">Lead System fields from Customize Fields.</p>
         <div className="grid grid-cols-2 gap-2">
           {standard.map((f) => <DraggableItem key={f.mapToField ?? f.label} field={f} onAddField={onAddField} disabled={used(f)} dragEnabled={dragEnabled} />)}
         </div>
@@ -154,8 +154,8 @@ export function FieldPalette({ onAddField, catalog, catalogError, loading, field
 
       {/* Custom Lead fields */}
       <div>
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">CUSTOM FIELDS</p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-2">Lead Custom fields from Customize Fields.</p>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">CUSTOM FIELDS</p>
+        <p className="text-[10px] text-muted-foreground mb-2">Lead Custom fields from Customize Fields.</p>
         <div className="grid grid-cols-2 gap-2">
           {custom.map((f) => <DraggableItem key={f.customFieldId} field={f} onAddField={onAddField} disabled={used(f)} dragEnabled={dragEnabled} />)}
         </div>
@@ -188,7 +188,7 @@ function DesignPanel({ design, onChange }: DesignPanelProps): React.ReactElement
   return (
     <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar flex-1">
       <details open className="group">
-        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-foreground list-none">
           <span>🎨 General styles</span>
           <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
@@ -199,7 +199,7 @@ function DesignPanel({ design, onChange }: DesignPanelProps): React.ReactElement
         </div>
       </details>
       <details open className="group">
-        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-foreground list-none">
           <span>✏️ Field styles</span>
           <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
@@ -224,7 +224,7 @@ function DesignPanel({ design, onChange }: DesignPanelProps): React.ReactElement
         </div>
       </details>
       <details open className="group">
-        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-foreground list-none">
           <span>👆 Button styles</span>
           <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
