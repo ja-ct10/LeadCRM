@@ -1,8 +1,9 @@
 'use client';
 import { feedbackError } from '@/shared/utils/feedback-error';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import React, { useEffect, useState } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
-import { CrmEmailSchema } from '@leadcrm/shared';
+import { CrmEmailSchema, INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm/shared';
 import { cn } from '@/lib/utils';
 import { CatalogProductInterestSelect } from './product-interest-select';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
@@ -87,7 +88,10 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
     }
     setIsSaving(true);
     try { await onSave(apiField, typeof editValue === 'string' && !row?.preserveWhitespace ? editValue.trim() : editValue); setEditingKey(null); }
-    catch (error) { setFieldError(feedbackError(error, 'Unable to save this field. Please try again.')); }
+    catch (error) {
+      setFieldError(feedbackError(error, 'Unable to save this field. Please try again.'));
+      if (error instanceof Error && error.message === INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR) showCrmMutationError(error, 'Unable to save this field. Please try again.');
+    }
     finally { setIsSaving(false); }
   };
 

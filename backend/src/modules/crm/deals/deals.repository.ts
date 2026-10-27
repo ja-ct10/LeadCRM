@@ -1,4 +1,5 @@
 import { refreshDealClassification } from '../customer-classification.service';
+import { assertExternalCustomerParticipants } from '../record-validation';
 import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
 import { salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
@@ -113,6 +114,7 @@ export async function findDealById(id: string, tenantId: string) {
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma, batchFiles?: BatchFiles) {
   await assertCrmCreateAssignment(db, tenantId, dto.assignedUserId, 'deals');
+  await assertExternalCustomerParticipants(db, tenantId, dto);
   const stage = await db.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage || stage.isWon) throw new ValidationError('New Deals require an available open stage. Confirm Closed Won through the stage action.');
   const { leadIds, contactIds, customFieldValues, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
@@ -177,6 +179,10 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
       const { leadIds: _leadIds, contactIds: _contactIds, customFieldValues, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
       const existing = await tx.deal.findFirst({ where: { id, tenantId } });
       if (!existing) throw new Prisma.PrismaClientKnownRequestError('Deal not found', { code: 'P2025', clientVersion: '5' });
+      await assertExternalCustomerParticipants(tx, tenantId, {
+        leadIds: dto.leadIds ?? (await tx.leadDeal.findMany({ where: { tenantId, dealId: id }, select: { leadId: true } })).map(link => link.leadId),
+        contactIds: dto.contactIds ?? (await tx.contactDeal.findMany({ where: { tenantId, dealId: id }, select: { contactId: true } })).map(link => link.contactId),
+      });
       await saveRecordValues(tx, tenantId, 'deals', id, customFieldValues, actorId);
       const currentIds = existing.productInterestIds.length ? existing.productInterestIds : existing.productInterestId ? [existing.productInterestId] : [];
       if (dto.productInterestIds) {
@@ -440,6 +446,9 @@ export async function syncContactAssociations(
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', dealId);
+    await assertExternalCustomerParticipants(tx, tenantId, { contactIds,
+      ...(!client ? { leadIds: (await tx.leadDeal.findMany({ where: { tenantId, dealId }, select: { leadId: true } })).map(link => link.leadId) } : {}),
+    });
     const classificationDeal = await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true, stage: { select: { name: true } } } });
     // Current ContactDeal associations for this deal
     const current = await tx.contactDeal.findMany({
@@ -496,6 +505,9 @@ export async function syncLeadAssociations(
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', dealId);
+    await assertExternalCustomerParticipants(tx, tenantId, { leadIds,
+      ...(!client ? { contactIds: (await tx.contactDeal.findMany({ where: { tenantId, dealId }, select: { contactId: true } })).map(link => link.contactId) } : {}),
+    });
     const classificationDeal = await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true, stage: { select: { name: true } } } });
     // Current LeadDeal associations for this deal
     const current = await tx.leadDeal.findMany({

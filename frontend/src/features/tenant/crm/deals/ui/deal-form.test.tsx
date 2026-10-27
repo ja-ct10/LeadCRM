@@ -16,6 +16,34 @@ vi.mock('./deal-leads-field', () => ({ DealLeadsField: () => null }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ id, entityType, value, onChange, error }: any) => <><select id={id} aria-label={`Search ${entityType}`} value={value ?? ''} onChange={event => onChange(event.target.value)}><option value="">Choose</option><option value={`${entityType}-1`}>First record</option><option value={`${entityType}-2`}>Second record</option></select>{error && <p role="alert">{error}</p>}</> }));
 import { DealForm } from './deal-form';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as employeeMessage } from '@leadcrm/shared';
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
+it.each(['create', 'edit'] as const)('retains a rejected employee association and retries a corrected %s Deal', async mode => {
+  vi.clearAllMocks();
+  const save = vi.fn().mockRejectedValueOnce(Object.assign(new Error(employeeMessage), { status: 400, fieldErrors: { leadIds: [employeeMessage] } })).mockResolvedValue(undefined);
+  const close = vi.fn();
+  render(<DealForm mode={mode} initialData={mode === 'edit' ? { id: 'deal', title: 'Draft opportunity', productInterestId: product.id, leadIds: ['leads-1'], leadId: 'leads-1' } : undefined} onSubmit={save} onCancel={close} />);
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Draft opportunity' } });
+  if (mode === 'create') {
+    fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
+    fireEvent.change(screen.getByLabelText(/Associate Deal To/), { target: { value: 'lead' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search leads' }), { target: { value: 'leads-1' } });
+  }
+  const form = screen.getByLabelText(/Title/).closest('form')!;
+  fireEvent.submit(form);
+  await waitFor(() => expect(toast.error).toHaveBeenCalledExactlyOnceWith(employeeMessage));
+  expect(await screen.findAllByText(employeeMessage)).toHaveLength(2);
+  expect(screen.getByRole('combobox', { name: 'Search leads' })).toHaveProperty('value', 'leads-1');
+  expect(screen.getByLabelText(/Title/)).toHaveProperty('value', 'Draft opportunity');
+  expect(close).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search leads' }), { target: { value: 'leads-2' } });
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(mode === 'create' ? save.mock.calls[1][0].leadIds : save.mock.calls[1][0].primaryAssociation.id).toEqual(mode === 'create' ? ['leads-2'] : 'leads-2');
+});
 afterEach(cleanup);
 beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); fixture.addressOptions = []; fixture.data = { fields: [], values: {}, files: [] }; });
 it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visibleInForm => [false, true].map(visibleInDetails => ({ mode, visibleInForm, visibleInDetails })))))('$mode Deal uses Forms=$visibleInForm independently of Details=$visibleInDetails', ({ mode, visibleInForm, visibleInDetails }) => {

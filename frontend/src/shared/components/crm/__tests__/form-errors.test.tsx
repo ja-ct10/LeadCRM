@@ -1,7 +1,11 @@
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { InlineEditRows } from '../inline-edit-rows';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR as employeeMessage } from '@leadcrm/shared';
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [], organizations: [], contacts: [], pipelines: [] }) }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { role: 'Client Admin' }, userCan: () => true }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
@@ -16,6 +20,23 @@ import { DealEditForm } from '@/features/tenant/crm/deals/ui/deal-edit-form';
 import type { Deal } from '@/store/types';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 afterEach(cleanup);
+it('keeps an inline employee email edit open with an error toast and accepts correction', async () => {
+  vi.clearAllMocks();
+  const save = vi.fn().mockRejectedValueOnce(Object.assign(new Error(employeeMessage), { status: 400, fieldErrors: { email: [employeeMessage] } })).mockResolvedValue(undefined);
+  render(<InlineEditRows canEdit onSave={save} rows={[{ label: 'Email', apiField: 'email', value: 'customer@example.test', type: 'email' }]} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Email' }));
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'employee@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toBe(employeeMessage);
+  expect(screen.getByLabelText('Email')).toHaveProperty('value', 'employee@example.test');
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith(employeeMessage);
+  expect(toast.success).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'external@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByLabelText('Email')).toBeNull());
+});
 beforeEach(() => { HTMLElement.prototype.scrollIntoView = vi.fn(); });
 
 const emptyDeal: Deal = {

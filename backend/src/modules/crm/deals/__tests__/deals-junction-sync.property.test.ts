@@ -76,6 +76,8 @@ function setupMocksForIteration(currentIds: string[], targetIds: string[], curre
       deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) },
       leadDeal: mockLeadDeal,
       lead: mockLead,
+      contactDeal: { findMany: vi.fn().mockResolvedValue([]) },
+      user: { findMany: vi.fn().mockResolvedValue([]) },
     };
     return cb(txClient);
   });
@@ -87,9 +89,8 @@ function setupMocksForIteration(currentIds: string[], targetIds: string[], curre
 
   // All target IDs that are new are valid in tenant
   const expectedAdditions = targetIds.filter((id) => !currentSet.has(id));
-  mockLead.findMany.mockResolvedValue(
-    expectedAdditions.map((id) => ({ id })),
-  );
+  mockLead.findMany.mockImplementation(async ({ select }) =>
+    (select.email ? targetIds : expectedAdditions).map(id => ({ id, email: `${id}@customer.example.test` })));
 
   mockLeadDeal.deleteMany.mockResolvedValue({ count: 0 });
   mockLeadDeal.createMany.mockResolvedValue({ count: 0 });

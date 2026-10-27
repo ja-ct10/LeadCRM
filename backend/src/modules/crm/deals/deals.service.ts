@@ -1,4 +1,6 @@
 import { assertDealAddressSource } from './deal-address';
+import { ZodError } from 'zod';
+import { assertExternalCustomerParticipants } from '../record-validation';
 import { randomUUID } from 'node:crypto';
 import { refreshDealClassification } from '../customer-classification.service';
 import { changeDealAssociation, readDealAssociation, resolveManualDealAssociation } from './deal-association';
@@ -25,7 +27,7 @@ import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle'
  * - Connection/infrastructure errors → logged server-side, then re-thrown for global handler (500)
  */
 function mapRepositoryError(error: unknown, context: string): never {
-  if (error instanceof AppError) throw error;
+  if (error instanceof AppError || error instanceof ZodError) throw error;
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2025') throw new ConflictError('This Deal is no longer active or has changed. Reopen it before editing.');
     if (error.code === 'P2002') {
@@ -275,6 +277,9 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
 
   const source = await repo.findDealById(id, tenantId);
   if (!source) throw new NotFoundError('Deal');
+  await assertExternalCustomerParticipants(salesContext.getStore() ?? prisma, tenantId, {
+    leadIds: source.leadDeals.map(link => link.leadId), contactIds: source.contactDeals.map(link => link.contactId),
+  });
   const initialStage = await (salesContext.getStore() ?? prisma).stage.findFirst({ where: { tenantId, pipelineId: source.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
   if (!initialStage) throw new ValidationError('Configure a Lead stage before duplicating an opportunity.');
 
