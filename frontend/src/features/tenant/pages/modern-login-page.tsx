@@ -394,40 +394,11 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   // Forgot password - email input form
   if (authView === 'forgot') {
     return (
-      <div className="min-h-[var(--app-viewport-height)] flex">
-        {/* Left side - Blue gradient section */}
-        <div
-          className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
-          }}
-        >
-          {/* Geometric pattern overlay */}
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
-            <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
-          </div>
-
-          <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-            {/* Logo */}
-            <button
-              onClick={() => onNavigate('login')}
-              className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
-            >
-              <AppLogo className="w-48 p-2" />
-            </button>
-
-            {/* Center content */}
-            <div className="space-y-6">
-              <h1 className="font-display text-4xl font-bold leading-tight">
-                Secure Password Reset
-              </h1>
-              <p className="text-blue-100 text-lg max-w-md">
-                We'll send you a secure link to reset your password. Check your inbox and spam folder.
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-[var(--app-viewport-height)] flex flex-col lg:flex-row">
+        <CamxianBrandPanel
+          heading="Secure Password Reset"
+          description="We'll send you a secure link to reset your password. Check your inbox and spam folder."
+        />
 
         {/* Right side - Form */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 bg-white dark:bg-slate-950">
@@ -440,6 +411,9 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
             </button>
 
             <div>
+              <AppBrand className="mx-auto mb-6 w-64">
+                <AppLogo className="w-full bg-transparent p-2" />
+              </AppBrand>
               <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-2">
                 Forgot password?
               </h2>
