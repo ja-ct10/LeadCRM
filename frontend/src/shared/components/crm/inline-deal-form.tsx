@@ -15,6 +15,7 @@ import { ProductInterestSelect } from './product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@/shared/utils/toast';
+import { applyCrmAssociationError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { Button } from '@/shared/components/ui/button';
 import { useData } from '@/store/DataContext';
 import { cn } from '@/lib/utils';
@@ -152,9 +153,10 @@ export function InlineDealForm({
     try {
       await onSubmit(payload);
     } catch (error) {
+      applyCrmAssociationError(error, setError, 'associationId');
       if (error instanceof Error && error.message.startsWith('Customer Address:')) setError('addressSource', { type: 'server', message: error.message });
-      if (!onError) throw error;
-      onError(error);
+      if (onError) onError(error);
+      else showCrmMutationError(error, 'Unable to save Deal.');
       return;
     }
     reset();

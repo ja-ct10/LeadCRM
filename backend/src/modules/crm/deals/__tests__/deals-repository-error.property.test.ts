@@ -26,6 +26,8 @@ vi.mock('../../../../config/database.config', () => {
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    leadDeal: { findMany: vi.fn().mockResolvedValue([]) },
+    contactDeal: { findMany: vi.fn().mockResolvedValue([]) },
     closingFieldDefinition: { findMany: vi.fn().mockResolvedValue([]), createMany: vi.fn() },
     customFieldValue: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),

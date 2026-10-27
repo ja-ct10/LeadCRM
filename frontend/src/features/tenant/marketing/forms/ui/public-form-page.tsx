@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { FORM_TRACKING_KEYS, publicSubmissionContent, validateFormValues, type PublicFormDefinition } from '@leadcrm/shared';
 import { FormInput } from './form-input';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 export default function PublicFormPage({ publicId }: { publicId: string }) {
   const receipt = useRef<{ content: string; requestId: string } | undefined>(undefined);
   const submitting = useRef(false);
@@ -30,7 +31,10 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
       const body = await r.json();
       if (!r.ok) { if (body.fieldErrors) setErrors(body.fieldErrors); throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Submission failed. Please try again.'); }
       setDone(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.'); } finally { setBusy(false); submitting.current = false; }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.');
+      showCrmMutationError(err, 'Unable to submit. Please retry.');
+    } finally { setBusy(false); submitting.current = false; }
   }
   return <main className="min-h-[var(--app-viewport-height)] bg-slate-100 px-3 py-6 sm:p-8 text-slate-900">
     <div className="w-full max-w-2xl mx-auto min-w-0">

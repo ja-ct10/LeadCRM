@@ -1,7 +1,7 @@
 'use client';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
-import { applyCrmFieldErrors } from '@/shared/utils/crm-mutation-error';
+import { applyCrmFieldErrors, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 
 import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
@@ -229,6 +229,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     catch (error: unknown) {
       applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
       organization.applyServerErrors(error);
+      showCrmMutationError(error, 'Unable to save Lead.');
       setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.');
     } finally { saving.current = false; setIsSaving(false); }
   };

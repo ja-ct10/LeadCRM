@@ -11,6 +11,8 @@ import {
   within,
 } from "@testing-library/react";
 const api = vi.hoisted(() => ({ get: vi.fn(), options: vi.fn(), post: vi.fn() }));
+const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+vi.mock('@/shared/utils/toast', () => ({ toast: notifications }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/store/DataContext", () => {
   const data = { users: [], contacts: [], organizations: [], deals: [] };
@@ -150,10 +152,15 @@ it("preserves a failed contact draft and selects the saved response only after a
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Contact save failed",
   );
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(notifications.error).toHaveBeenCalledExactlyOnceWith('Contact save failed');
+  expect(notifications.success).not.toHaveBeenCalled();
   expect(created).not.toHaveBeenCalled();
   expect(
     (screen.getByLabelText(/first name \*/i) as HTMLInputElement).value,
   ).toBe("Test");
+  expect((screen.getByLabelText(/email/i) as HTMLInputElement).value).toBe('task-contact@example.test');
+  await waitFor(() => expect((screen.getByRole('button', { name: /create contact/i }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: /create contact/i }));
   await waitFor(() =>
     expect(created).toHaveBeenCalledWith({
@@ -165,6 +172,8 @@ it("preserves a failed contact draft and selects the saved response only after a
     "/crm/contacts",
     expect.objectContaining({ firstName: "Test", lastName: "Person" }),
   );
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(notifications.error).toHaveBeenCalledTimes(1);
 });
 
 it("uses shared column drafts, protects defaults and retries failed persistence", async () => {
