@@ -4,6 +4,7 @@ import { type ReactNode } from 'react';
 import { Compass, type LucideIcon } from 'lucide-react';
 import { useLogoutConfirmation } from '@/shared/providers/logout-confirmation-provider';
 import { AppLogo } from '@/shared/components/app-logo';
+import { CamxianBrandPanel } from '../../pages/camxian-brand-panel';
 
 export function OnboardingShell({
   step, totalSteps, title = 'Welcome to LeadCRM', description = 'Your customer relationships and daily work, together.',
@@ -11,17 +12,8 @@ export function OnboardingShell({
 }: { step: number; totalSteps?: number; title?: string; description?: string; icon?: LucideIcon; children: ReactNode }) {
   const requestLogout = useLogoutConfirmation();
   return (
-    <main className="grid min-h-[var(--app-viewport-height)] bg-white text-slate-900 lg:grid-cols-2 dark:bg-slate-950 dark:text-white">
-      <aside className="flex min-w-0 flex-col bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 p-5 text-white sm:p-10 lg:min-h-[var(--app-viewport-height)] lg:p-12 xl:p-16">
-        <div className="flex items-center gap-3 text-2xl font-bold">
-          <AppLogo className="w-48 p-2.5" />
-        </div>
-        <div className="my-8 max-w-lg lg:my-auto lg:py-16">
-          <Icon aria-hidden="true" className="mb-5 h-10 w-10 lg:mb-8 lg:h-14 lg:w-14" strokeWidth={1.5} />
-          <h2 className="text-3xl font-bold leading-tight sm:text-4xl xl:text-5xl">{title}</h2>
-          <p className="mt-4 text-base leading-relaxed text-blue-50 sm:text-lg lg:mt-6 lg:text-xl">{description}</p>
-        </div>
-        {totalSteps ? <div className="max-w-lg">
+    <main className="flex min-h-[var(--app-viewport-height)] flex-col bg-white text-slate-900 lg:flex-row dark:bg-slate-950 dark:text-white">
+      <CamxianBrandPanel branding={<AppLogo className="w-full p-2.5" />} footer={totalSteps ? <div className="max-w-lg">
           <p className="mb-3 text-sm text-blue-50">Step {step + 1} of {totalSteps}</p>
           <ol aria-label="Onboarding progress" className="flex gap-2">
             {Array.from({ length: totalSteps }, (_, index) => <li key={index}
@@ -30,9 +22,14 @@ export function OnboardingShell({
               <span className="sr-only">Step {index + 1}{index < step ? ', visited' : ''}</span>
             </li>)}
           </ol>
-        </div> : <p className="text-sm text-blue-50">Camxian Technologies · Secure account setup</p>}
-      </aside>
-      <section className="flex min-w-0 flex-col px-5 py-5 sm:px-10 lg:px-12 xl:px-16">
+        </div> : <p className="text-sm text-blue-50">Camxian Technologies · Secure account setup</p>}>
+        <div className="max-w-lg py-2 lg:py-8">
+          <Icon aria-hidden="true" className="mb-5 h-10 w-10 lg:mb-8 lg:h-14 lg:w-14" strokeWidth={1.5} />
+          <h2 className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl">{title}</h2>
+          <p className="mt-4 text-base leading-relaxed text-blue-100">{description}</p>
+        </div>
+      </CamxianBrandPanel>
+      <section className="flex w-full min-w-0 flex-col px-5 py-5 sm:px-10 lg:w-1/2 lg:px-12 xl:px-16">
         <div className="mb-6 flex justify-end">
           <button type="button" onClick={requestLogout}
             className="min-h-11 rounded-lg px-2 text-sm text-slate-500 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50">

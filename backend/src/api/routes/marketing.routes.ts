@@ -50,6 +50,7 @@ router.get('/audiences', authorize('campaigns.view'), audienceController.getAudi
 router.post('/audiences/preview', authorize('campaigns.view'), writeLimiter, audienceController.previewAudience);
 router.post('/audiences', authorize('campaigns.create'), writeLimiter, audienceController.createAudience);
 router.put('/audiences/:id', authorize('campaigns.edit'), writeLimiter, audienceController.updateAudience);
+router.delete('/audiences/:id', authorize('campaigns.edit'), writeLimiter, audienceController.deleteAudience);
 // ── Campaigns ─────────────────────────────────────────
 router.get(   '/campaigns',             authorize('campaigns.view'),   campaignController.getCampaigns);
 router.get(   '/campaigns/:id',         authorize('campaigns.view'),   campaignController.getCampaignById);

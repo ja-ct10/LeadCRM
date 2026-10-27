@@ -12,7 +12,7 @@ import { normalizeSmsPhone } from '../../../shared/services/sms.service';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, campaignPersonalizationAvailable, campaignApprovedVariableKeys } from '@leadcrm/shared';
 import { retiredContactReferences } from '@leadcrm/shared';
 import { mayReadContactAccount, presentContactAccount } from '../../crm/contacts-v2/contact-account-access';
-import { crmActor, crmReadWhere } from '../../crm/access/crm-record-access.service';
+import { crmActor, crmReadWhere, readCrmStatusEvidence } from '../../crm/access/crm-record-access.service';
 
 export function campaignScope(tenantId: string) {
   const context = tenantContext.getStore();
@@ -123,6 +123,29 @@ export async function updateAudience(tenantId: string, id: string, input: unknow
     await tx.targetAudience.update({ where: { id }, data: { name: dto.name, source: dto.source, matchMode: dto.matchMode, conditions: { deleteMany: {}, create: dto.conditions.map((condition, index) => ({ field: condition.field, operator: condition.operator, value: JSON.stringify(condition.value), conditionOrder: index })) } } });
     return { id, ...dto };
   });
+}
+export async function deleteAudience(tenantId: string, id: string) {
+  const scope = campaignScope(tenantId);
+  if (['LEADS', 'CONTACTS', 'ALL'].includes(id)) throw new AppError('Built-in target audiences cannot be deleted.', 400);
+  try {
+    await prisma.$transaction(async tx => {
+      // The row lock also blocks new campaign FK references until this transaction commits.
+      // Raw queries require an explicit tenant predicate and the existing narrow context exit.
+      const rows = await tenantContext.exit(async () => await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "TargetAudience" WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`);
+      if (!rows.length) throw new AppError('Target audience not found.', 404);
+      const referenced = await readCrmStatusEvidence(async () => await tx.campaign.findFirst({
+        where: { ...scope, targetAudienceId: id }, select: { id: true },
+      }));
+      if (referenced) throw new AppError('This target audience is used by an existing campaign and cannot be deleted. Choose another audience for that campaign first. Archived campaigns also prevent deletion.', 409);
+      await tx.targetAudience.delete({ where: { id, ...scope } });
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new AppError('This target audience is still referenced by another record and cannot be deleted.', 409);
+    }
+    throw error;
+  }
 }
 export async function audienceDefinition(tenantId: string, id?: string | null, source?: string | null, db: Prisma.TransactionClient = prisma): Promise<AudienceInput> {
   if (id) {

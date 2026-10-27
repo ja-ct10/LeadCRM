@@ -348,12 +348,12 @@ describe('first-login permission initialization with the real AuthProvider and m
     expect(redirectTargets()).toContain('/change-password');
     navigate('/change-password');
     expect(permissionsApiMock).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText(/^Old Password/), { target: { value: 'Temporary1!' } });
-    fireEvent.change(screen.getByLabelText(/^New password/), { target: { value: 'PermanentPassword1!' } });
-    fireEvent.change(screen.getByLabelText(/^Confirm new password/), { target: { value: 'PermanentPassword1!' } });
+    expect(screen.queryByLabelText(/^Old Password/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^New Password/), { target: { value: 'PermanentPassword1!' } });
+    fireEvent.change(screen.getByLabelText(/^Confirm New Password/), { target: { value: 'PermanentPassword1!' } });
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     await waitFor(() => expect(redirectTargets()).toContain('/onboarding'));
-    expect(changePasswordApiMock).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'Temporary1!', password: 'PermanentPassword1!' });
+    expect(changePasswordApiMock).toHaveBeenCalledExactlyOnceWith({ password: 'PermanentPassword1!' });
     navigate('/onboarding');
     expect(permissionsApiMock).not.toHaveBeenCalled();
     if (completion === 'Finish') for (let step = 1; step < 8; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));

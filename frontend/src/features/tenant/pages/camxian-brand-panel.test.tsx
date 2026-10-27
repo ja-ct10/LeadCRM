@@ -7,9 +7,20 @@ vi.mock('motion/react', () => {
   return { motion: { div: wrap('div'), p: wrap('p'), h1: wrap('h1'), ul: wrap('ul'), section: wrap('section'), button: wrap('button') }, AnimatePresence: ({ children }: { children: React.ReactNode }) => children, useReducedMotion: () => state.reduced };
 });
 import { CamxianBrandPanel } from './camxian-brand-panel';
+import { AppLogo } from '@/shared/components/app-logo';
 beforeEach(() => { vi.useFakeTimers(); state.reduced = false; });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('Camxian solutions', () => {
+  it('reuses the logo and white attribution with setup content and progress instead of marketing', () => {
+    render(<CamxianBrandPanel branding={<AppLogo />} footer={<p>Step 1 of 8</p>}><h2>Secure account setup</h2></CamxianBrandPanel>);
+    expect(screen.getByRole('img', { name: 'Camxian Technologies' }).getAttribute('src')).toBe('/camxian_logo.png');
+    expect(screen.getByText('Powered by LeadCRM').className).toContain('text-white');
+    expect(screen.getByText('Powered by LeadCRM').className).toContain('dark:text-white');
+    expect(screen.getByRole('heading', { name: 'Secure account setup' })).toBeTruthy();
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Our solutions' })).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('keeps the Login heading and description by default', () => {
     render(<CamxianBrandPanel />);
     expect(screen.getByRole('heading', { name: /Technology that will\s+shape your future\./ })).toBeTruthy();

@@ -4,7 +4,9 @@ import { notificationsApi } from '@/shared/services/notifications.api';
 import { toast } from 'sonner';
 
 export function opensNotificationRecord(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): boolean {
-  return NotificationRecordTargetSchema.safeParse({ entityType: notification.entityType, entityId: notification.entityId }).success;
+  // Team Management opens the directory and keeps its existing read-on-click behavior.
+  return notification.entityType !== 'User'
+    && NotificationRecordTargetSchema.safeParse({ entityType: notification.entityType, entityId: notification.entityId }).success;
 }
 
 /** Only application-owned destinations; notification data cannot supply arbitrary URLs. */

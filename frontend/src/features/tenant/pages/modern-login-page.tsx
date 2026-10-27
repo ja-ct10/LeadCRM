@@ -316,40 +316,20 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   // Forgot password - email sent confirmation
   if (authView === 'forgot-sent') {
     return (
-      <div className="min-h-[var(--app-viewport-height)] flex">
-        {/* Left side - Blue gradient section */}
-        <div
-          className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
-          }}
-        >
-          {/* Geometric pattern overlay */}
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
-            <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
+      <div className="min-h-[var(--app-viewport-height)] flex flex-col lg:flex-row">
+        <CamxianBrandPanel branding={
+          <button type="button" onClick={() => { setAuthView('login'); onNavigate('login'); }}
+            className="w-full rounded hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-4">
+            <AppLogo className="w-full p-2" />
+          </button>
+        }>
+          <div className="max-w-lg space-y-4 py-2 lg:py-8">
+            <h1 className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl">Password reset email requested</h1>
+            <p className="max-w-sm text-base leading-relaxed text-blue-100">
+              If your account is eligible, check your inbox and spam folder for the password reset link.
+            </p>
           </div>
-
-          <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-            {/* Logo */}
-            <button
-              onClick={() => onNavigate('login')}
-              className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
-            >
-              <AppLogo className="w-48 p-2" />
-            </button>
-
-            {/* Center content */}
-            <div className="space-y-6">
-              <h1 className="font-display text-4xl font-bold leading-tight">
-                Password reset email requested
-              </h1>
-              <p className="text-blue-100 text-lg max-w-md">
-                If your account is eligible, check your inbox and spam folder for the password reset link.
-              </p>
-            </div>
-          </div>
-        </div>
+        </CamxianBrandPanel>
 
         {/* Right side - Confirmation */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 bg-white dark:bg-slate-950">

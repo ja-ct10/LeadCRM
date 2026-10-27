@@ -134,13 +134,13 @@ describe.sequential('first login with real sessions and migrated disposable Post
       expect((await call(path, undefined, cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
     }
     expect((await call('/auth/onboarding/complete', {}, cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-    const reuse = await call('/auth/change-password', { currentPassword: password, password }, cookie);
+    const reuse = await call('/auth/change-password', { password }, cookie);
     expect(reuse.status).toBe(400);
     expect(reuse.body.error).toMatchObject({ code: 'PASSWORD_REUSE', message: 'You cannot reuse your temporary password. Please choose a new password.' });
-    expect((await call('/auth/change-password', { currentPassword: password, password: 'weak' }, cookie)).status).toBe(400);
+    expect((await call('/auth/change-password', { password: 'weak' }, cookie)).status).toBe(400);
     await db.passwordResetToken.create({ data: { userId: id, email: tester.email, token: `old-reset-${id}`, expires: new Date(Date.now() + 60_000) } });
     const permanent = 'DifferentPermanent1!';
-    const changed = await call('/auth/change-password', { currentPassword: password, password: permanent }, cookie);
+    const changed = await call('/auth/change-password', { password: permanent }, cookie);
     expect(changed.status).toBe(200);
     expect(changed.body.data.user).toMatchObject({ mustChangePassword: false, onboardingCompletedAt: null });
     expect((await call('/auth/me', undefined, other.cookie)).status).toBe(401);

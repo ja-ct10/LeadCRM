@@ -61,7 +61,7 @@ export interface NotificationMutationResponse {
 }
 
 export const NotificationRecordTargetSchema = z.object({
-  entityType: z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form']),
+  entityType: z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User']),
   entityId: z.string().uuid(),
 }).strict();
 export type NotificationRecordTarget = z.infer<typeof NotificationRecordTargetSchema>;

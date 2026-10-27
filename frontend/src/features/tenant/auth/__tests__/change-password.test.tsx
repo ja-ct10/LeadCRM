@@ -8,7 +8,7 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/change-password', useRo
 import ChangePasswordPage from '../ui/change-password-page';
 import { LogoutConfirmationProvider } from '@/shared/providers/logout-confirmation-provider';
 function show() { return render(<LogoutConfirmationProvider><ChangePasswordPage /></LogoutConfirmationProvider>); }
-beforeEach(() => { cleanup(); vi.resetAllMocks(); user.onboardingCompletedAt = null; });
+beforeEach(() => { cleanup(); vi.resetAllMocks(); user.mustChangePassword = true; user.onboardingCompletedAt = null; });
 it('keeps the first-login password and tour copy', () => {
   show();
   expect(screen.getByRole('heading', { name: 'Change your temporary password' })).toBeTruthy();
@@ -21,16 +21,15 @@ it('uses returning-user copy without promising another onboarding tour', () => {
   expect(screen.queryByText(/short tour|permanent password/)).toBeNull();
 });
 function fill(confirm = 'Personal2!') {
-  fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'OldPassword1!' } });
-  fireEvent.change(screen.getByLabelText('New password *'), { target: { value: 'Personal2!' } });
-  fireEvent.change(screen.getByLabelText('Confirm new password *'), { target: { value: confirm } });
+  fireEvent.change(screen.getByLabelText('New Password *'), { target: { value: 'Personal2!' } });
+  fireEvent.change(screen.getByLabelText('Confirm New Password *'), { target: { value: confirm } });
   fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
 }
 it('changes credentials then applies the canonical response using the preserved session', async () => {
   changePassword.mockResolvedValue({ success: true, data: { user: { id: 'employee', mustChangePassword: false } } });
   show(); fill();
   await waitFor(() => expect(applyAuthUser).toHaveBeenCalledWith({ id: 'employee', mustChangePassword: false }, 'employee'));
-  expect(changePassword).toHaveBeenCalledWith({ currentPassword: 'OldPassword1!', password: 'Personal2!' });
+  expect(changePassword).toHaveBeenCalledWith({ password: 'Personal2!' });
 });
 it('does not update authentication after the server rejects password reuse', async () => {
   changePassword.mockRejectedValue(new Error('Choose a password different from your current password.'));
@@ -47,12 +46,25 @@ it('shows the exact inline error when the lowercase temporary credential is reus
   const message = 'You cannot reuse your temporary password. Please choose a new password.';
   changePassword.mockRejectedValue(Object.assign(new Error(message), { code: 'PASSWORD_REUSE' }));
   show();
-  fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'first.last42' } });
-  fireEvent.change(screen.getByLabelText('New password *'), { target: { value: 'first.last42' } });
-  fireEvent.change(screen.getByLabelText('Confirm new password *'), { target: { value: 'first.last42' } });
+  fireEvent.change(screen.getByLabelText('New Password *'), { target: { value: 'first.last42' } });
+  fireEvent.change(screen.getByLabelText('Confirm New Password *'), { target: { value: 'first.last42' } });
   fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
   expect((await screen.findByRole('alert')).textContent).toBe(message);
-  expect(changePassword).toHaveBeenCalledWith({ currentPassword: 'first.last42', password: 'first.last42' });
+  expect(changePassword).toHaveBeenCalledWith({ password: 'first.last42' });
   expect(applyAuthUser).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: /cancel|skip/i })).toBeNull();
+});
+it.each([null, '2026-01-01'])('renders only two password fields for mandatory setup or renewal (onboarded=%s)', completed => {
+  user.onboardingCompletedAt = completed;
+  const { container } = show();
+  expect(screen.queryByLabelText(/Old Password/)).toBeNull();
+  expect(container.querySelectorAll('form input')).toHaveLength(2);
+  const password = screen.getByLabelText('New Password *');
+  const confirm = screen.getByLabelText('Confirm New Password *');
+  expect(password.getAttribute('autocomplete')).toBe('new-password');
+  fireEvent.click(screen.getByRole('button', { name: 'Show new password' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show confirm new password' }));
+  expect(password.getAttribute('type')).toBe('text');
+  expect(confirm.getAttribute('type')).toBe('text');
+  expect(screen.getByRole('progressbar')).toBeTruthy();
 });

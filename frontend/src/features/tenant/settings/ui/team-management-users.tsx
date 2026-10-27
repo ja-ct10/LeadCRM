@@ -2,12 +2,14 @@
 import type { DeactivationImpact } from '@leadcrm/shared';
 import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { CreateButton } from '@/shared/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import {
-  Archive, Eye, Pencil, UserCheck, UserX, Unlock,
+  Archive, Eye, Pencil, UserCheck, UserX, Unlock, Users,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -27,7 +29,8 @@ import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
 import { USERS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { UserPanel } from './user-panel';
 import { UserAvatar as ProfileAvatar, administrationAvatarUrl } from '@/shared/components/user-avatar';
-import { DataErrorState } from '@/shared/components/crm/data-view-states';
+import { DataErrorState, TableRefreshContext } from '@/shared/components/crm/data-view-states';
+import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { cn } from '@/lib/utils';
 import type { User } from '@/store/types';
@@ -60,15 +63,16 @@ function roleColor(role: string): string {
 // ── Main UsersSubTab ──────────────────────────────────────────────────────────
 
 export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (action: React.ReactNode) => React.ReactNode; onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
-  const { user: currentUser, userCan } = useAuth();
+  const { user: currentUser, userCan, isPermissionsLoaded, permissionsError, refreshPermissions } = useAuth();
   const { roles, rolesLoading, rolesError, refreshRoles } = useData();
   const { sort: savedSort, setSort } = useTablePreferences('users');
   const sort = savedSort ?? { field: 'createdAt', direction: 'desc' as const };
   const [reload, setReload] = useState(0);
   const [unlocking, setUnlocking] = useState<string | null>(null);
+  const unlockPending = useRef(false);
   const tenantId = currentUser?.tenantId ?? '';
   const directory = useCachedPage<User[]>({
-    module: 'users', params: { directory: true, sort }, disabled: !userCan('users', 'canView'), revalidateOnInvalidation: true,
+    module: 'users', params: { directory: true, sort }, disabled: !isPermissionsLoaded || !!permissionsError || !userCan('users', 'canView'), revalidateOnInvalidation: true,
     fetchFn: async signal => {
       const result: User[] = [];
       for (let page = 1; !signal.aborted; page++) {
@@ -80,8 +84,9 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     },
   });
   const allUsers = directory.data ?? [];
-  const loading = directory.isInitialLoad;
-  const loadError = directory.error;
+  const loading = (!isPermissionsLoaded && !permissionsError) || directory.isInitialLoad;
+  const loadError = permissionsError || directory.error;
+  const retryUsers = () => { if (permissionsError) void refreshPermissions(); else void directory.refetch(); };
   const allUsersRef = useRef(allUsers); allUsersRef.current = allUsers;
   const setAllUsers = (update: React.SetStateAction<User[]>) => {
     const next = typeof update === 'function' ? update(allUsersRef.current) : update;
@@ -143,6 +148,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       return matchSearch && matchRole && matchStatus && (groupFilter.length === 0 || u.groups?.some(group => groupFilter.includes(group.id)));
     });
   }, [tenantUsers, search, roleFilter, statusFilter, groupFilter, sort]);
+  const showNoMatches = tenantUsers.length > 0 || !!(search.trim() || roleFilter.length || statusFilter.length || groupFilter.length);
 
   const { currentPage, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
     totalItems: filtered.length,
@@ -206,6 +212,19 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const canAssignRoles = userCan('roles', 'canAssign');
   const canManageUsers = userCan('users', 'canEdit'), canCreateUsers = userCan('users', 'canCreate') && userCan('roles', 'canAssign'), canActivateUsers = userCan('users', 'canActivate'), canArchiveUsers = userCan('users', 'canArchive');
   const canDeactivateUsers = canActivateUsers && currentUser?.role === 'Client Admin';
+  const canUnlock = (target: User) => !!target.securityLockedAt && currentUser?.role === 'Client Admin'
+    && canActivateUsers && userCan('users', 'canView');
+  const handleUnlock = async (target: User) => {
+    if (!canUnlock(target) || unlockPending.current) return;
+    unlockPending.current = true; setUnlocking(target.id);
+    try {
+      await usersService.unlock(target.id);
+      setAllUsers(previous => previous.map(user => user.id === target.id ? { ...user, securityLockedAt: null } : user));
+      toast.success('Account security lock removed.');
+      setReload(value => value + 1);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to unlock account.'); }
+    finally { unlockPending.current = false; setUnlocking(null); }
+  };
   const statusDisabledReason = (target: User) => {
     if (!canActivateUsers) return 'You do not have permission to change user status.';
     if (target.status === 'active' && !canDeactivateUsers) return 'Client Admin is required to deactivate and reassign ownership.';
@@ -222,12 +241,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     return undefined;
   };
   const managementActions = (target: User): RowActionItem[] => [
-    ...(target.securityLockedAt && currentUser?.role === 'Client Admin' && userCan('users', 'canActivate') && userCan('users', 'canView') ? [{ id: 'unlock', label: 'Unlock account', icon: <Unlock size={14} />, disabled: !!unlocking, onClick: async () => {
-      if (unlocking) return; setUnlocking(target.id);
-      try { await usersService.unlock(target.id); toast.success('Account security lock removed.'); setReload(value => value + 1); }
-      catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to unlock account.'); }
-      finally { setUnlocking(null); }
-    } }] : []),
+    ...(canUnlock(target) ? [{ id: 'unlock', label: 'Unlock account', icon: <Unlock size={14} />, disabled: !!unlocking, onClick: () => handleUnlock(target) }] : []),
     { id: 'status', label: target.status === 'active' ? 'Deactivate' : 'Activate',
       icon: target.status === 'active' ? <UserX size={14} /> : <UserCheck size={14} />,
       disabled: !!statusDisabledReason(target), disabledReason: statusDisabledReason(target), onClick: () => void beginStatusChange(target) },
@@ -236,15 +250,21 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       onClick: () => { if (!archiveDisabledReason(target)) setConfirmArchive(target); } },
   ];
   const columns: DataGridColumnDef<User>[] = [
-    { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
+    { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span><UnreadRecordDot entityType="User" entityId={u.id} /></button> },
     { id: 'role', sortable: true, header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
     { id: 'email', sortable: true, header: 'Contact', accessor: u => u.email, width: 250, cell: (_, u) => <div><p>{u.email}</p><p className="text-xs text-muted-foreground">{u.phone}</p></div> },
     { id: 'status', sortable: true, header: 'Status', accessor: u => u.status ?? 'active', width: 110, cell: (_, u) => <span className={cn('rounded-full px-2 py-1 text-xs', u.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500')}>{u.status ?? 'active'}</span> },
     { id: 'groups', sortable: true, header: 'Groups', accessor: u => u.groups?.map(group => group.name).join(', ') || '—', width: 180 },
-    { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => {
+    { id: 'activity', header: 'Actions', accessor: () => '', width: 120, minWidth: 120, cell: (_, u) => {
       const active = u.status === 'active';
       const label = active ? `Deactivate ${u.firstName} ${u.lastName}` : `Activate ${u.firstName} ${u.lastName}`;
-      return <button type="button" aria-label={label} title={statusDisabledReason(u) || (active ? 'Deactivate user' : 'Activate user')} disabled={!!statusDisabledReason(u)} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
+      return <div className="flex items-center gap-1">
+        <button type="button" aria-label={label} title={statusDisabledReason(u) || (active ? 'Deactivate user' : 'Activate user')} disabled={!!statusDisabledReason(u)} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>
+        {canUnlock(u) && <TooltipProvider><Tooltip><TooltipTrigger asChild>
+          <button type="button" aria-label="Unlock account" title="Unlock account" disabled={!!unlocking}
+            className="flex min-h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void handleUnlock(u)}><Unlock size={16} aria-hidden="true" /></button>
+        </TooltipTrigger><TooltipContent>Unlock account</TooltipContent></Tooltip></TooltipProvider>}
+      </div>;
     } },
   ];
 
@@ -258,7 +278,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       <ModuleTableToolbar stackSearchOnMobile label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
         filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || groupFilter.length)} onClick={() => setShowFilters(value => !value)} />}
-        refreshing={loading || directory.isRefreshing} onRefresh={directory.refetch} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
+        refreshing={loading || directory.isRefreshing} onRefresh={retryUsers} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
         sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); goToPage(1); }} />
 
       <div className="flex min-w-0 gap-3 items-stretch">
@@ -275,8 +295,16 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
             else if (group === 'role') setRoleFilter(update);
           }} />
         <div className="min-w-0 flex-1 space-y-4">
-          {loadError && allUsers.length > 0 && <div role="alert">{loadError} <button type="button" disabled={directory.isRefreshing} onClick={() => void directory.refetch()}>Retry users</button></div>}
-          {loading ? <TableLoadingState label="Loading users..." /> : loadError && !allUsers.length ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
+          {loadError && allUsers.length > 0 && <div role="alert">{loadError} <button type="button" disabled={directory.isRefreshing} onClick={retryUsers}>Retry users</button></div>}
+          {loading ? <TableLoadingState label="Loading users..." /> : loadError && !allUsers.length ? <DataErrorState message={loadError} onRetry={retryUsers} /> : !loadError && filtered.length === 0 ?
+            <TableRefreshContext.Provider value={directory.isManualRefreshing}>
+              <ActionableEmptyState icon={Users}
+                title={showNoMatches ? 'No matching records' : 'No users yet'}
+                description={showNoMatches ? 'Try a different search term or clear your filters.' : 'Add your first user to manage your team.'}
+                actionLabel={!showNoMatches && canCreateUsers ? 'Add User' : undefined}
+                onAction={!showNoMatches && canCreateUsers ? () => setIsAddOpen(true) : undefined}
+                actionDisabled={rolesLoading || !!rolesError} />
+            </TableRefreshContext.Provider> :
             <DataGrid<User> isRefreshing={directory.isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: "createdAt", direction: "desc" }} onSortReset={() => setSort(null)} onSortChange={next => setSort(next)} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu ariaLabel="Team Management table" summaryLabel={`${totalItems} total records`} emptyMessage="No users found"
               onRowClick={u => openUser(u)} rowActions={u => [
                 { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => openUser(u) },
@@ -289,7 +317,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
             actions={canArchiveUsers ? [{ id: 'archive', label: 'Archive', entityName: 'user', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, usersService.archive); setReload(value => value + 1); return result; } }] : []} />
 
           {/* Pagination */}
-          {!loading && !loadError && (
+          {!loading && !loadError && filtered.length > 0 && (
             <LeadsPagination
               currentPage={currentPage}
               pageSize={pageSize}

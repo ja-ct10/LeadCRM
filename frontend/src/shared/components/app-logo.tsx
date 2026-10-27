@@ -13,11 +13,11 @@ export function AppLogo({ className, compact = false }: { className?: string; co
   );
 }
 
-export function AppBrand({ children, className }: { children: ReactNode; className?: string }) {
+export function AppBrand({ children, className, captionClassName }: { children: ReactNode; className?: string; captionClassName?: string }) {
   return (
     <div className={cn('flex max-w-full flex-col items-center gap-2 text-center', className)}>
       {children}
-      <p className="w-full text-center text-xs leading-5 text-slate-500 dark:text-slate-400">Powered by LeadCRM</p>
+      <p className={cn('w-full text-center text-xs leading-5 text-slate-500 dark:text-slate-400', captionClassName)}>Powered by LeadCRM</p>
     </div>
   );
 }

@@ -11,6 +11,6 @@ export default function ChangePasswordPage() {
     description="Choose a strong password to secure your LeadCRM account before you enter the workspace.">
     <h1 className="mb-3 text-2xl font-bold sm:text-3xl">{returning ? 'Change your password' : 'Change your temporary password'}</h1>
     <p className="mb-8 text-slate-500">{returning ? 'Choose a new password to continue to your workspace.' : 'Create your permanent password to continue. You will then take a short tour of LeadCRM.'}</p>
-    <PasswordChangeForm />
+    <PasswordChangeForm mode="mandatory" />
   </OnboardingShell>;
 }
