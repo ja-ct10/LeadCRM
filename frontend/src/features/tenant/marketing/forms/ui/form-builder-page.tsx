@@ -126,13 +126,13 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   }
   function discard() { setLocal({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } }); setDirty(false); setError(''); }
   const panelContent = <>
-    <div className="flex border-b">{(['Fields', 'Design'] as const).map(t => <button key={t} type="button" onClick={() => setPanel(t)} className={'flex-1 p-3 text-sm ' + (panel === t ? 'border-b-2 border-primary text-primary' : '')}>{t}</button>)}</div>
+    <div className="flex border-b border-border bg-card text-card-foreground">{(['Fields', 'Design'] as const).map(t => <button key={t} type="button" onClick={() => setPanel(t)} className={'flex-1 p-3 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring ' + (panel === t ? 'border-b-2 border-primary text-primary' : '')}>{t}</button>)}</div>
     {panel === 'Fields' ? <FieldPalette onAddField={field => add(field)} fields={local.fields} catalog={catalog.data} loading={catalog.isInitialLoad} catalogError={catalog.error ?? undefined} onRetry={() => void catalog.refetch()} dragEnabled={dockedTools} /> : <FieldPalette mode="design" onAddField={field => add(field)} design={local.design} onDesignChange={design => change({ design })} />}
   </>;
   return <DndContext sensors={sensors} onDragStart={event => setDragLabel(event.active.data.current?.field?.label ?? local.fields.find(field => field.id === event.active.id)?.label ?? '')} onDragCancel={() => setDragLabel('')} onDragEnd={drag}>
-    <div className="min-w-0 flex flex-col">
-      <header className="flex items-center gap-2 border-b py-3">
-        <button aria-label="Back to Forms" disabled={saving} onClick={() => requestNavigation(onBack)} className="shrink-0 p-2"><ArrowLeft size={16} /></button>
+    <div className="min-w-0 flex flex-col bg-background text-foreground">
+      <header className="flex items-center gap-2 border-b border-border bg-card py-3">
+        <button aria-label="Back to Forms" disabled={saving} onClick={() => requestNavigation(onBack)} className="shrink-0 rounded p-2 text-muted-foreground hover:bg-accent hover:text-foreground"><ArrowLeft size={16} /></button>
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{local.name}</h1>
         <span className="text-[9px] uppercase rounded bg-muted text-muted-foreground px-1">{local.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</span>
         <button disabled={saving || !canPublish} onClick={() => void save(true)} className="bg-primary text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
@@ -141,16 +141,16 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
           ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', icon: <EyeOff size={14} aria-hidden="true" />, disabled: saving || !canPublish, onClick: () => setPublication('unpublish') }] : []),
         ]} />
       </header>
-      <nav className="flex items-center border-b min-w-0">{(['Builder', 'Settings', 'Share'] as const).map(t => <button key={t} onClick={() => setTab(t)} className={'px-2 sm:px-4 py-3 text-xs ' + (tab === t ? 'text-primary border-b-2 border-primary' : '')}>{t}</button>)}
-        <button disabled={saving || !dirty || !canEdit} onClick={() => void save()} className="ml-auto text-xs text-primary px-2 disabled:text-slate-400">{saving ? 'Saving…' : 'Save draft'}</button>
+      <nav className="flex items-center border-b border-border bg-card min-w-0">{(['Builder', 'Settings', 'Share'] as const).map(t => <button key={t} onClick={() => setTab(t)} className={'px-2 sm:px-4 py-3 text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring ' + (tab === t ? 'text-primary border-b-2 border-primary' : '')}>{t}</button>)}
+        <button disabled={saving || !dirty || !canEdit} onClick={() => void save()} className="ml-auto text-xs text-primary px-2 disabled:text-muted-foreground">{saving ? 'Saving…' : 'Save draft'}</button>
       </nav>
-      {dirty && <p className="text-xs text-amber-700 p-2">Unsaved changes</p>}
-      {error && <p role="alert" className="m-2 p-3 rounded border border-red-200 text-sm text-red-700 break-words">{error}</p>}
+      {dirty && <p className="text-xs text-amber-700 dark:text-amber-300 p-2">Unsaved changes</p>}
+      {error && <p role="alert" className="m-2 p-3 rounded border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300 break-words">{error}</p>}
       <fieldset disabled={tab !== 'Share' && (saving || !canEdit)} className="min-w-0">
         {tab === 'Builder' && <div className="flex min-w-0">
           <div className="flex-1 min-w-0 bg-muted p-3 sm:p-6 space-y-4">
-            <label className="block text-xs text-muted-foreground">Form name<span className="text-red-600" aria-hidden="true"> *</span><input aria-label="Form name" required aria-invalid={nameInvalid} aria-describedby={nameInvalid ? 'form-name-error' : undefined} className="block mt-1 w-full border rounded bg-card text-foreground p-2 text-sm" maxLength={200} value={local.name} onChange={e => { setNameInvalid(false); change({ name: e.target.value }); }} /></label>
-            {nameInvalid && <p id="form-name-error" className="text-xs text-red-600">Form name is required.</p>}
+            <label className="block text-xs text-muted-foreground">Form name<span className="text-red-600 dark:text-red-400" aria-hidden="true"> *</span><input aria-label="Form name" required aria-invalid={nameInvalid} aria-describedby={nameInvalid ? 'form-name-error' : undefined} className="block mt-1 w-full border border-border rounded bg-card text-foreground p-2 text-sm focus-visible:ring-2 focus-visible:ring-ring" maxLength={200} value={local.name} onChange={e => { setNameInvalid(false); change({ name: e.target.value }); }} /></label>
+            {nameInvalid && <p id="form-name-error" className="text-xs text-red-600 dark:text-red-400">Form name is required.</p>}
             <FormCanvas fields={withProductOptions(local.fields, products)} productCatalog={{ products, categories }} catalog={catalog.data} design={local.design} onChange={fields => change({ fields })} />
           </div>
           <aside aria-label="Form tools" className={panelThemeClass + " hidden xl:flex w-64 shrink-0 flex-col border-l max-h-[var(--app-viewport-height)] overflow-y-auto overscroll-contain"}>{dockedTools && panelContent}</aside>
@@ -160,7 +160,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       </fieldset>
       {tab === 'Builder' && <div className="xl:hidden sticky bottom-0 bg-card border-t border-border p-2"><button disabled={saving || !canEdit} onClick={() => setTools(true)} className="w-full rounded bg-primary text-white p-3 text-sm flex gap-2 justify-center"><Plus size={16} />Add fields or change design</button></div>}
       <Dialog open={tools} onOpenChange={setTools}><DialogContent aria-label="Form tools" className={panelThemeClass + " !fixed !bottom-0 !left-0 !right-0 !w-full !max-w-none !rounded-b-none !p-0 max-h-[85dvh] flex flex-col"} closeClassName={panelCloseClass}>
-        <div className={panelHeaderClass + " pr-20 sm:pr-20"}><h2 className={panelTitleClass}>Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
+        <div className={panelHeaderClass + " pr-20 sm:pr-20"}><h2 className={panelTitleClass}>Form tools</h2><p className="text-xs text-muted-foreground">Tap a field to add it to your form.</p></div>
         <div className="overflow-y-auto min-h-0">{tools && panelContent}</div>
       </DialogContent></Dialog>
       <ConfirmActionDialog open={publication !== null} onOpenChange={open => { if (!open) setPublication(null); }}
@@ -173,6 +173,6 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes" isLoading={saving}
         onConfirm={() => { leaving.current = true; discard(); return exit?.(); }} />
     </div>
-    <DragOverlay>{dragLabel && <div className="rounded border bg-card px-4 py-3 text-sm shadow">{dragLabel}</div>}</DragOverlay>
+    <DragOverlay>{dragLabel && <div className={panelThemeClass + " rounded border px-4 py-3 text-sm shadow"}>{dragLabel}</div>}</DragOverlay>
   </DndContext>;
 }

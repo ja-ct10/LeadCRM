@@ -10,6 +10,7 @@ import { FieldPalette, paletteFieldsFromCatalog } from './field-palette';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useLayout } from '@/features/tenant/layout/use-layout';
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: (email: string) => ({ available: true, blocked: false, confirm: () => true, email: email.trim(), retry: vi.fn(), reject: vi.fn() }) }));
 vi.mock('../services/forms.service', () => ({ getLeadFormFieldCatalog: vi.fn(), updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('next/navigation', () => ({ useRouter: () => routing, useSearchParams: () => new URLSearchParams(), usePathname: () => '/settings' }));
 

@@ -3,6 +3,7 @@
 // All queries are scoped to tenantId — cross-tenant access is impossible by design.
 
 import prisma from '../../../config/database.config';
+import type { Prisma } from '@prisma/client';
 
 const SAFE_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
@@ -10,8 +11,8 @@ const SAFE_SELECT = {
   // passwordHash is NEVER selected in any list/find operation
 };
 
-export async function findUserByEmail(email: string, tenantId: string) {
-  return prisma.user.findFirst({ where: { email, tenantId }, select: SAFE_SELECT });
+export async function findUserByEmail(email: string, tenantId: string, db: Prisma.TransactionClient = prisma) {
+  return db.user.findFirst({ where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' }, tenantId }, select: SAFE_SELECT });
 }
 
 export async function findUserById(id: string, tenantId: string) {

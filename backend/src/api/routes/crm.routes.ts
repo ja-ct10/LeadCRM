@@ -28,6 +28,8 @@ import * as pipelineController     from '../../modules/crm/pipeline/pipeline.con
 import { pipelineEvents, recordEvents } from '../../modules/reporting/reports/dashboard.events';
 import * as activityController     from '../../modules/crm/activities/activities.controller';
 import * as duplicateDetectionController from '../../modules/crm/duplicate-detection/duplicate-detection.controller';
+import { CrmEmailAvailabilityQuerySchema } from '@leadcrm/shared';
+import { emailAvailability } from '../../modules/crm/email-availability.controller';
 import * as mergeController            from '../../modules/crm/merge/merge.controller';
 import * as relationshipsController    from '../../modules/crm/relationships/relationships.controller';
 
@@ -66,6 +68,11 @@ router.get('/pipelines/events', authorize('deals.view'), pipelineEvents);
 router.get('/record-events', recordEvents);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
+router.get('/email-availability', (req, res, next) => {
+  const parsed = CrmEmailAvailabilityQuerySchema.safeParse(req.query);
+  if (!parsed.success) return next(parsed.error);
+  return authorize(`${parsed.data.module}.create`)(req, res, next);
+}, emailAvailability);
 router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, next) => authorizeAll(...req.body.entityTypes.map((type: string) => `${type}s.view` as PermissionKey))(req, res, next), duplicateDetectionController.duplicateCheck);
 
 // ── Merge ─────────────────────────────────────────────────────────────────

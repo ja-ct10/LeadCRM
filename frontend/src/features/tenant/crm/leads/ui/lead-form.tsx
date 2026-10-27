@@ -1,7 +1,8 @@
 'use client';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
-import { applyCrmFieldErrors } from '@/shared/utils/crm-mutation-error';
+import { applyCrmFieldErrors, isStaffEmailError } from '@/shared/utils/crm-mutation-error';
+import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 
 import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
@@ -34,6 +35,7 @@ import {
   MapPin,
   AlertCircle,
   ChevronDown,
+  Check,
 } from 'lucide-react';
 
 // Shared Lead constraints; controls use empty strings for unselected relationships.
@@ -97,6 +99,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     reset,
     setFocus,
     setError,
+    clearErrors,
     setValue,
     control,
     watch,
@@ -140,6 +143,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
   // Duplicate detection — check email/phone on change (only on create, not edit)
   const watchedEmail = watch('email');
+  const emailCheck = useEmailAvailability(watchedEmail, 'leads', !isEdit && canSubmit);
+  const emailError = emailCheck.error || errors.email?.message;
   const watchedFirstName = watch('firstName');
   const watchedLastName = watch('lastName');
   const { matches: duplicateMatches, isChecking: isDuplicateChecking, hasDuplicates, dismiss: dismissDuplicates } = useDuplicateCheck({
@@ -195,6 +200,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
   const onFormSubmit = async (data: LeadFormData): Promise<void> => {
     if (!canSubmit || saving.current) return;
+    if (!isEdit && !emailCheck.confirm(data.email)) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
     // Build phone in E.164 format from local 10-digit number
@@ -227,6 +233,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     setIsSaving(true);
     try { await onSave(payload); }
     catch (error: unknown) {
+      if (!isEdit && isStaffEmailError(error)) {
+        emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
+        setSubmitError(null);
+        return;
+      }
       applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
       organization.applyServerErrors(error);
       setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.');
@@ -270,18 +281,19 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={emailError}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="email"
-                  {...register('email')} required aria-required="true" maxLength={254}
+                  {...register('email', !isEdit ? { onChange: () => clearErrors('email'), onBlur: emailCheck.retry } : {})} required aria-required="true" maxLength={254}
                   id={`${fieldId}-email`}
-                  aria-invalid={!!errors.email}
-                  aria-describedby={errors.email ? `${fieldId}-email-error` : undefined}
-                  className={`${inputCls} pl-9${errors.email ? ` ${errorInputCls}` : ''}`}
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? `${fieldId}-email-error` : undefined}
+                  className={`${inputCls} pl-9${!isEdit ? ' pr-10' : ''}${emailError ? ` ${errorInputCls}` : ''}`}
                   placeholder="email@example.com"
                 />
+                {emailCheck.available && !emailError && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="phone" label="Phone">
@@ -423,7 +435,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || !canSubmit || customFields.blocked || productsLoading || !!productError}
+          disabled={isSubmitting || !canSubmit || emailCheck.blocked || customFields.blocked || productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
           {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Lead'}

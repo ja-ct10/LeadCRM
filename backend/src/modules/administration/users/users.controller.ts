@@ -4,6 +4,15 @@ import { Request, Response, NextFunction } from 'express';
 import * as service from './users.service';
 import { z } from 'zod';
 import { unlockUser } from './user-unlock.service';
+import { UserEmailAvailabilityQuerySchema } from '@leadcrm/shared';
+import { userEmailAvailability } from './user-email';
+
+export async function emailAvailability(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = UserEmailAvailabilityQuerySchema.parse(req.query);
+    res.set('Cache-Control', 'no-store').json({ success: true, data: await userEmailAvailability(req.user!.tenantId, email, req.user!.role) });
+  } catch (error) { next(error); }
+}
 
 export async function unlock(req: Request, res: Response, next: NextFunction) {
   try {

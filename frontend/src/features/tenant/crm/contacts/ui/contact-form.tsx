@@ -1,5 +1,6 @@
 'use client';
-import { applyCrmFieldErrors, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { applyCrmFieldErrors, showCrmMutationError, isStaffEmailError } from '@/shared/utils/crm-mutation-error';
+import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
@@ -31,6 +32,7 @@ import {
   AlertCircle,
   ChevronDown,
   X,
+  Check,
 } from 'lucide-react';
 import {
   CreateContactFormSchema,
@@ -125,6 +127,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     watch,
     setFocus,
     setError,
+    clearErrors,
   } = useForm<CreateContactFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RHF v7.82 + resolvers v5.4 type mismatch
     resolver: zodResolver(schema) as never,
@@ -155,11 +158,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   }, [initialData?.id]);
 
   const selectedProducts = watch('productInterest') || [];
+  const emailCheck = useEmailAvailability(watch('email'), 'contacts', !isEdit && canSubmit);
+  const emailError = emailCheck.error || errors.email?.message;
 
   const [saveError, setSaveError] = useState('');
   const saving = useRef(false);
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
     if (!canSubmit || saving.current) return;
+    if (!isEdit && !emailCheck.confirm(data.email!)) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
     setSaveError('');
@@ -187,6 +193,11 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     setIsSaving(true);
     try { await onSave(cleaned); }
     catch (error) {
+      if (!isEdit && isStaffEmailError(error)) {
+        emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
+        setSaveError('');
+        return;
+      }
       applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
       organization.applyServerErrors(error);
       showCrmMutationError(error, 'Unable to save Contact.');
@@ -236,18 +247,19 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Email & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={emailError}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="email"
-                  {...register('email')} required aria-required="true" maxLength={254}
+                  {...register('email', !isEdit ? { onChange: () => clearErrors('email'), onBlur: emailCheck.retry } : {})} required aria-required="true" maxLength={254}
                   id={`${fieldId}-email`}
-                  aria-invalid={!!errors.email}
-                  aria-describedby={errors.email ? `${fieldId}-email-error` : undefined}
-                  className={`${inputCls} pl-9 ${errors.email ? inputErrorCls : ''}`}
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? `${fieldId}-email-error` : undefined}
+                  className={`${inputCls} pl-9${!isEdit ? ' pr-10' : ''} ${emailError ? inputErrorCls : ''}`}
                   placeholder="email@example.com"
                 />
+                {emailCheck.available && !emailError && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="phone" label="Phone">
@@ -389,7 +401,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         </button>
         <button
           type="submit"
-          disabled={!canSubmit || customFields.blocked || isSubmitting}
+          disabled={!canSubmit || emailCheck.blocked || customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}

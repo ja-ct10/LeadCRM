@@ -59,3 +59,4 @@ export * from './utils/currency';
 export * from './contracts/customer-classification';
 
 export * from './contracts/deal-address';
+export * from './contracts/email-availability';

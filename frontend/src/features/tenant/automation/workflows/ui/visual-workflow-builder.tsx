@@ -574,6 +574,8 @@ export default function WorkflowBuilder({
               <span>Workflow name <span className="text-red-500" aria-hidden="true">*</span></span>
               <Input
                 aria-label="Workflow name"
+                placeholder="Enter workflow name..."
+                className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                 aria-required="true"
                 aria-invalid={!!nameIssue}
                 aria-describedby={
@@ -601,6 +603,7 @@ export default function WorkflowBuilder({
                 className={workflowControl}
                 rows={4}
                 maxLength={2000}
+                placeholder="Describe what this workflow does..."
                 value={draft.description ?? ''}
                 onChange={(event) =>
                   updateDraft({ ...draft, description: event.target.value })
