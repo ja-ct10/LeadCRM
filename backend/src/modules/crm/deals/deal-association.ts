@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { dealAssociationPatch, type DealAssociationChange } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 import { ConflictError, ValidationError } from '../../../shared/errors/http-error';
@@ -10,9 +11,10 @@ export async function readDealAssociation(tx: Prisma.TransactionClient, tenantId
   if (!await mayReadCrmModule(tx, tenantId, module)) throw new AppError(`You do not have permission to associate this ${association.type === 'lead' ? 'Lead' : 'Contact'}.`, 403);
   await assertCrmRecordRead(tx, module, association.id);
   const where = { tenantId, id: association.id, isArchived: false, deletedAt: null };
-  const select = { id: true, assignedUserId: true, accountId: true };
+  const select = { id: true, assignedUserId: true, accountId: true, email: true };
   const record = association.type === 'lead' ? await tx.lead.findFirst({ where, select }) : await tx.contact.findFirst({ where, select });
   if (!record) throw new ValidationError(`The selected ${association.type === 'lead' ? 'Lead' : 'Contact'} is unavailable. Choose an active record in this workspace.`);
+  await assertExternalCustomerEmail(tx, tenantId, record.email, [association.type === 'lead' ? 'leadIds' : 'contactIds']);
   return record;
 }
 

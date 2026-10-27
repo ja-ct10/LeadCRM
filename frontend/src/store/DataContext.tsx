@@ -975,7 +975,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           createdAt: new Date().toISOString(),
         });
       } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to create deal');
+        throw err instanceof Error ? err : new Error('Failed to create deal');
       }
       return;
     }
@@ -1055,7 +1055,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         invalidatePageCache('deals', tenant?.id || user?.tenantId || '');
         return deal;
       } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to update deal');
+        throw err instanceof Error ? err : new Error('Failed to update deal');
       }
     }
 

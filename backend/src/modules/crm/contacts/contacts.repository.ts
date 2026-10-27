@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { salesActivityDates } from '../sales-activity';
 import { assertContactAccountSelection, mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import type { Lead as LeadRecord } from '@prisma/client';
@@ -156,6 +157,7 @@ export async function createContact(
   if (dto.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
+    if (!existing) await assertExternalCustomerEmail(tx, tenantId, fields.email);
     if (!existing) await assertContactAccountSelection(tx, tenantId, fields.accountId);
     if (!existing && newAccount) {
       const account = await createLinkedAccount(tx, tenantId, newAccount, createdById);
@@ -194,6 +196,7 @@ export async function updateContact(
       await assertCrmRecordMutation(tx, 'leads', id, 'edit', dto);
       const current = await tx.lead.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null } });
       if (!current) throw new NotFoundError('Active Lead');
+      await assertExternalCustomerEmail(tx, tenantId, dto.email !== undefined ? dto.email : current.email);
       if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Lead changed. Reload its current status before saving.');
       await assertCustomerStatusEdit(tx, tenantId, { leadId: id }, current, dto.status);
       const preparedStatus = await prepareCustomerStatus(tx, tenantId, { leadId: id }, dto.status !== current.status || authorizedWorkflowScope(tenantId) ? dto.status : undefined);

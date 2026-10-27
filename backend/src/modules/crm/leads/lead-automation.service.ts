@@ -1,4 +1,5 @@
 import { classifyCustomerRecord } from '../customer-classification.service';
+import { assertExternalCustomerEmail } from '../record-validation';
 import { weightedLeadScores, lowestWorkloadRotation } from './lead-workload';
 import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
@@ -95,6 +96,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
   const productIds = kind === 'lead' && 'productInterestIds' in lead ? lead.productInterestIds : (await tx.contactProductInterest.findMany({ where: { tenantId, contactId: leadId, interested: true }, orderBy: { position: 'asc' } })).map(link => link.productInterestId);
   const selected = await tx.productInterest.findMany({ where: { tenantId, active: true, id: { in: productIds } } });
   if (!selected.length || lead.isArchived || kind === 'lead' && lead.convertedAt) return;
+  await assertExternalCustomerEmail(tx, tenantId, lead.email, [kind === 'lead' ? 'leadIds' : 'contactIds']);
   const agent = lead.assignedUserId ? await tx.user.findFirst({ where: { tenantId, id: lead.assignedUserId }, select: { firstName: true, lastName: true } }) : undefined;
   const { pipeline, initial } = await salesPipeline(tx, tenantId);
   for (const product of selected) {
@@ -157,6 +159,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
     if (existing) return existing;
   }
+  await assertExternalCustomerEmail(tx, input.tenantId, input.email);
   if (input.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before closing this customer.');
   if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable in this workspace.');
   // API callers provide IDs. Trusted imports may still provide historical names; resolve them here.

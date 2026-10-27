@@ -71,6 +71,7 @@ export function TaskRecordCreator({
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to create record.");
+      throw e;
     } finally {
       pending.current = false;
       setBusy(false);
@@ -113,7 +114,7 @@ export function TaskRecordCreator({
       </div>
       <fieldset disabled={busy} className="min-h-0 flex-1 flex flex-col">
         {kind === "lead" && (
-          <LeadForm onSave={(data) => void submit(data)} onCancel={onCancel} />
+          <LeadForm onSave={(data) => submit(data)} onCancel={onCancel} />
         )}
         {kind === "contact" && (
           <ContactFormInner
@@ -124,7 +125,7 @@ export function TaskRecordCreator({
                 source: (data as any).leadSource || (data as any).source,
                 productInterests: (data as any).productInterest || (data as any).productInterests,
               };
-              void submit(payload);
+              return submit(payload);
             }}
             onCancel={onCancel}
           />
@@ -132,7 +133,7 @@ export function TaskRecordCreator({
         {kind === "account" && (
           <AccountForm
             onSave={(data) =>
-              void submit({
+              submit({
                 ...data,
               })
             }

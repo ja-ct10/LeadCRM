@@ -1,5 +1,7 @@
 import {taskAssociationWhere, taskContextWhere, reassignTaskLinks} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
+import { assertExternalCustomerParticipants } from '../record-validation';
+import { readCrmStatusEvidence } from '../access/crm-record-access.service';
 import type { Prisma } from '@prisma/client';
 import type { RelationshipCounts } from './merge.types';
 
@@ -208,6 +210,16 @@ export async function reassignAccountRelationships(
   secondaryId: string,
   tenantId: string,
 ): Promise<RelationshipCounts> {
+  const participants = await readCrmStatusEvidence(async () => {
+    const deals = await tx.deal.findMany({ where: { tenantId, accountId: secondaryId }, select: {
+      leadDeals: { select: { leadId: true } }, contactDeals: { select: { contactId: true } },
+    } });
+    return {
+      leadIds: [...(await tx.lead.findMany({ where: { tenantId, accountId: secondaryId }, select: { id: true } })).map(row => row.id), ...deals.flatMap(deal => deal.leadDeals.map(link => link.leadId))],
+      contactIds: [...(await tx.contact.findMany({ where: { tenantId, accountId: secondaryId }, select: { id: true } })).map(row => row.id), ...deals.flatMap(deal => deal.contactDeals.map(link => link.contactId))],
+    };
+  });
+  await assertExternalCustomerParticipants(tx, tenantId, participants);
   // Account Task context follows the Deals reassigned below; retired snapshots
   // and event-time history retain their original Account identity.
   const tasks = await tx.task.count({ where: { tenantId, ...taskContextWhere('account', secondaryId, tenantId) } });
