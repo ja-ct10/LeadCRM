@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Camera, Fingerprint, Network, Cable, Phone, Server, Pause, Play } from 'lucide-react';
 
@@ -15,7 +15,10 @@ const services = [
   { title: 'IT Infrastructure', description: 'Laptops, servers, and data cabinets tailored to your requirements.', icon: Server },
 ];
 
-export function CamxianBrandPanel() {
+export function CamxianBrandPanel({
+  heading = <>Technology that will<br className="hidden lg:block" /> shape your future.</>,
+  description = 'Empowering innovation and security today for a safer tomorrow!',
+}: { heading?: ReactNode; description?: string }) {
   const reducedMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -40,8 +43,8 @@ export function CamxianBrandPanel() {
       <div aria-hidden="true" className="pointer-events-none absolute -right-32 -top-32 size-96 rounded-full border border-white/10" />
       <div className="relative flex flex-1 flex-col justify-center gap-6 p-6 sm:p-8 lg:p-8 xl:p-10">
         <div className="max-w-lg space-y-4">
-          <motion.h1 {...entrance(2)} className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl xl:text-4xl">Technology that will<br className="hidden lg:block" /> shape your future.</motion.h1>
-          <motion.p {...entrance(3)} className="hidden max-w-sm text-base leading-relaxed text-blue-100 lg:block">Empowering innovation and security today for a safer tomorrow!</motion.p>
+          <motion.h1 {...entrance(2)} className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl xl:text-4xl">{heading}</motion.h1>
+          <motion.p {...entrance(3)} className="hidden max-w-sm text-base leading-relaxed text-blue-100 lg:block">{description}</motion.p>
           <motion.ul {...entrance(4)} className="hidden flex-wrap gap-2 text-xs font-medium lg:flex">
             {['Security', 'Telecom', 'I.T & Business Solutions'].map(label => <li key={label} className="rounded-full border border-white/25 px-3 py-1.5">{label}</li>)}
           </motion.ul>

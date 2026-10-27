@@ -29,6 +29,64 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.resto
 
 
 describe('Persisted scoped Inbox', () => {
+  it('styles only the open toolbar menu and clears the style on toggle, Escape or outside dismissal', async () => {
+    render(<InboxPage />); await flush();
+    const archive = screen.getByRole('button', { name: 'Archived messages' });
+    const filter = screen.getByRole('button', { name: 'Filter emails' });
+    const sort = screen.getByRole('button', { name: 'Sort emails' });
+    const active = (button: HTMLElement) => button.classList.contains('bg-primary');
+    expect([archive, filter, sort].map(active)).toEqual([false, false, false]);
+
+    fireEvent.click(filter);
+    expect(filter.getAttribute('aria-expanded')).toBe('true');
+    expect([archive, filter, sort].map(active)).toEqual([false, true, false]);
+    expect(filter.classList.contains('hover:bg-muted')).toBe(false);
+    fireEvent.click(filter);
+    expect(filter.getAttribute('aria-expanded')).toBe('false');
+    expect(active(filter)).toBe(false);
+
+    fireEvent.click(sort);
+    expect([archive, filter, sort].map(active)).toEqual([false, false, true]);
+    expect(sort.classList.contains('text-white')).toBe(true);
+    expect(sort.classList.contains('border-primary')).toBe(true);
+    fireEvent.click(sort);
+    expect(active(sort)).toBe(false);
+    fireEvent.click(sort);
+    fireEvent.click(filter);
+    expect(sort.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('menu', { name: 'Sort by' })).toBeNull();
+    expect([archive, filter, sort].map(active)).toEqual([false, true, false]);
+    fireEvent.keyDown(filter, { key: 'Escape' });
+    expect(active(filter)).toBe(false);
+
+    for (const button of [filter, sort]) {
+      fireEvent.click(button);
+      fireEvent.mouseDown(document.body);
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      expect(active(button)).toBe(false);
+    }
+  });
+  it('retains an applied filter but clears Sort after selection and Filter after resetting to All', async () => {
+    render(<InboxPage />); await flush();
+    const filter = screen.getByRole('button', { name: 'Filter emails' });
+    const sort = screen.getByRole('button', { name: 'Sort emails' });
+    fireEvent.click(filter); fireEvent.click(screen.getByRole('menuitemradio', { name: 'Unread only' })); await flush();
+    expect(filter.getAttribute('aria-expanded')).toBe('false');
+    expect(filter.classList.contains('bg-primary')).toBe(true);
+    expect(mocks.list.mock.lastCall?.[0]).toMatchObject({ filter: 'unread', sort: 'newest' });
+
+    fireEvent.click(sort);
+    expect(filter.classList.contains('bg-primary')).toBe(true);
+    expect(sort.classList.contains('bg-primary')).toBe(true);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Oldest first' })); await flush();
+    expect(sort.getAttribute('aria-expanded')).toBe('false');
+    expect(sort.classList.contains('bg-primary')).toBe(false);
+    expect(mocks.list.mock.lastCall?.[0]).toMatchObject({ filter: 'unread', sort: 'oldest' });
+
+    fireEvent.click(filter); fireEvent.click(screen.getByRole('menuitemradio', { name: 'All emails' })); await flush();
+    expect(filter.classList.contains('bg-primary')).toBe(false);
+    expect(mocks.list.mock.lastCall?.[0]).toMatchObject({ filter: 'all', sort: 'oldest' });
+  });
   it('places Archive before Filter and restores the previous Inbox filter, query and sort after toggling views', async () => {
     render(<InboxPage />); await flush();
     const archive = screen.getByRole('button', { name: 'Archived messages' });
@@ -38,6 +96,10 @@ describe('Persisted scoped Inbox', () => {
     fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quotation' } }); await advance(400);
     fireEvent.click(screen.getByLabelText('Sort emails')); fireEvent.click(screen.getByText('Oldest first')); await flush();
     fireEvent.click(archive); await flush();
+    expect(archive.getAttribute('aria-pressed')).toBe('true');
+    expect(archive.classList.contains('bg-primary')).toBe(true);
+    expect(screen.getByLabelText('Filter emails').classList.contains('bg-primary')).toBe(false);
+    expect(screen.getByLabelText('Sort emails').classList.contains('bg-primary')).toBe(false);
     expect(screen.getByRole('heading', { name: 'Archived Messages' })).toBeTruthy();
     expect(mocks.list.mock.calls.at(-1)![0]).toMatchObject({ view: 'archived', filter: 'all' });
     fireEvent.click(screen.getByRole('button', { name: 'Filter emails' }));
@@ -45,6 +107,9 @@ describe('Persisted scoped Inbox', () => {
     fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'archive query' } }); await advance(400);
     fireEvent.click(screen.getByLabelText('Sort emails')); fireEvent.click(screen.getByText('Newest first')); await flush();
     fireEvent.click(archive); await flush();
+    expect(archive.getAttribute('aria-pressed')).toBe('false');
+    expect(archive.classList.contains('bg-primary')).toBe(false);
+    expect(screen.getByLabelText('Filter emails').classList.contains('bg-primary')).toBe(true);
     expect(mocks.list.mock.calls.at(-1)![0]).toMatchObject({ view: 'inbox', filter: 'sent', query: 'quotation', sort: 'oldest' });
     expect((screen.getByLabelText('Search email') as HTMLInputElement).value).toBe('quotation');
   });

@@ -10,6 +10,7 @@ interface ActionableEmptyStateProps {
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  actionDisabled?: boolean;
 }
 
 export const ActionableEmptyState: React.FC<ActionableEmptyStateProps> = ({
@@ -18,6 +19,7 @@ export const ActionableEmptyState: React.FC<ActionableEmptyStateProps> = ({
   description,
   actionLabel,
   onAction,
+  actionDisabled = false,
 }) => {
   const refreshing = React.useContext(TableRefreshContext);
   return (
@@ -39,7 +41,8 @@ export const ActionableEmptyState: React.FC<ActionableEmptyStateProps> = ({
       {actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-primary hover:bg-[var(--primary-hover)] text-white shadow-sm shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          disabled={actionDisabled}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-primary hover:bg-[var(--primary-hover)] text-white shadow-sm shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
         >
           <Plus size={14} />
           {actionLabel}

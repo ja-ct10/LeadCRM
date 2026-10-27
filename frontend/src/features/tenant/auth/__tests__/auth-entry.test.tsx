@@ -24,6 +24,32 @@ it('describes Camxian access without public signup or Google authentication', ()
   expect(screen.getByText('Use the registered staff email provided to your Client Administrator. Contact your administrator for access.')).toBeTruthy();
 });
 
+it('reuses Login branding and logo placement for Forgot Password and restores Login copy on Back', () => {
+  render(<ModernLoginPage onNavigate={vi.fn()} />);
+  const loginPanel = screen.getByRole('complementary');
+  const loginHeading = screen.getByRole('heading', { name: 'Login' });
+  const loginLogo = within(loginHeading.parentElement!).getByRole('img', { name: 'Camxian Technologies' });
+  const panelClasses = loginPanel.className;
+  const logoClasses = loginLogo.className;
+  const brandClasses = loginLogo.parentElement!.className;
+
+  fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+  expect(screen.getByRole('complementary').className).toBe(panelClasses);
+  expect(screen.getByRole('heading', { name: 'Secure Password Reset' })).toBeTruthy();
+  expect(screen.getByText("We'll send you a secure link to reset your password. Check your inbox and spam folder.")).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Our solutions' })).toBeTruthy();
+  const forgotHeading = screen.getByRole('heading', { name: 'Forgot password?' });
+  const forgotLogo = within(forgotHeading.parentElement!).getByRole('img', { name: 'Camxian Technologies' });
+  expect(forgotLogo.getAttribute('src')).toBe('/camxian_logo.png');
+  expect(forgotLogo.className).toBe(logoClasses);
+  expect(forgotLogo.parentElement!.className).toBe(brandClasses);
+  expect(screen.getByLabelText('Email Address')).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Back to Login' }));
+  expect(screen.getByRole('heading', { name: /Technology that will\s+shape your future\./ })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Secure Password Reset' })).toBeNull();
+});
+
 it.each([false, true])('passes Remember me to login with checked=%s', async checked => {
   render(<ModernLoginPage onNavigate={vi.fn()} />);
   const remember = screen.getByRole('checkbox', { name: 'Remember me' }) as HTMLInputElement;
