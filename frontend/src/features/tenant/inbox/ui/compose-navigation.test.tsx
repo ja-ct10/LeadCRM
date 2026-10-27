@@ -1,5 +1,5 @@
 import React, { StrictMode } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import InboxPage from './inbox-page';
 import { recordEmailComposeHref } from '../services/compose-navigation';
@@ -33,7 +33,7 @@ it('consumes a Lead action once, preserves edited unsent work until explicit dis
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
   expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('edited@example.test');
-  fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Discard draft' })); fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Discard draft' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
   expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('');
   view.unmount();

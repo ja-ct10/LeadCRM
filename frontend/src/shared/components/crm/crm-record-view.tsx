@@ -13,7 +13,7 @@ import { DealClosingRequirements } from './deal-closing-requirements';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Pencil, Phone, Plus, User, UserPlus, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { cn } from '@/lib/utils';
@@ -241,7 +241,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       const response = await apiClient.put<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status, ...(customerRecord?.updatedAt ? { expectedUpdatedAt: customerRecord.updatedAt } : {}) });
       customerQuery.setData(response.data);
       await recordQuery.refetchSilently();
-      toast.success('Customer status updated');
+      toast.success('Customer status updated.');
     } catch (error) { showCrmMutationError(error, 'Unable to update customer status'); }
     finally { setSaving(false); }
   };
@@ -264,9 +264,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         if (module === 'deals') await recordQuery.refetchSilently();
         else if (response.data) recordQuery.setData(response.data);
       }
-      toast.success('Field updated');
+      toast.success('Field updated.');
     } catch (error) {
-      showCrmMutationError(error, 'Failed to update field');
       throw error;
     } finally {
       setSavingField(null);

@@ -7,7 +7,7 @@ import Dashboard from './dashboard';
 const mocks = vi.hoisted(() => ({ report: null as DashboardReport | null, query: null as DashboardQuery | null, error: null as string | null, loading: false, sourceLoading: false, sourceError: null as string | null, refresh: vi.fn(async () => true), charts: [] as any[], success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'Sales' } }) }));
 vi.mock('../hooks/use-dashboard-report', () => ({ useDashboard: (query: DashboardQuery) => { mocks.query = query; return { report: mocks.report, error: mocks.error, loading: mocks.loading, sourceLoading: mocks.sourceLoading, sourceError: mocks.sourceError, refresh: mocks.refresh }; } }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.failure } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: mocks.failure } }));
 vi.mock('react-chartjs-2', () => ({
   Bar: (props: any) => { mocks.charts.push({ type: 'bar', ...props }); return <canvas />; },
   Line: (props: any) => { mocks.charts.push({ type: 'area', ...props }); return <canvas />; },
@@ -318,7 +318,7 @@ it('keeps source data and disables Sync Metrics while loading', () => {
 it('uses Sync Metrics and reports refresh success or failure', async () => {
   render(<Dashboard />);
   fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Dashboard metrics refreshed'));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Dashboard metrics refreshed.'));
   mocks.refresh.mockResolvedValueOnce(false);
   fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
   await waitFor(() => expect(mocks.failure).toHaveBeenCalledWith('Dashboard could not refresh'));

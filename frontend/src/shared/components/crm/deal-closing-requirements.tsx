@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { Button } from '@/shared/components/ui/button';
 import { TableLoadingState } from './table-loading-state';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { CheckCircle2, Circle, LockKeyhole } from 'lucide-react';
 import { panelInputClass } from '@/shared/components/side-panel-styles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';

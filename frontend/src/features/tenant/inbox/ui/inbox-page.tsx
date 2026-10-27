@@ -14,7 +14,8 @@ import ComposeModal from './compose-modal';
 import { ScheduledEmailDialog } from './scheduled-email-dialog';
 import type { ApiRequestError } from '@/lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { toast } from '@/shared/utils/toast';
 import { consumeRecordEmailCompose } from '../services/compose-navigation';
 import type { MailboxListOptions } from '@leadcrm/shared';
 import { subscribeMailboxEvents, MAILBOX_RECONNECT_DELAY_MS, type MailboxSubscription } from '@/shared/services/mailbox-events';
@@ -53,7 +54,7 @@ function InboxMailbox(): React.ReactElement {
   const retryDealLink = async (link: PendingLink) => {
     if (linkingRequest.current) return;
     linkingRequest.current = true; setLinking(link.threadId);
-    try { await associateThreadDeal(link.threadId, link.sourceDealId, link.messageId ? { messageId: link.messageId } : {}); dealLinkResult(link, true); toast.success('Email linked to deal'); }
+    try { await associateThreadDeal(link.threadId, link.sourceDealId, link.messageId ? { messageId: link.messageId } : {}); dealLinkResult(link, true); toast.success('Email linked to deal.'); }
     catch { toast.error('Email sent, but linking to the Deal failed.'); }
     finally { linkingRequest.current = false; setLinking(undefined); }
   };
@@ -69,6 +70,7 @@ function InboxMailbox(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false), [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const disconnectPending = useRef(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [error, setError] = useState(''), [syncError, setSyncError] = useState('');
   const [menu, setMenu] = useState<'filter' | 'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -357,8 +359,8 @@ function InboxMailbox(): React.ReactElement {
     disconnectPending.current = true; setDisconnecting(true);
     try {
       await disconnectGmail();
-      invalidateMailbox(); setConnectionStatus(null); setIsComposeOpen(false); setComposeDraft(null);
-    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to disconnect your mailbox.'); }
+      invalidateMailbox(); setConnectionStatus(null); setIsComposeOpen(false); setComposeDraft(null); setConfirmDisconnect(false); toast.success('Mailbox disconnected.');
+    } catch (error) { throw error; }
     finally { disconnectPending.current = false; setDisconnecting(false); }
   };
   const openEmail = (email: GmailEmail) => {
@@ -390,9 +392,9 @@ function InboxMailbox(): React.ReactElement {
     <header><h1 className="font-display text-2xl font-bold tracking-tight">{view === 'archived' ? 'Archived Messages' : 'Inbox'}</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-border bg-card">
       {connectionStatus?.isConnected && <>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-4 sm:px-5">
+        <div data-toast-clearance className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3"><span className="shrink-0 rounded-full bg-[var(--color-brand-light)] p-2 text-[var(--primary)]"><Mail size={18} /></span><div className="min-w-0"><p className="text-sm font-semibold">Work email</p><p className="break-all text-xs text-muted-foreground">{connectionStatus.email}</p></div></div>
-          <div className="flex items-center gap-2"><button className={control} disabled={syncing || refreshing || disconnecting || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void sync()}>{syncing && <Loader2 size={14} className="animate-spin" />}Sync now</button><button className={control} disabled={syncing || refreshing || disconnecting} onClick={() => void disconnect()}>{disconnecting && <Loader2 size={14} className="animate-spin" />}Disconnect</button></div>
+          <div className="flex items-center gap-2"><button className={control} disabled={syncing || refreshing || disconnecting || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void sync()}>{syncing && <Loader2 size={14} className="animate-spin" />}Sync now</button><button className={control} disabled={syncing || refreshing || disconnecting} onClick={() => setConfirmDisconnect(true)}>{disconnecting && <Loader2 size={14} className="animate-spin" />}Disconnect</button></div>
         </div>
         <div ref={menuRef} className="flex flex-wrap items-center gap-2 border-b border-border p-3 sm:px-5" onKeyDown={event => { if (event.key === 'Escape') setMenu(null); }}>
           <label className="flex min-h-10 min-w-0 basis-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 sm:flex-1 sm:basis-auto"><Search size={16} className="shrink-0 text-muted-foreground" /><input aria-label="Search email" placeholder="Search email..." value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" /></label>
@@ -407,6 +409,9 @@ function InboxMailbox(): React.ReactElement {
       {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList key={view} view={view} emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
+    <ConfirmActionDialog open={confirmDisconnect} onOpenChange={setConfirmDisconnect} title="Disconnect mailbox?"
+      description="Email syncing and sending will stop until you reconnect. Saved CRM history will be kept."
+      confirmLabel="Disconnect" isLoading={disconnecting} onConfirm={disconnect} />
     {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}
     {pendingLinks.map(link => <div key={link.threadId} role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"><span>Email sent, but linking to the Deal failed.</span><button className={control} disabled={!!linking} onClick={() => void retryDealLink(link)}>{linking === link.threadId ? 'Linking…' : 'Retry deal link'}</button></div>)}
     <ComposeModal authorizationRevision={authorizationRevision} onDealLinkResult={dealLinkResult} isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />

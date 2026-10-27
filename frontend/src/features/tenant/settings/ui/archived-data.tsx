@@ -4,7 +4,7 @@ import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArchiveRestore, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';

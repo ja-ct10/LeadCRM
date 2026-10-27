@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useModuleData } from '@/shared/hooks/use-module-data';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
 import { accountsService } from '../services/accounts.service';

@@ -13,7 +13,7 @@ import { LeadActivitiesTab } from './tabs/lead-activities-tab';
 import { LeadEmailTab } from './tabs/lead-email-tab';
 import { LeadSmsTab } from './tabs/lead-sms-tab';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForOrg } from '@/lib/utils';
 
 
@@ -162,7 +162,7 @@ export const CompanyProfileTabs = ({
 
   const handleSaveNotes = () => {
     updateOrganization(selectedOrg.id, { notes: companyNotes });
-    toast.success('Successfully updated corporate records!');
+    toast.success('Successfully updated corporate records.');
     addActivityLog(`Modified central organization internal dossiers.`, 'note');
   };
 

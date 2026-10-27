@@ -7,7 +7,7 @@ import { useData } from '@/store/DataContext';
 import { getCRMStatusStyles } from '@/lib/utils';
 import { AlertTriangle, Archive, Building, Briefcase, Calendar, Edit2, FileText, Mail, MapPin, Phone, Tag, TrendingUp, User } from 'lucide-react';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '--';

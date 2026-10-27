@@ -11,7 +11,7 @@ import {
   FileText, Link2, User, Briefcase, Sparkles, StickyNote, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 
 interface NotesSidePanelProps {
@@ -208,7 +208,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
         return n;
       });
       saveNotes(updated);
-      toast.success('Scratchpad note updated successfully!');
+      toast.success('Scratchpad note updated.');
     } else {
       // Create
       const newNote: QuickNote = {
@@ -223,7 +223,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
         updatedAt: new Date().toISOString()
       };
       saveNotes([newNote, ...notes]);
-      toast.success('New quick note saved!');
+      toast.success('New quick note saved.');
     }
 
     resetForm();
@@ -268,7 +268,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
   const copyDetail = (note: QuickNote) => {
     const text = `--- ${note.title} (${note.category}) ---\n${note.content}\n${note.linkedEntity ? `Associated with: ${note.linkedEntity.name} [${note.linkedEntity.type}]` : ''}`;
     navigator.clipboard.writeText(text);
-    toast.success('Note content copied to clipboard!');
+    toast.success('Note content copied to clipboard.');
   };
 
   // Autofill templates or quick logs

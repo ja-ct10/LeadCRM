@@ -12,13 +12,13 @@ import { renderHook, act } from '@testing-library/react';
 import { useBulkSelection } from '../use-bulk-selection';
 
 // Mock sonner toast
-vi.mock('sonner', () => ({
+vi.mock('@/shared/utils/toast', () => ({
   toast: {
     info: vi.fn(),
   },
 }));
 
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

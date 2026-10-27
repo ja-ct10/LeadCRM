@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { Workflow, WorkflowExecutionRun, WorkflowOptions } from '@leadcrm/shared';
 import { WorkflowDefinitionSummary, emptySnapshotOptions } from './workflow-definition-summary';
 import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';

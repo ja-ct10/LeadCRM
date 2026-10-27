@@ -2,7 +2,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { Upload, File, Trash2, Download, FileUp } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -148,7 +148,7 @@ export function FilesSection({
     async (fileId: string) => {
       await onDelete(fileId);
       setDeleteConfirmId(null);
-      toast.success('File deleted');
+      toast.success('File deleted.');
     },
     [onDelete]
   );

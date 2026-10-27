@@ -14,7 +14,7 @@ import {
   Sun,
   Moon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from '@/shared/utils/toast';
 import { AppearanceSettings } from '@/shared/components/appearance-settings';
 import { BackButton } from "@/shared/components/ui/back-button";
 

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/shared/services/table-preferences.api', () => ({ tablePreferencesApi: mocks.api }));
-vi.mock('sonner', () => ({ toast: { error: mocks.toast } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.toast } }));
 beforeEach(() => {
   vi.resetAllMocks(); mocks.auth.user = { id: 'user' }; mocks.auth.tenant = { id: 'tenant' };
   mocks.api.getTablePreferences.mockResolvedValue({ data: { pageSize: 25, viewMode: 'wrap', sort: null } });

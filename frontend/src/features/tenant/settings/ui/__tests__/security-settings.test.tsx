@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 const api = vi.hoisted(() => ({ changePassword: vi.fn() }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: api }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me', passwordChangedAt: '2026-09-30T00:00:00Z' }, applyAuthUser: vi.fn() }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn() } }));
 import { SecuritySettings } from '../security-settings';
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);

@@ -22,7 +22,7 @@ export function ModuleTableToolbar({ search, onSearch, placeholder, label, filte
     <TableSettingsMenu onManageColumns={onManageColumns} onResetColumnSize={onResetColumnSize} sort={sort} sortFields={sortFields} onSortChange={onSortChange} />
   </div>;
 
-  return <div data-selection-toolbar role="toolbar" aria-label={`${label} controls`} className="flex min-w-0 flex-wrap items-center gap-2">
+  return <div data-toast-clearance data-selection-toolbar role="toolbar" aria-label={`${label} controls`} className="flex min-w-0 flex-wrap items-center gap-2">
     {stackSearchOnMobile ? <>
       <div className="w-full min-w-0 sm:w-auto sm:flex-none">{searchInput}</div>
       <div role="group" aria-label={`${label} actions`} className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">

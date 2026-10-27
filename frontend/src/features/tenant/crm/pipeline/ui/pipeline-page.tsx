@@ -5,7 +5,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useAuth } from '@/store/AuthContext';
@@ -172,7 +172,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   ].map(group => ({ ...group, isExpanded: true, items: group.items.map(item => ({ ...item, isChecked: filters[group.id]?.includes(item.id) })) }));
   const move = async (id: string, stageId: string, reason?: string) => {
     if (pipeline?.stages.find(s => s.id === stageId)?.isLost && !reason) { setLost({ id, stageId }); return; }
-    try { const next = await moveDealStage(id, stageId, undefined, reason); patch(next); setLost(undefined); toast.success('Deal stage updated'); }
+    try { const next = await moveDealStage(id, stageId, undefined, reason); patch(next); setLost(undefined); toast.success('Deal stage updated.'); }
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); throw error; }
   };
   if (!tabAccess.firstId) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;

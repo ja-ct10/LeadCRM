@@ -18,7 +18,7 @@ vi.mock('../AuthContext', () => ({ useAuth: () => ({
   userCan: (module: string) => !(state.denied && module === 'deals'), isLoading: false,
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
 vi.mock('@/shared/components/crm/deal-card-menu', () => ({ DealCardMenu: () => null }));
 

@@ -12,7 +12,7 @@ vi.mock('@/lib/api/client', () => ({ apiClient: mocks }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.has(permission) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: { params: { fieldLayout: string } }) => ({ data: mocks.data[params.fieldLayout], refetch: mocks.refetch, isInitialLoad: false, error: null }) }));
 vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ isOpen, title, subtitle, children }: { isOpen: boolean; title: string; subtitle?: string; children: React.ReactNode }) => isOpen ? <section aria-label={title}><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}{children}</section> : null }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 
 const budget: ClosingField = { ...DEFAULT_CLOSING_FIELDS[0], id: 'lead-budget', name: 'Project Budget', type: 'Number', module: 'leads', group: 'Basic Information', groupId: 'leads:section:0', order: 100, required: false };
 const contactNote: ClosingField = { ...budget, id: 'contact-note', name: 'Contact Note', type: 'Text', module: 'contacts', groupId: 'contacts:section:0' };
@@ -443,7 +443,7 @@ it('offers deletion only for Custom definitions and submits the immutable ID aft
   fireEvent.click(dialog.getByRole('button', { name: 'Delete field' }));
   await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(`/administration/closing-requirements/${budget.id}`));
   expect(confirm).not.toHaveBeenCalled();
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Field deleted'));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Field deleted.'));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(mocks.refetch).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'deals' } });
@@ -455,9 +455,10 @@ it('reports actionable dependency errors without treating a failed deletion as s
   render(<ClosingFieldsSettings />);
   fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete field' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete field' }));
-  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('Referenced by Workflow: Budget routing'));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Referenced by Workflow: Budget routing'); expect(mocks.error).not.toHaveBeenCalled();
   expect(mocks.success).not.toHaveBeenCalled(); expect(mocks.refetch).not.toHaveBeenCalled();
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(screen.getByRole('alertdialog')).toBeTruthy();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
   expect(screen.getByText(budget.name)).toBeTruthy();
 });
 
@@ -500,7 +501,7 @@ it('disables row and confirmation actions while a confirmed deletion is pending'
   resolve({});
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   await waitFor(() => expect(remove.disabled).toBe(false));
-  expect(mocks.success).toHaveBeenCalledWith('Field deleted');
+  expect(mocks.success).toHaveBeenCalledWith('Field deleted.');
 });
 
 it('shows compact group cards and requests a destination only when deleting a populated group', async () => {

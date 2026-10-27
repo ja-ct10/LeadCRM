@@ -18,8 +18,8 @@ import {
 import WorkflowBuilder from './visual-workflow-builder';
 import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
 import { resolveWorkflowTemplate } from '../services/workflow-stage-templates';
-import { toast } from 'sonner';
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useLayout } from '@/features/tenant/layout/use-layout';
@@ -177,7 +177,7 @@ describe('visual workflow editor', () => {
     expect(save).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     fireEvent.click(button('Publish workflow'));
-    fireEvent.click(button('Confirm activation'));
+    fireEvent.click(button(/Activate workflow|Publish changes/));
     fireEvent.click(button('Working…'));
     expect(save).toHaveBeenCalledOnce();
     await act(async () => resolve());
@@ -187,7 +187,7 @@ describe('visual workflow editor', () => {
     const { save } = setup();
     vi.mocked(workflowsApi.validate).mockResolvedValue({ success: true, data: { valid: false, message: 'Reconnect the selected Gmail sender.' } });
     fireEvent.click(button('Validate'));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledExactlyOnceWith('Reconnect the selected Gmail sender.'));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Reconnect the selected Gmail sender.'); expect(toast.error).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('Reconnect');
@@ -208,7 +208,7 @@ describe('visual workflow editor', () => {
     expect(screen.getByText('Deal Value is greater than 25000')).toBeTruthy();
     fireEvent.click(button('Publish workflow'));
     expect(save).not.toHaveBeenCalled();
-    fireEvent.click(button('Confirm activation'));
+    fireEvent.click(button(/Activate workflow|Publish changes/));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -276,7 +276,7 @@ describe('visual workflow editor', () => {
       screen.getByText('Disabled · skipped during execution'),
     ).toBeTruthy();
     fireEvent.click(button('Publish workflow'));
-    fireEvent.click(button('Confirm activation'));
+    fireEvent.click(button(/Activate workflow|Publish changes/));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -328,13 +328,13 @@ describe('visual workflow editor', () => {
         .mockRejectedValue(new Error('Choose an active workspace user.')),
     });
     fireEvent.click(button('Publish workflow'));
-    fireEvent.click(button('Confirm activation'));
+    fireEvent.click(button(/Activate workflow|Publish changes/));
     await waitFor(() =>
       expect(screen.getByRole('alertdialog').textContent).toContain(
         'Choose an active workspace user.',
       ),
     );
-    expect(toast.error).toHaveBeenCalledWith('Choose an active workspace user.');
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Choose an active workspace user.'); expect(toast.error).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
     expect(screen.getByRole('alertdialog')).toBeTruthy();
     fireEvent.click(button('Keep editing'));

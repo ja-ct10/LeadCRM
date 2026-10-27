@@ -2,7 +2,7 @@
 import { RecordBackButton } from '@/shared/components/crm/record-back-button';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useRouter } from 'next/navigation';
 import {
   Download,

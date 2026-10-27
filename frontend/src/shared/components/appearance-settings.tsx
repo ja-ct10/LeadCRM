@@ -1,7 +1,6 @@
 'use client';
 import React from 'react';
-import { Layout, Palette, Sun, Moon, Monitor, Check, Save } from 'lucide-react';
-import { toast } from 'sonner';
+import { Layout, Palette, Sun, Moon, Monitor, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ACCENT_COLORS } from '@/lib/accent-colors';
 import { THEME_PALETTES } from '@/lib/appearance-config';
@@ -132,13 +131,9 @@ export function AppearanceSettings(): React.ReactElement {
           </div>
         </div>
 
-        {/* Apply button */}
-        <div className="flex justify-end pt-3 border-t border-border">
-          <button type="button" onClick={() => toast.success("Appearance settings saved successfully")}
-            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-[var(--primary-hover)] text-white rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer">
-            <Save className="w-3.5 h-3.5" /> Apply Changes
-          </button>
-        </div>
+        <p role="status" className="pt-3 border-t border-border text-xs text-muted-foreground">
+          Appearance changes apply automatically on this device.
+        </p>
       </div>
     </div>
   );

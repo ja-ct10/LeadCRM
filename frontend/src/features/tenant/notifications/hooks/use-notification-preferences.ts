@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { notificationsApi } from '@/shared/services/notifications.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export function useNotificationPreferences() {
   const { user, tenant } = useAuth();

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const mocks = vi.hoisted(() => ({ save: vi.fn(), success: vi.fn(), error: vi.fn(), upload: vi.fn() }));
 const user = { id: 'me', firstName: 'Ada', lastName: 'Lovelace', email: 'ada@camxian.com', role: 'User' };
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user, updateProfile: mocks.save, applyAuthUser: vi.fn() }) }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { uploadAvatar: mocks.upload } }));
 import { ProfileForm } from '../profile-form';
 beforeEach(() => vi.resetAllMocks());

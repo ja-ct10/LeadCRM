@@ -1,13 +1,13 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import ComposeModal from './compose-modal';
-const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), schedule: vi.fn(), error: vi.fn(), content: vi.fn(), attachment: vi.fn(), relationships: { data: { deals: [{ id: 'linked-deal', title: 'Camera installation', assignedUserId: 'agent' }, { id: 'other-deal', title: 'Other agent Deal', assignedUserId: 'other-agent' }], hasMoreDeals: false }, isInitialLoad: false, isRefreshing: false, loadMore: vi.fn(), refetch: vi.fn(), error: null } }));
-vi.mock('../services/gmail.service', () => ({ sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, scheduleGmailEmail: mocks.schedule, fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment }));
+const mocks = vi.hoisted(() => ({ remove: vi.fn(), send: vi.fn(), save: vi.fn(), schedule: vi.fn(), error: vi.fn(), content: vi.fn(), attachment: vi.fn(), relationships: { data: { deals: [{ id: 'linked-deal', title: 'Camera installation', assignedUserId: 'agent' }, { id: 'other-deal', title: 'Other agent Deal', assignedUserId: 'other-agent' }], hasMoreDeals: false }, isInitialLoad: false, isRefreshing: false, loadMore: vi.fn(), refetch: vi.fn(), error: null } }));
+vi.mock('../services/gmail.service', () => ({ deleteGmailDraft: mocks.remove, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, scheduleGmailEmail: mocks.schedule, fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment }));
 vi.mock('@/shared/hooks/use-record-relationships', () => ({ useRecordRelationships: () => mocks.relationships }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent' } }) }));
-vi.mock('sonner', () => ({ toast: { error: mocks.error, success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 beforeEach(() => { vi.clearAllMocks(); mocks.send.mockResolvedValue({ messageId: 'sent', threadId: 'thread' }); mocks.save.mockResolvedValue({ draftId: 'draft' }); });
 afterEach(cleanup);
@@ -52,4 +52,22 @@ it('restores attachments from Gmail before enabling saved-draft delivery', async
   fireEvent.click(screen.getByRole('button', { name: 'Send email' }));
   await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
   expect(mocks.send.mock.calls[0][8].attachments[0].content).toBe(btoa('%PDF-existing'));
+});
+
+
+it('confirms draft deletion, preserves content on cancel/failure, and retries without sending', async () => {
+  const close = vi.fn();
+  mocks.remove.mockRejectedValueOnce(new Error('Draft could not be deleted.')).mockResolvedValueOnce(undefined);
+  render(<ComposeModal isOpen onClose={close} onSent={vi.fn()} initialDraft={{ ...draft, draftId: 'saved-draft' }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+  expect(mocks.remove).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('textbox', { name: 'Subject' })).toHaveProperty('value', 'Original');
+  fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Discard draft' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Draft could not be deleted.');
+  expect(close).not.toHaveBeenCalled(); expect(mocks.error).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Discard draft' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(mocks.remove).toHaveBeenCalledTimes(2); expect(mocks.send).not.toHaveBeenCalled();
 });

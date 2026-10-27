@@ -1,7 +1,7 @@
 'use client';
 import { useId, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { apiClient } from '@/lib/api/client';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -33,7 +33,7 @@ export function ExportCsvButton({ module, params, hasData, disabled }: { module:
       const url = URL.createObjectURL(blob), link = document.createElement('a');
       link.href = url;
       const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-      link.download = `${module}-${date}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      link.download = `${module}-${date}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url); toast.success('CSV download started.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to export CSV.');
       if ((error as { status?: number })?.status === 404 && error instanceof Error && error.message === emptyMessage) invalidatePageCache(module, tenant?.id);

@@ -3,7 +3,7 @@ import { uuid } from '@/lib/utils';
 
 import React, { useState } from 'react';
 import { Upload, FileText, Download, Trash2, ShieldAlert } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 

@@ -1,7 +1,7 @@
 import type { NotificationRecord } from '@leadcrm/shared';
 import { NotificationRecordTargetSchema } from '@leadcrm/shared';
 import { notificationsApi } from '@/shared/services/notifications.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export function opensNotificationRecord(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): boolean {
   return NotificationRecordTargetSchema.safeParse({ entityType: notification.entityType, entityId: notification.entityId }).success;

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save, Copy } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_FIELD_LIMIT_ERRORS, ORGANIZATION_FIELD_LIMITS, ORGANIZATION_PHONE_ERROR, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { Card } from '@/shared/components/ui/card';
@@ -91,7 +91,7 @@ export function OrganizationSettingsForm() {
       setOrganization(data);
       setSaved(persisted); setDraft(persisted); setEditing(false);
       applyOrganizationSettings(data);
-      toast.success('Organization settings saved successfully');
+      toast.success('Organization settings saved.');
     } catch (reason) {
       if (generation.current === current) {
         const errors = (reason as { fieldErrors?: Record<string, string[]> })?.fieldErrors;
@@ -107,7 +107,7 @@ export function OrganizationSettingsForm() {
     if (!organization || organization.id !== tenant?.id || !canView) return;
     try {
       await navigator.clipboard.writeText(organization.id);
-      toast.success('Account ID copied');
+      toast.success('Account ID copied.');
     } catch {
       toast.error('Unable to copy Account ID. Please copy it manually.');
     }

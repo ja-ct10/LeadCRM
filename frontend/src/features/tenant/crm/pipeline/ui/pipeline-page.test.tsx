@@ -20,7 +20,7 @@ vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipel
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => state.permissions.includes(permission) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: state.setData, isInitialLoad: state.loading, isRefreshing: state.refreshing, error: state.error }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/shared/components/crm', () => ({ DealPanel: () => null }));
 vi.mock('@/features/tenant/crm/deals/ui/deal-form', () => ({ DealFormSheet: ({ isOpen, preselect, onSubmit }: any) => isOpen ? <div role="dialog" aria-label="New Deal" data-pipeline={preselect.pipelineId} data-stage={preselect.stageId}>
   <button onClick={() => void onSubmit({ title: 'Created Deal' })}>Save fixture Deal</button>

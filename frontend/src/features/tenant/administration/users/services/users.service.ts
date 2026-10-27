@@ -2,7 +2,7 @@
 
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import type { DeactivationImpact } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { apiClient } from '@/lib/api/client';
 import type { ApiResponse, PaginatedResponse } from '@leadcrm/shared';
 import type { User } from '@/store/types';

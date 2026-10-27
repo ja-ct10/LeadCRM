@@ -11,6 +11,10 @@ import { cn } from '@/lib/utils';
 interface DialogContextValue {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  titleId?: string;
+  descriptionId?: string;
+  setTitleId: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setDescriptionId: React.Dispatch<React.SetStateAction<string | undefined>>;
 }
 
 const DialogContext = React.createContext<DialogContextValue | null>(null);
@@ -37,6 +41,8 @@ export function Dialog({
   children,
 }: DialogProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
+  const [titleId, setTitleId] = React.useState<string>();
+  const [descriptionId, setDescriptionId] = React.useState<string>();
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
 
@@ -51,7 +57,7 @@ export function Dialog({
   );
 
   return (
-    <DialogContext.Provider value={{ open, onOpenChange: handleOpenChange }}>
+    <DialogContext.Provider value={{ open, onOpenChange: handleOpenChange, titleId, descriptionId, setTitleId, setDescriptionId }}>
       {children}
     </DialogContext.Provider>
   );
@@ -99,7 +105,7 @@ export interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement>
 
 export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, showClose = true, trapFocus = true, closeClassName, ...props }, ref) => {
-    const { open, onOpenChange } = useDialog();
+    const { open, onOpenChange, titleId, descriptionId } = useDialog();
     const [mounted, setMounted] = React.useState(false);
     const panelRef = React.useRef<HTMLDivElement | null>(null);
     const owner = React.useId();
@@ -137,6 +143,8 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
               tabIndex={trapFocus ? -1 : undefined}
               role="dialog"
               aria-modal="true"
+              aria-labelledby={props['aria-label'] ? undefined : titleId}
+              aria-describedby={descriptionId}
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -184,10 +192,16 @@ DialogHeader.displayName = 'DialogHeader';
 
 export function DialogTitle({
   className,
+  id,
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
+  const generatedId = React.useId();
+  const titleId = id ?? generatedId;
+  const { setTitleId } = useDialog();
+  React.useEffect(() => { setTitleId(titleId); return () => setTitleId(undefined); }, [titleId, setTitleId]);
   return (
     <h3
+      id={titleId}
       className={cn('text-base font-semibold leading-none tracking-tight text-foreground', className)}
       {...props}
     />
@@ -197,10 +211,16 @@ DialogTitle.displayName = 'DialogTitle';
 
 export function DialogDescription({
   className,
+  id,
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
+  const generatedId = React.useId();
+  const descriptionId = id ?? generatedId;
+  const { setDescriptionId } = useDialog();
+  React.useEffect(() => { setDescriptionId(descriptionId); return () => setDescriptionId(undefined); }, [descriptionId, setDescriptionId]);
   return (
     <p
+      id={descriptionId}
       className={cn(responsiveTypography.body, 'text-muted-foreground', className)}
       {...props}
     />

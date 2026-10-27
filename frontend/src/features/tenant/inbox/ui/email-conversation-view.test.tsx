@@ -39,7 +39,7 @@ it('shows the compact toolbar, participant, total message count and address with
   render(<EmailConversationView {...props()} email={{ ...groupedEmail, messageCount: 51 }} mailboxEmail="staff@camxian.com" />); await loaded();
   const toolbar = within(screen.getByRole('toolbar', { name: 'Conversation actions' }));
   expect(toolbar.getByText('Email Thread')).toBeTruthy();
-  for (const name of ['Back to inbox', 'Archive conversation', 'Delete Permanently']) expect(toolbar.getByRole('button', { name })).toBeTruthy();
+  for (const name of ['Back to inbox', 'Archive conversation', 'Move to Gmail Trash']) expect(toolbar.getByRole('button', { name })).toBeTruthy();
   expect(screen.getByRole('heading', { level: 1, name: 'Doris' })).toBeTruthy();
   expect(screen.getByLabelText('51 messages').textContent).toBe('51 messages');
   expect(screen.getByText('customer@example.test', { selector: 'header p' })).toBeTruthy();
@@ -88,7 +88,7 @@ it.each([['Archive topic: CCTV quotation', 'archive'], ['Trash topic: CCTV quota
   fireEvent.click(screen.getByRole('button', { name: 'Actions for topic: CCTV quotation' }));
   expect(within(screen.getAllByRole('article')[0]).getByRole('button', { name: 'Expand message from Doris' })).toBeTruthy();
   fireEvent.click(screen.getByRole('menuitem', { name: label }));
-  if (action === 'trash') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  if (action === 'trash') fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }));
   await waitFor(() => expect(mocks[action === 'archive' ? 'archiveGroups' : 'trashGroups']).toHaveBeenCalledWith([correspondentId]));
   expect(mocks.archive).not.toHaveBeenCalled(); expect(mocks.trash).not.toHaveBeenCalled();
   expect(actions.onEmailsChanged).toHaveBeenCalledOnce(); expect(actions.onBack).toHaveBeenCalledOnce();
@@ -153,11 +153,11 @@ it('loads bounded history pages and keeps the message count and existing topic o
   expect(mocks.correspondent).toHaveBeenLastCalledWith(correspondentId, 'next-history', expect.any(AbortSignal));
   expect(screen.queryByRole('button', { name: 'Load more messages' })).toBeNull();
 });
-it.each([['Archive conversation', 'archiveGroups'], ['Delete Permanently', 'trashGroups']] as const)('applies %s to the correspondent identity across original Gmail topics', async (label, action) => {
+it.each([['Archive conversation', 'archiveGroups'], ['Move to Gmail Trash', 'trashGroups']] as const)('applies %s to the correspondent identity across original Gmail topics', async (label, action) => {
   mocks.correspondent.mockResolvedValue(groupResult([{ ...olderTopic, isRead: true }, { ...latest, isRead: true }])); mocks[action].mockResolvedValue({ success: true });
   const actions = props(); render(<EmailConversationView {...actions} email={groupedEmail} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: label }));
-  if (label === 'Delete Permanently') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  if (label === 'Move to Gmail Trash') fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }));
   await waitFor(() => expect(mocks[action]).toHaveBeenCalledWith([correspondentId])); expect(actions.onBack).toHaveBeenCalledOnce();
 });
 it('clears correspondent bodies and a reply draft when authorization is revoked', async () => {
@@ -251,10 +251,10 @@ it('renders a single read message without a provider write', async () => {
   render(<EmailConversationView {...props()} email={old} />); await loaded();
   expect(screen.getAllByRole('article')).toHaveLength(1); expect(mocks.read).not.toHaveBeenCalled();
 });
-it.each([['Archive conversation', 'archive'], ['Delete Permanently', 'trash']] as const)('applies %s to the thread, then refreshes and returns', async (label, action) => {
+it.each([['Archive conversation', 'archive'], ['Move to Gmail Trash', 'trash']] as const)('applies %s to the thread, then refreshes and returns', async (label, action) => {
   const actions = props(); render(<EmailConversationView {...actions} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: label }));
-  if (label === 'Delete Permanently') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  if (label === 'Move to Gmail Trash') fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }));
   await waitFor(() => expect(actions.onBack).toHaveBeenCalledOnce());
   expect(mocks[action]).toHaveBeenCalledWith('conversation'); expect(actions.onEmailsChanged).toHaveBeenCalled();
 });

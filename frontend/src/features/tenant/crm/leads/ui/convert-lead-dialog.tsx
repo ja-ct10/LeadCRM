@@ -10,7 +10,7 @@ import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { useData } from '@/store/DataContext';
 import { apiClient } from '@/lib/api/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import {
   Building,
@@ -105,7 +105,7 @@ function ConvertLeadForm({ onClose, lead, onSuccess }: Omit<ConvertLeadDialogPro
 
       await apiClient.post(`/crm/leads/${lead.id}/convert`, payload);
 
-      toast.success('Lead converted successfully');
+      toast.success('Lead converted.');
 
       // Refresh data across all affected modules
       await Promise.all([

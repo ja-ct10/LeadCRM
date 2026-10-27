@@ -9,7 +9,7 @@ import ContactsPage from './contacts-page';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), toast: vi.fn(), persist: vi.fn(), updateParams: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('sonner', () => ({ toast: { error: mocks.toast, success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.toast, success: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', role: 'Client Admin' }, tenant: { id: 'tenant' }, userCan: () => true }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ organizations: [], users: [], deals: [] }) }));

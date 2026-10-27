@@ -1,4 +1,5 @@
 "use client";
+import { toast } from '@/shared/utils/toast';
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { taskAssociationIds, type TaskLinkInput, type TaskOption, type TaskRecord } from '@leadcrm/shared';
 import { useData } from '@/store/DataContext';
@@ -60,7 +61,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
       if (resolvedDueDate !== dueDate) setDueDate(resolvedDueDate);
       await addTask({ title: title.trim(), description, status: 'pending', priority, dueDate: manilaTaskDueInstant(resolvedDueDate), assignedUserId,
         dealIds: [...new Set([...dealIds, ...(preserveContextLinks ? taskAssociationIds(links, 'deal') : [])])], requestId: requestId.current });
-      onClose();
+      toast.success('Task created.'); onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save task.'); }
     finally { setBusy(false); }
   };

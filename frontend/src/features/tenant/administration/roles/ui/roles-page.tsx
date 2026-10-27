@@ -3,7 +3,7 @@
 import { RoleDeletionDialog } from './role-deletion-dialog';
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, RefreshCw, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { motion } from 'motion/react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useRoles } from '../hooks/use-roles';
@@ -141,7 +141,7 @@ export default function RolesPage(): React.ReactElement {
 
       <RoleDeletionDialog role={filteredRoles.find(role => role.id === deleteRoleId) ?? null} canDelete={canArchive}
         onOpenChange={open => { if (!open) setDeleteRoleId(null); }}
-        onDelete={async id => { await handleArchive(id); toast.success('Role deleted'); setDeleteRoleId(null); }} />
+        onDelete={async id => { await handleArchive(id); toast.success('Role deleted.'); setDeleteRoleId(null); }} />
 
       {/* Permissions reference tab */}
       {activeTab === 'permissions' && <PermissionsTab />}

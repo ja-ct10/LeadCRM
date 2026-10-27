@@ -1,4 +1,5 @@
 'use client';
+import { feedbackError } from '@/shared/utils/feedback-error';
 import React, { useEffect, useState } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
 import { CrmEmailSchema } from '@leadcrm/shared';
@@ -86,7 +87,7 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
     }
     setIsSaving(true);
     try { await onSave(apiField, typeof editValue === 'string' && !row?.preserveWhitespace ? editValue.trim() : editValue); setEditingKey(null); }
-    catch (error) { setFieldError(error instanceof Error ? error.message : 'Unable to save field'); }
+    catch (error) { setFieldError(feedbackError(error, 'Unable to save this field. Please try again.')); }
     finally { setIsSaving(false); }
   };
 

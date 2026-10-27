@@ -3,7 +3,7 @@ import { WorkflowVersionHistory } from './workflow-version-history';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import {
   DndContext,
   DragOverlay,
@@ -432,7 +432,6 @@ export default function WorkflowBuilder({
   }
   function reportError(message: string) {
     setError(message);
-    toast.error(message);
   }
   async function submit(activate: boolean, validateOnly = false, confirmed = false) {
     if (operation.current || readOnly || (activate && !canActivate)) return;
@@ -440,8 +439,8 @@ export default function WorkflowBuilder({
     setMessage('');
     if (nameIssue) {
       select('details');
-      reportError(nameIssue);
       if (confirmed) throw new Error(nameIssue);
+      reportError(nameIssue);
       return;
     }
     const local = [...editorIssues(
@@ -454,8 +453,8 @@ export default function WorkflowBuilder({
     ), ...workflowTemplateSetupIssues(draft, linkedTemplate?.id, options).map(message => ({ step: 'conditions' as const, message }))];
     if (local.length) {
       select(local[0].step);
-      reportError(local[0].message);
       if (confirmed) throw new Error(local[0].message);
+      reportError(local[0].message);
       return;
     }
     const parsed = WorkflowDraftSchema.safeParse({
@@ -464,8 +463,8 @@ export default function WorkflowBuilder({
     });
     if (!parsed.success) {
       const issue = parsed.error.issues[0]?.message ?? 'Review the workflow.';
-      reportError(issue);
       if (confirmed) throw new Error(issue);
+      reportError(issue);
       return;
     }
     if (activate && !confirmed) {
@@ -504,10 +503,10 @@ export default function WorkflowBuilder({
         toast.success(!activate && persisted.isActive ? 'Draft saved; published version remains active.' : persisted.isActive ? 'Workflow published.' : paused ? 'Workflow saved and paused.' : 'Draft saved.');
       }
     } catch (failure) {
+      if (confirmed) throw failure;
       reportError(
         failure instanceof Error ? failure.message : 'Unable to save workflow.',
       );
-      if (confirmed) throw failure;
     } finally {
       operation.current = false;
       setBusy(false);
@@ -1068,7 +1067,7 @@ export default function WorkflowBuilder({
         title={saved.isActive ? 'Save changes to active workflow?' : 'Activate workflow?'}
         description={`${draft.name} will run when ${trigger?.label ?? 'its trigger'} occurs and its conditions match. ${draft.actions.filter(action => action.enabled !== false).length} enabled action(s) may create tasks, update records, or send messages.`}
         warning="Review recipients, assigned agents, and field changes before activating. Already dispatched actions cannot be recalled."
-        variant="success" confirmLabel="Confirm activation" cancelLabel="Keep editing" isLoading={busy}
+        variant="success" confirmLabel={saved.isActive ? "Publish changes" : "Activate workflow"} cancelLabel="Keep editing" isLoading={busy}
         confirmDisabled={readOnly || !canActivate} onConfirm={() => submit(true, false, true)} />
       <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
         title="Discard unsaved changes?" description="Your last saved workflow will be kept."

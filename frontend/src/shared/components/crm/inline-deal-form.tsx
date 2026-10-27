@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { ProductInterestSelect } from './product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { Button } from '@/shared/components/ui/button';
 import { useData } from '@/store/DataContext';
 import { cn } from '@/lib/utils';
@@ -159,7 +159,7 @@ export function InlineDealForm({
     }
     reset();
     onCancel?.();
-    toast.success('Deal created successfully');
+    toast.success('Deal created.');
   };
 
   const selectedType = watch('associationType');

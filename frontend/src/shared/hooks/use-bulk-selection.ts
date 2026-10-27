@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

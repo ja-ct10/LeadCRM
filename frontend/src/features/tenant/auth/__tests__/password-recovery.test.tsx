@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 const recovery = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ requestPasswordReset: recovery, login: vi.fn(), confirmPasswordReset: vi.fn() }) }));
-vi.mock('sonner', () => ({ toast }));
+vi.mock('@/shared/utils/toast', () => ({ toast }));
 import ModernLoginPage from '../../pages/modern-login-page';
 function form(email = 'unknown@example.com') {
   render(<ModernLoginPage onNavigate={vi.fn()} />);

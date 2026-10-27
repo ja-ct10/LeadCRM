@@ -6,7 +6,7 @@ import { notificationsApi, type NotificationsResponse } from '@/shared/services/
 import { buildCacheKey, createPageCacheGuard, getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { sharedNotificationList, useNotificationCounts, lockNotificationMutation, unlockNotificationMutation, sharedRecordNotificationRead } from './notification-requests';
 
 export type NotificationFilter = 'all' | 'unread' | 'read';
@@ -124,7 +124,7 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
     };
   }, [loadNotifications, tenantId, userId, scope, isRead, feedEnabled]);
 
-  const mutate = useCallback(async (action: NotificationChange['action'], ids: string[] = [], record?: NotificationRecordTarget) => {
+  const mutate = useCallback(async (action: NotificationChange['action'], ids: string[] = [], record?: NotificationRecordTarget, inlineError = false) => {
     if (active.current.scope !== scope || !active.current.mounted) return false;
     if (!enabled || mutationPending.current || !lockNotificationMutation(identity)) return false;
     mutationPending.current = true;
@@ -144,7 +144,7 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
       }
       return true;
     } catch {
-      if (active.current.mounted && active.current.scope === scope) toast.error(action === 'delete' ? 'Failed to delete notifications' : 'Failed to update notifications');
+      if (!inlineError && active.current.mounted && active.current.scope === scope) toast.error(action === 'delete' ? 'Failed to delete notifications' : 'Failed to update notifications');
       return false;
     } finally {
       mutationPending.current = false;
@@ -172,7 +172,7 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
     markAllAsRead: () => mutate('read-all'),
     markRecordAsRead: (record: NotificationRecordTarget) => sharedRecordNotificationRead(identity, record.entityType + ':' + record.entityId,
       () => mutate('read-record', [], record)),
-    deleteNotifications: (ids: string[]) => mutate('delete', [...new Set(ids)]),
+    deleteNotifications: (ids: string[], inlineError = false) => mutate('delete', [...new Set(ids)], undefined, inlineError),
     loadMore: () => { if (!currentState.isLoading && currentState.hasMore) void loadNotifications(currentState.page + 1); },
     refresh: () => loadNotifications(currentState.page),
   };

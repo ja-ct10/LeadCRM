@@ -8,7 +8,7 @@ import { useAuth } from '@/store/AuthContext';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { usesWorkspaceAppearance } from '@/lib/appearance-config';
 import { ThemeScope } from '@/shared/components/theme-scope';
-import { Toaster } from 'sonner';
+import { FeedbackToaster } from '@/shared/components/feedback-toaster';
 import { DealActionsProvider } from '@/shared/components/crm/deal-card-menu';
 import { LogoutConfirmationProvider } from './logout-confirmation-provider';
 
@@ -17,7 +17,7 @@ function AppearanceToaster() {
   const { isDark } = useTheme();
   const workspace = usesWorkspaceAppearance(usePathname(), Boolean(user));
   return <ThemeScope enabled={workspace} className="contents">
-    <Toaster theme={workspace && isDark ? 'dark' : 'light'} position="top-right" expand closeButton duration={4000} gap={4} />
+    <FeedbackToaster dark={workspace && isDark} />
   </ThemeScope>;
 }
 

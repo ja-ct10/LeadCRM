@@ -7,7 +7,7 @@ import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { motion, AnimatePresence } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import { Mail, MessageSquare, Phone, Plus, MoreHorizontal, History, Check, ChevronDown, ChevronRight, FileText, Trash2, Zap, GitMerge, Eye, Pencil, Download, Upload, Layers, Copy, Building, User, ExternalLink } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/shared/components/ui/dialog';

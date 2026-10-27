@@ -8,7 +8,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { workflowStatusLabel, type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
 import { Eye, Edit, Copy, Activity, Pause, Play, Archive } from 'lucide-react';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
@@ -99,14 +99,15 @@ export default function WorkflowsPage() {
   async function mutate(work: () => Promise<unknown>, message: string, propagateError = false) {
     if (mutationLock.current) return;
     mutationLock.current = true; setBusy(true);
-    try { await work(); await refreshWorkflows(); toast.success(message); }
+    try { await work(); try { await refreshWorkflows(); toast.success(message); } catch { toast.warning(`${message} Refresh the list to see the changes.`); } }
     catch (failure) { if (propagateError) throw failure; toast.error(failure instanceof Error ? failure.message : 'Unable to complete this action.'); }
     finally { mutationLock.current = false; setBusy(false); }
   }
   const duplicateWorkflow = (workflow: Workflow) => void mutate(async () => {
     await workflowsApi.duplicate(workflow.id);
   }, 'Workflow duplicated as a draft.');
-  const toggleWorkflow = (workflow: Workflow) => void mutate(() => workflowsApi.toggle(workflow.id, !workflow.isActive), workflow.isActive ? 'Workflow paused.' : 'Workflow activated.');
+  const [activating, setActivating] = useState<Workflow | null>(null);
+  const toggleWorkflow = (workflow: Workflow) => { if (workflow.isActive) void mutate(() => workflowsApi.toggle(workflow.id, false), 'Workflow paused.'); else setActivating(workflow); };
   if (!canView) return <p className="p-6 text-[var(--text-primary)]">You do not have permission to view workflows.</p>;
   return <div className="p-4 sm:p-6 space-y-6 text-[var(--text-primary)]">
     <PageHeader title="Workflows" subtitle="Automate CRM actions based on triggers and conditions." actions={canCreate && <CreateButton label="Create Workflow" disabled={!metadata || busy} onClick={() => setCreateOpen(true)} />} />
@@ -144,6 +145,10 @@ export default function WorkflowsPage() {
       ]} />
     {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} loadOptions={async () => (await withWorkflowTimeout(workflowsApi.options())).data} onClose={() => setCreateOpen(false)} onChoose={identity => { router.push(identity === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${encodeURIComponent(identity)}`); setCreateOpen(false); }} />}
     {runs && <WorkflowExecutionLogModal key={runs.id} workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onUpdated={refreshWorkflows} onClose={() => setRuns(null)} />}
+    <ConfirmActionDialog open={!!activating} onOpenChange={open => { if (!open) setActivating(null); }}
+      title="Activate workflow?" description="This workflow will run when its trigger and conditions match. Its enabled actions may update records, create tasks, or send messages."
+      warning="Already dispatched actions cannot be recalled." confirmLabel="Activate workflow" isLoading={busy} confirmDisabled={!canActivate}
+      onConfirm={async () => { if (!activating) return false; await mutate(() => workflowsApi.toggle(activating.id, true), 'Workflow activated.', true); setActivating(null); }} />
     <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.', true); }} />
   </div>;
 }

@@ -10,7 +10,7 @@ import { useDashboard } from '../hooks/use-dashboard-report';
 import { DASHBOARD_TIMEZONE, DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, pipelineStageColor, type DashboardQuery, type DashboardReport, type DashboardRange, type FunnelRange } from '@leadcrm/shared';
 import { Input } from '@/shared/components/ui/input';
 import { Tooltip as ValueTooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/components/ui/tooltip';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { motion } from 'motion/react';
 
 const ranges: Array<{ id: DashboardRange; label: string }> = [
@@ -205,7 +205,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
   };
   const handleRefresh = async () => {
     if (loading) return;
-    if (await refresh()) toast.success('Dashboard metrics refreshed'); else toast.error('Dashboard could not refresh');
+    if (await refresh()) toast.success('Dashboard metrics refreshed.'); else toast.error('Dashboard could not refresh');
   };
   if (!user) return null;
   if (presentation === 'dashboard' && !report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton presentation={presentation} /></div>;

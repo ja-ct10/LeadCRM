@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 /** Opens existing record views from application-owned notification links. */
 export function useNotificationRecordLink<T>(key: string, scope: string, enabled: boolean, load: (id: string) => Promise<T>, open: (row: T) => void) {
