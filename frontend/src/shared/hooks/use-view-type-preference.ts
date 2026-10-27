@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { tablePreferencesApi } from '@/shared/services/table-preferences.api';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { ViewType } from '@leadcrm/shared';
 
 export interface UseViewTypePreferenceReturn {

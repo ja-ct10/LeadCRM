@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { PermissionKey } from '@leadcrm/shared';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { ConfirmActionDialog } from './confirm-action-dialog';

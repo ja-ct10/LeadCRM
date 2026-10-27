@@ -4,7 +4,7 @@ import { responsiveTypography } from '@/shared/styles/typography';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
 import { SESSION_IDLE_MESSAGE, StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, INVALID_LOGIN_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
@@ -102,7 +102,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
     } catch (err: unknown) {
       const zodErr = err as { errors?: Array<{message: string}> };
       const errorMessage = zodErr.errors?.[0]?.message || 'Validation failed';
-      toast.error(errorMessage, { id: 'leadcrm-login-error' });
+      setError(errorMessage);
       setIsSigningIn(false);
       loginPending.current = false;
       return;
@@ -115,7 +115,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
         // Edge case: API returned 2xx but no user object — structural backend issue.
         // login() throws for all real errors (401, 403, 502, network), so this
         // branch only fires when the response shape is unexpectedly empty.
-        toast.error('Sign in failed. Please try again or contact support.', { id: 'leadcrm-login-error' });
+        setError('Sign in failed. Please try again or contact support.');
         setIsSigningIn(false);
       }
       // On success, AuthGuard's useEffect handles role-based navigation.
@@ -134,7 +134,6 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
       const message = err instanceof Error ? err.message : 'Sign in failed. Please try again.';
       setError(message);
-      toast.error(message, { id: 'leadcrm-login-error' });
       setIsSigningIn(false);
     } finally {
       loginPending.current = false;

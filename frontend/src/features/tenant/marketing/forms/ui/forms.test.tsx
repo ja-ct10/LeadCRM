@@ -298,7 +298,7 @@ describe('Forms UI', () => {
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
     const name = screen.getByLabelText('Form name') as HTMLInputElement;
     expect(name.required).toBe(true); expect(name.parentElement?.querySelector('.text-red-600')?.textContent).toContain('*');
-    fireEvent.change(name, { target: { value: '   ' } }); fireEvent.click(screen.getByText('Publish'));
+    fireEvent.change(name, { target: { value: '   ' } }); fireEvent.click(screen.getByText('Publish')); if (screen.queryByRole('button', { name: 'Publish form' })) fireEvent.click(screen.getByRole('button', { name: 'Publish form' }));
     expect(screen.getByRole('alert').textContent).toContain('Form name is required.');
     expect(screen.getAllByLabelText(/^Drag /)).toHaveLength(form.fields.length);
     expect(service.updateForm).not.toHaveBeenCalled(); expect(service.publishForm).not.toHaveBeenCalled();
@@ -320,7 +320,7 @@ describe('Forms UI', () => {
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
     fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unauthorized edit' } });
     expect((screen.getByLabelText('Form name') as HTMLInputElement).value).toBe('Contact Us');
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' })); if (screen.queryByRole('button', { name: 'Publish form' })) fireEvent.click(screen.getByRole('button', { name: 'Publish form' }));
     await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
     expect(service.updateForm).not.toHaveBeenCalled();
   });
@@ -356,7 +356,7 @@ describe('Forms UI', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent?.split('Unpublish this')[0])).toEqual(['Edit', 'Duplicate', 'Unpublish', 'Delete']);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' })); await screen.findByText('Draft');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' })); fireEvent.click(screen.getByRole('button', { name: 'Unpublish form' })); await screen.findByText('Draft');
     expect(service.unpublishForm).toHaveBeenCalledWith('form');
     fireEvent.click(screen.getByLabelText('More actions'));
     expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
@@ -372,7 +372,7 @@ describe('Forms UI', () => {
     fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unsaved title' } });
     fireEvent.click(screen.getByLabelText('More actions'));
     expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Discard changes', 'Unpublish']);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' })); fireEvent.click(screen.getByRole('button', { name: 'Unpublish form' }));
     await screen.findByText('Draft');
     expect(service.unpublishForm).toHaveBeenCalledWith('form');
     expect((screen.getByLabelText('Form name') as HTMLInputElement).value).toBe('Unsaved title');
@@ -387,7 +387,7 @@ describe('Forms UI', () => {
     vi.mocked(service.unpublishForm).mockRejectedValue(new Error('Unpublish failed'));
     render(<FormBuilderPage form={{ ...form, status: 'published', publishedVersion: 1 }} onBack={() => {}} onFormUpdate={() => {}} />);
     fireEvent.click(screen.getByLabelText('More actions'));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' })); fireEvent.click(screen.getByRole('button', { name: 'Unpublish form' }));
     await screen.findByRole('alert');
     expect(screen.getByText('Published')).toBeTruthy();
   });
@@ -444,7 +444,7 @@ describe('Forms UI', () => {
     fireEvent.click(screen.getByText('Add fields or change design'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByText('Age'));
     fireEvent.click(within(screen.getByRole('dialog')).getByText('Separator line'));
-    fireEvent.keyDown(window, { key: 'Escape' }); fireEvent.click(screen.getByText('Publish'));
+    fireEvent.keyDown(window, { key: 'Escape' }); fireEvent.click(screen.getByText('Publish')); if (screen.queryByRole('button', { name: 'Publish form' })) fireEvent.click(screen.getByRole('button', { name: 'Publish form' }));
     await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
     expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.at(-2)).toMatchObject({ label: 'Age', type: 'number', customFieldId: 'age' });
     expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.at(-1)).toMatchObject({ label: 'Separator line', type: 'divider' });
@@ -454,7 +454,7 @@ describe('Forms UI', () => {
   it('keeps failed edits and prevents publishing after a failed save', async () => {
     vi.mocked(service.updateForm).mockRejectedValue(new Error('Save failed'));
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'New name' } }); fireEvent.click(screen.getByText('Publish'));
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'New name' } }); fireEvent.click(screen.getByText('Publish')); if (screen.queryByRole('button', { name: 'Publish form' })) fireEvent.click(screen.getByRole('button', { name: 'Publish form' }));
     await screen.findByText('Save failed'); expect(service.publishForm).not.toHaveBeenCalled(); expect(screen.getByText('Unsaved changes')).toBeTruthy();
   });
   it('shows one error per public field, limits phone digits, submits and thanks the visitor', async () => {

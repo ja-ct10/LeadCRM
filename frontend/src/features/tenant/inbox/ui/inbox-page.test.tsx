@@ -1,6 +1,6 @@
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' } }) }));
 import React, { StrictMode } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import InboxPage from './inbox-page';
 
@@ -391,4 +391,16 @@ describe('Persisted scoped Inbox', () => {
     render(<StrictMode><InboxPage /></StrictMode>); await flush();
     expect(screen.getByText('Saved customer email')).toBeTruthy(); expect(screen.queryByText('Loading emails...')).toBeNull();
   });
+});
+
+
+it('requires confirmation to disconnect and keeps the mailbox connected after failure', async () => {
+  mocks.disconnect.mockRejectedValueOnce(new Error('Unable to disconnect.'));
+  render(<InboxPage />); await flush();
+  fireEvent.click(screen.getByRole('button', { name: 'Disconnect' })); expect(mocks.disconnect).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
+  expect(mocks.disconnect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' })); await flush();
+  expect(screen.getByRole('alertdialog')).toBeTruthy(); expect(screen.getByRole('alert').textContent).toContain('Unable to disconnect.');
 });

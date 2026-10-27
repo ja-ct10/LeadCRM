@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { ColumnDefinition } from '@leadcrm/shared';
 import { reconcileTableColumns } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { DataGridColumnDef } from '@/shared/components/data-grid';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { useColumnPreferences } from './use-column-preferences';

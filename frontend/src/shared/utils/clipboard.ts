@@ -1,4 +1,4 @@
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 /** Keep copy actions on the current page and report unavailable clipboard access. */
 export async function copyTextWithFeedback(value: string, label: string): Promise<void> {

@@ -10,7 +10,7 @@ import {
   Archive, Eye, Pencil, UserCheck, UserX, Unlock,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { usePagination } from '@/shared/hooks/use-pagination';
@@ -166,7 +166,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     try {
       await usersService.archive(confirmArchive.id);
       setConfirmArchive(null); setSelected(new Set()); setReload(value => value + 1);
-      toast.success('User archived');
+      toast.success('User archived.');
     } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to archive user.'); }
     finally { setArchiving(false); }
   };
@@ -328,7 +328,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         onOpenChange={open => { if (!open) { setReassignUser(null); setImpact(null); setReplacement(''); } }}
         title="Reassign Records and Tasks"
         description={impact?.total ? `${reassignUser?.firstName} ${reassignUser?.lastName} has assigned records and unfinished tasks that must be reassigned before the account can be deactivated.` : 'No active records or unfinished tasks are assigned to this user.'}
-        confirmLabel="Continue"
+        confirmLabel="Review deactivation"
         confirmDisabled={!!impact?.total && !replacement}
         onConfirm={() => { setStatusChangeUser(reassignUser); return false; }}
       >

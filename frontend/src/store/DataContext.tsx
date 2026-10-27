@@ -46,7 +46,7 @@ import {
 import { uuid } from "@/lib/utils";
 
 // ── Real-API integration ─────────────────────────────────────────────────────
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { apiClient, type ApiRequestError } from '@/lib/api/client';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { rolesApi } from '@/shared/services/roles.api';

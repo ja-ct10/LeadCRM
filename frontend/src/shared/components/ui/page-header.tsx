@@ -28,7 +28,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   actionsInlineWithTitle = true,
 }) => {
   return (
-    <div className={cn('min-w-0 mb-4', actionsInlineWithTitle
+    <div data-toast-clearance className={cn('min-w-0 mb-4', actionsInlineWithTitle
       ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5'
       : 'flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:flex-wrap sm:items-start', className)}>
       <div className="flex min-w-0 flex-1 items-start gap-3">

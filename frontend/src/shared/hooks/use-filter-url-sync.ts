@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { tablePreferencesApi } from '@/shared/services/table-preferences.api';
 import type { FilterCondition, FilterOperator } from '@leadcrm/shared';
 

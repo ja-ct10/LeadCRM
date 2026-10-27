@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ChevronDown } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { PERMISSION_MODULES, ROLE_TEMPLATES, EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
 import type { PermissionFlags, PermissionAction, RoleListItem } from '@/store/types/roles.types';
@@ -100,10 +100,10 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
     try {
       if (editRole) {
         await rolesService.update(editRole.id, { name: name.trim(), description: description.trim() || undefined, permissions: permissionsPayload });
-        toast.success('Role updated');
+        toast.success('Role updated.');
       } else {
         await rolesService.create({ name: name.trim(), description: description.trim() || undefined, permissions: permissionsPayload });
-        toast.success('Role created');
+        toast.success('Role created.');
       }
       onSaved();
       onClose();

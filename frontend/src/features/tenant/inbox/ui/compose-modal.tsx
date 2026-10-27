@@ -7,7 +7,8 @@ import { useReducedMotion } from 'motion/react';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { SendMailboxEmailSchema, MAILBOX_ATTACHMENT_TYPES, type MailboxComposeMode, type MailboxUploadAttachment, type MailboxRecordContext } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { toast } from '@/shared/utils/toast';
 import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft, fetchGmailThread, fetchGmailMessageContent, fetchGmailAttachment, type GmailEmail } from '../services/gmail.service';
 import { readComposeFiles } from '../services/compose-attachments';
 import { ComposeDealSelect } from './compose-deal-select';
@@ -42,6 +43,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const readingFiles = useRef(false);
   const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string; messageId?: string } | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionRetryAt, setActionRetryAt] = useState(0);
   const [, refreshCooldown] = useState(0);
@@ -141,7 +143,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     if (isOpen) {
       const restored = initialDraft ?? retainedComposer.current;
       authoredContent.current = !initialDraft && !!retainedComposer.current;
-      setError(null); setShowScheduleMenu(false);
+      setError(null); setShowScheduleMenu(false); setConfirmDiscard(false);
       if (initialDraft || !retainedComposer.current) { scheduleRequest.current = null; sendRequest.current = null; draftRequest.current = null; }
       setSentLink(null);
       setTo(restored?.to ?? '');
@@ -256,7 +258,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     if (sentLink) {
       mutationPending.current = true; setIsSending(true);
       const generation = operationGeneration.current;
-      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId, sentLink.messageId ? { messageId: sentLink.messageId } : {}); if (generation !== operationGeneration.current) return; onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
+      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId, sentLink.messageId ? { messageId: sentLink.messageId } : {}); if (generation !== operationGeneration.current) return; onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal.'); }
       catch { if (generation === operationGeneration.current) setError('Email sent, but linking to the Deal failed.'); }
       finally { mutationPending.current = false; setIsSending(false); }
       return;
@@ -303,9 +305,9 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
         if (initialDraft?.sourceDealId) {
           const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId, messageId: result.messageId };
           try { await associateThreadDeal(link.threadId, link.sourceDealId, { messageId: link.messageId }); if (generation !== operationGeneration.current) return; onDealLinkResult?.(link, true); }
-          catch { if (generation !== operationGeneration.current) return; setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent'); return; }
+          catch { if (generation !== operationGeneration.current) return; setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent.'); return; }
         }
-        toast.success('Email sent');
+        toast.success('Email sent.');
       }
       resetForm();
       onSent();
@@ -366,8 +368,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     if (mutationPending.current || currentDraftId && paused) return;
     mutationPending.current = true;
     const generation = operationGeneration.current;
-    try { if (currentDraftId) await deleteGmailDraft(currentDraftId); if (generation !== operationGeneration.current) return; resetForm(); onSent(); onClose(); }
-    catch (error) { if (generation === operationGeneration.current) actionFailed(error, 'Draft could not be deleted.'); }
+    try { if (currentDraftId) await deleteGmailDraft(currentDraftId); if (generation !== operationGeneration.current) return; setConfirmDiscard(false); resetForm(); onSent(); onClose(); toast.success('Draft discarded.'); }
+    catch (error) { if (generation === operationGeneration.current) throw error; }
     finally { mutationPending.current = false; }
   };
 
@@ -440,6 +442,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     : 'fixed bottom-0 right-2 sm:right-6 z-50 w-[580px] max-w-[calc(100vw-1rem)] h-[min(600px,calc(100dvh-1rem))] rounded-t-xl';
 
   return (
+    <>
     <motion.div
       ref={panelRef}
       initial={{ opacity: 0, y: 30, scale: 0.95 }}
@@ -784,7 +787,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
 
           {/* Discard */}
           <button
-            onClick={() => void handleDiscard()}
+            onClick={() => { if (currentDraftId || to.trim() || subject.trim() || getEditorContent().trim() || attachments.length) setConfirmDiscard(true); else void handleDiscard(); }}
             disabled={isSavingDraft || isSending || !!currentDraftId && paused}
             className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             aria-label="Discard draft"
@@ -796,5 +799,9 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
         </div>
       </div>
     </motion.div>
+    <ConfirmActionDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} title="Discard draft?"
+      description="This draft and its unsaved content will be discarded. This action cannot be undone."
+      variant="destructive" confirmLabel="Discard draft" onConfirm={handleDiscard} />
+    </>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export interface BulkOperationResult {
   succeeded: number;

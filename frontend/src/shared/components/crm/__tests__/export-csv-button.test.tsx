@@ -4,10 +4,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { clearPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { ExportCsvButton } from '../export-csv-button';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), download: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), download: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, download: mocks.download } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'actor', role: 'Sales' }, isLoading: false }) }));
-vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.error, success: mocks.success } }));
 
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks();
@@ -54,6 +54,7 @@ it('retains populated CSV downloading and ignores duplicate clicks', async () =>
   expect(button).toHaveProperty('disabled', true); expect(mocks.download).toHaveBeenCalledExactlyOnceWith('/crm/contacts/export', params);
   await act(async () => finish(new Blob(['CSV'])));
   expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('CSV download started.');
   expect(vi.mocked(HTMLAnchorElement.prototype.click).mock.instances[0]).toMatchObject({ download: expect.stringMatching(/^contacts-\d{4}-\d{2}-\d{2}\.csv$/) });
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:csv'); expect(button).toHaveProperty('disabled', false);
 });

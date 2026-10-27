@@ -17,7 +17,7 @@ import {
   Check,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
+import { toast } from '@/shared/utils/toast';
 import { cn } from "@/lib/utils";
 import { AppearanceSettings } from '@/shared/components/appearance-settings';
 import { OrganizationSettingsForm } from './organization-settings-form';

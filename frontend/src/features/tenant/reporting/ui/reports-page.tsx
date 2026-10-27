@@ -4,7 +4,7 @@ import Dashboard from '@/features/tenant/dashboard/ui/dashboard';
 import { dashboardQueryString } from '@/features/tenant/dashboard/hooks/use-dashboard-report';
 import { useRef, useState } from 'react';
 import { Download } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { DashboardQuery, DashboardReport } from '@leadcrm/shared';
 
 function ReportsCsvExport({ query, report, error, loading, className }: { query: DashboardQuery; report: DashboardReport | null; error: string | null; loading: boolean; className: string }) {
@@ -22,7 +22,7 @@ function ReportsCsvExport({ query, report, error, loading, className }: { query:
       const link = document.createElement('a'); link.href = url;
       link.download = `LeadCRM_Dashboard_${report?.period.start}_${report?.period.end}.csv`;
       document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-      toast.success('Dashboard exported to CSV');
+      toast.success('CSV download started.');
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Export failed'); }
     finally { pending.current = false; setExporting(false); }
   };

@@ -16,7 +16,7 @@ vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {
 vi.mock('@/shared/hooks/use-duplicate-check', () => ({ useDuplicateCheck: () => ({ matches: [], hasDuplicates: false, isChecking: false, dismiss: vi.fn() }) }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ onChange }: { onChange: (id: string) => void }) => <button type="button" onClick={() => onChange('account')}>Choose account</button> }));
 vi.mock('@/shared/components/crm/record-custom-fields', () => ({ useRecordCustomFields: () => ({ fields: [], blocked: false, dirty: false, uploadCount: 0, validate: () => true, payload: () => ({}), query: {} }), CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 afterEach(cleanup);
 

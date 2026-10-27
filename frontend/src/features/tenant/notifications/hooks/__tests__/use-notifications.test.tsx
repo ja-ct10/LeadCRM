@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: mocks }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const read = new Set<string>();
 it('replaces content for an existing notification in mounted consumers without a browser refresh', async () => {

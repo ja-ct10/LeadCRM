@@ -12,7 +12,7 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true 
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, refetchSilently: state.refetch, setData: vi.fn() }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: state.get } }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/shared/components/crm', () => ({ DealPanel: ({ open, deal, onOpenChange }: any) => open ? <div role="dialog" data-deal-id={deal.id}>
   {deal.title}<button onClick={() => onOpenChange(false)}>Close Deal details</button>
 </div> : null }));

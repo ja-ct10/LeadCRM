@@ -1,9 +1,9 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { clearNotificationTracking, trackSmsCampaignSubmission, useNotificationCounts } from '../notification-requests';
-const mocks = vi.hoisted(() => ({ counts: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
+const mocks = vi.hoisted(() => ({ counts: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: { counts: mocks.counts } }));
-vi.mock('sonner', () => ({ toast: mocks }));
+vi.mock('@/shared/utils/toast', () => ({ toast: mocks }));
 const now = new Date('2026-10-14T02:00:00Z');
 const outcome = (type: string, id = type) => ({ id, tenantId: 'tenant', userId: 'user', entityId: 'campaign', entityType: 'Campaign', type,
   body: `${type}: verified recipient counts`, title: type, occurredAt: now.toISOString(), createdAt: now.toISOString(), available: true, isRead: false });
@@ -105,4 +105,11 @@ it('backs off failed checks and drops responses from an unmounted identity', asy
   hook.unmount(); clearNotificationTracking();
   await act(async () => { finish(response([outcome('sms_campaign_sent')])); });
   expect(mocks.success).not.toHaveBeenCalled();
+});
+
+
+it('uses informational feedback while SMS processing is still in progress', async () => {
+  mount(); await flush();
+  mocks.counts.mockResolvedValue(response([outcome('sms_campaign_progress')])); await tick();
+  expect(mocks.info).toHaveBeenCalledOnce(); expect(mocks.warning).not.toHaveBeenCalled(); expect(mocks.success).not.toHaveBeenCalled();
 });

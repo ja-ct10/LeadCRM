@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { Dialog, DialogContent, DialogTitle } from '@/shared/components/ui/dialog';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 export async function cropAvatar(source: string, area: Area): Promise<Blob> {
   const image = new Image();

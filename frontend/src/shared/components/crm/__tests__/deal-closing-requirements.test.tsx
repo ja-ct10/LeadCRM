@@ -7,7 +7,7 @@ import { DealClosingRequirements } from '../deal-closing-requirements';
 const mocks = vi.hoisted(() => ({ patch: vi.fn(), upload: vi.fn(), refetch: vi.fn(), data: undefined as ClosingRequirementsState | undefined, error: null as string | null }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { patch: mocks.patch, upload: mocks.upload } }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: mocks.data, refetch: mocks.refetch, isInitialLoad: false, error: mocks.error }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn() } }));
 beforeEach(() => { vi.clearAllMocks(); mocks.error = null; mocks.data = { fields: DEFAULT_CLOSING_FIELDS, values: {}, files: [], errors: {}, locked: false }; });
 afterEach(cleanup);
 

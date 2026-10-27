@@ -3,14 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import NotificationsPage from './notifications-page';
 import { clearPageCache } from '@/shared/cache/page-cache';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), counts: vi.fn(), destination: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(), push: vi.fn() }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: mocks }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user' } }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('motion/react', () => ({ motion: {
   div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} />,
   span: ({ initial, animate, exit, transition, ...props }: any) => <span {...props} />,
@@ -104,7 +104,7 @@ it('shows a single-delete dialog and keeps data and selection on failure', async
   fireEvent.click(screen.getAllByRole('button', { name: 'Delete notification' })[0]);
   expect(screen.getByText('Delete notification?')).toBeTruthy();
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Failed to delete notifications'));
+  await screen.findByRole('alert'); expect(toast.error).not.toHaveBeenCalled();
   expect(screen.getByText('Notice 0')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Delete (1)' })).toBeTruthy();
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));

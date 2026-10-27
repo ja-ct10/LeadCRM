@@ -12,7 +12,7 @@ import {
   Globe,
   Tag,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import type { PermissionKey } from '@leadcrm/shared';

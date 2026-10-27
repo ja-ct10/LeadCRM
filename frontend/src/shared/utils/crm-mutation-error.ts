@@ -1,4 +1,5 @@
-import { toast } from 'sonner';
+import { feedbackError } from './feedback-error';
+import { toast } from '@/shared/utils/toast';
 import type { FieldPath, FieldValues, UseFormSetError } from 'react-hook-form';
 import type { ApiRequestError } from '@/lib/api/client';
 
@@ -10,7 +11,7 @@ export function applyCrmFieldErrors<T extends FieldValues>(error: unknown, setEr
 }
 
 export function showCrmMutationError(error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : fallback;
-  if ((error as { status?: number })?.status === 403) toast.error('Access Denied', { description: message });
+  const message = feedbackError(error, fallback);
+  if ((error as { status?: number })?.status === 403) toast.error(message);
   else toast.error(message);
 }

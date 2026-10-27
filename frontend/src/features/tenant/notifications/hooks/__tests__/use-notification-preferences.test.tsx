@@ -2,12 +2,12 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
 import { useNotificationPreferences } from '../use-notification-preferences';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
 const mocks = vi.hoisted(() => ({ auth: { tenant: { id: 'tenant' }, user: { id: 'first' } }, preferences: vi.fn(), savePreferences: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: mocks }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 beforeEach(() => {
   vi.clearAllMocks(); mocks.auth.user.id = 'first';
   mocks.preferences.mockResolvedValue({ success: true, data: { ...DEFAULT_NOTIFICATION_PREFERENCES } });

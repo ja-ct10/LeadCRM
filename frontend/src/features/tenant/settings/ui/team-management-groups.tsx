@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Copy, Edit2, MoreHorizontal, Plus, Trash2, Users, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { GroupNameSchema, type TenantGroupMember } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import type { User } from '@/store/types';
@@ -124,14 +124,14 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         // Creation is committed even if an optional member operation fails.
         setModal('members');
         if (canManageMembers && selectedIds.length) await addMembers(created.id, selectedIds);
-        toast.success('Group created successfully.');
+        toast.success('Group created.');
       } else if (modal === 'rename' && active && canManage && parsed.success) {
         const updated = (await groupsApi.update(active.id, parsed.data)).data;
         setGroups(previous => previous.map(group => group.id === active.id ? updated : group));
-        toast.success('Group name updated');
+        toast.success('Group name updated.');
       } else if (modal === 'members' && active && canManageMembers) {
         await addMembers(active.id, selectedIds);
-        toast.success('Member added successfully.');
+        toast.success('Member added.');
       }
       setModal(null);
     });
@@ -145,7 +145,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         await groupsApi.remove(group.id);
         setGroups(previous => previous.filter(row => row.id !== group.id));
         if (activeId === group.id) setActiveId(null);
-        close(); toast.success('Group deleted successfully.');
+        close(); toast.success('Group deleted.');
       }, true) });
   };
   const requestRemove = (member: TenantGroupMember) => {
@@ -155,7 +155,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       confirmLabel: 'Remove Member', variant: 'destructive', onConfirm: () => mutate(async () => {
         await groupsApi.removeMember(groupId, member.userId);
         setGroups(previous => previous.map(group => group.id === groupId ? { ...group, members: group.members.filter(row => row.userId !== member.userId) } : group));
-        close(); toast.success('Member removed successfully.');
+        close(); toast.success('Member removed.');
       }, true) });
   };
   const duplicate = (group: TenantGroup) => mutate(async () => {
@@ -163,7 +163,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     if (canManageMembers) setGroups(previous => [...previous, created]);
     else reloadPending.current = true;
     if (canManageMembers && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
-    toast.success('Group duplicated');
+    toast.success('Group duplicated.');
   });
   const saveHead = (userId: string | null, propagateError = false) => {
     if (!active || !canManageMembers) return Promise.resolve();

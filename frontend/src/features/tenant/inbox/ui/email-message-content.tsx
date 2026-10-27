@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, File, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { MailboxAttachment, MailboxMessageContent } from '@leadcrm/shared';
 import type { ApiRequestError } from '@/lib/api/client';
 import { AttachmentPreview, isPreviewableAttachment } from '@/shared/components/attachment-preview';

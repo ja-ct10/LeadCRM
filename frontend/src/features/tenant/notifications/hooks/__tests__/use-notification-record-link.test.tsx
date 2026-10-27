@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useNotificationRecordLink } from '../use-notification-record-link';
 const mocks = vi.hoisted(() => ({ id: 'record-id', router: { replace: vi.fn() }, error: vi.fn() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => ({ get: () => mocks.id }), useRouter: () => mocks.router }));
-vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: mocks.error } }));
 beforeEach(() => { vi.clearAllMocks(); mocks.id = 'record-id'; window.history.replaceState({}, '', '/notifications?campaignId=record-id&keep=yes'); });
 afterEach(cleanup);
 it('waits for permission, opens the fetched record and consumes only its own query parameter', async () => {

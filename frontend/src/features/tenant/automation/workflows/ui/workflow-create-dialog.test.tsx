@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { getAvailableActions, WORKFLOW_TRIGGERS } from '@leadcrm/shared';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { WorkflowCreateDialog } from './workflow-create-dialog';
 import { WORKFLOW_RECIPES, WORKFLOW_STARTER_TEMPLATES } from '../services/workflow-recipes';
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 beforeEach(() => { Element.prototype.scrollTo = vi.fn(); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function setup(overrides: Partial<React.ComponentProps<typeof WorkflowCreateDialog>> = {}) {

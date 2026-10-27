@@ -1,4 +1,5 @@
-import { toast } from 'sonner';
+import { feedbackError } from './feedback-error';
+import { toast } from '@/shared/utils/toast';
 
 /**
  * Options for API error handling behavior.
@@ -79,12 +80,9 @@ export function handleApiError(error: unknown, options?: ApiErrorOptions): void 
       return;
 
     default: {
-      const message = error instanceof Error
-        ? error.message
-        : 'An unexpected error occurred';
+      const message = feedbackError(error, 'Unable to complete this action. Please try again.');
 
-      toast.error('Operation failed', {
-        description: message,
+      toast.error(message, {
         action: options?.onRetry
           ? { label: 'Retry', onClick: options.onRetry }
           : undefined,

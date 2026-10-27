@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import {
   ArrowLeft,
   FileText,

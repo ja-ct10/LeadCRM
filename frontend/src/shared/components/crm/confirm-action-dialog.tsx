@@ -1,5 +1,5 @@
 'use client';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { feedbackError } from '@/shared/utils/feedback-error';
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ThemedPortal } from '@/shared/components/theme-scope';
@@ -128,8 +128,7 @@ export function ConfirmActionDialog({
       const result = await onConfirm();
       if (session.current === started && result !== false) onOpenChange(false);
     } catch (failure) {
-      if ((failure as { status?: number })?.status === 403) showCrmMutationError(failure, 'Unable to complete this action.');
-      if (session.current === started) setError(failure instanceof Error && failure.message ? failure.message : 'Unable to complete this action. Please try again.');
+      if (session.current === started) setError(feedbackError(failure, 'Unable to complete this action. Please try again.'));
     } finally {
       if (session.current === started) { pending.current = false; setInternalLoading(false); }
     }

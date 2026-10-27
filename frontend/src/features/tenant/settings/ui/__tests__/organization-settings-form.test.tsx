@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), apply: vi.fn(), success: vi.fn(), error: vi.fn(), canView: true, canEdit: true, tenant: 'tenant' }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: mocks.tenant }, userCan: (_module: string, action: string) => action === 'canView' ? mocks.canView : mocks.canEdit, applyOrganizationSettings: mocks.apply }) }));
 vi.mock('../../services/settings.service', () => ({ settingsApiService: { getOrganization: mocks.get, updateOrganization: mocks.save } }));
-vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 import { OrganizationSettingsForm } from '../organization-settings-form';
 const saved = { id: 'tenant', status: 'ACTIVE', name: 'Original', industry: 'Technology', email: 'info@example.com', phone: '+63281233488', domain: 'example.com', address: 'Manila' };
 beforeEach(() => { vi.resetAllMocks(); mocks.canView = true; mocks.canEdit = true; mocks.tenant = 'tenant'; mocks.get.mockResolvedValue({ data: saved }); });
@@ -159,7 +159,7 @@ it('copies the full authoritative ID with success and failure feedback', async (
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   render(<OrganizationSettingsForm />); await screen.findByDisplayValue('Original');
   fireEvent.click(screen.getByRole('button', { name: 'Copy Account ID' }));
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Account ID copied'));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Account ID copied.'));
   expect(writeText).toHaveBeenCalledWith(id);
   writeText.mockRejectedValue(new Error('Clipboard denied'));
   fireEvent.click(screen.getByRole('button', { name: 'Copy Account ID' }));

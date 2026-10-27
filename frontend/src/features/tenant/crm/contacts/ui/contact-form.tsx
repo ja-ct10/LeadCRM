@@ -22,7 +22,7 @@ import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { toE164, validatePhMobile, normalizePhInput } from '@/shared/utils/ph-phone';
 import {

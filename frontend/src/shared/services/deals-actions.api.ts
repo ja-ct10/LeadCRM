@@ -1,7 +1,7 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { handleApiError } from '@/shared/utils/handle-api-error';
 import type { Deal } from '@/store/types';
 

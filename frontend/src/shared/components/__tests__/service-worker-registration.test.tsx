@@ -2,9 +2,9 @@ import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { ServiceWorkerRegistration } from '../service-worker-registration';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 
-vi.mock('sonner', () => ({ toast: { info: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { info: vi.fn() } }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 it('bypasses the worker HTTP cache, checks when returning, and offers a safe refresh on updates', async () => {
   const serviceWorker = new EventTarget();

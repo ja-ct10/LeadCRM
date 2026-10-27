@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, CheckCheck, GitBranch, Info, Loader2, Plus, Search, ShieldCheck, UserPlus, Users, X, Zap } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import type { ActionDefinition, TriggerDefinition, WorkflowEntity, WorkflowOptions } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';

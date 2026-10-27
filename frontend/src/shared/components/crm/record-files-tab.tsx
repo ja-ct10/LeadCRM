@@ -12,7 +12,7 @@ import {
   Plus,
   Eye,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { RECORD_FILE_MAX_BYTES, CRM_FILE_ACCEPT, crmFileValidationError } from '@leadcrm/shared';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { DataLoadingSkeleton } from './data-view-states';
@@ -194,7 +194,7 @@ function FileRow({ file, canDelete, onDelete, onPreview, onDownload, busy }: Fil
     setIsDeleting(true);
     try {
       await onDelete(file.id);
-      toast.success('File deleted');
+      toast.success('File deleted.');
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'Failed to delete file. Please try again.');
     } finally {

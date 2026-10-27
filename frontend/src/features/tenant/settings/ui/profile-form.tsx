@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Pencil, Shield } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, isPhMobileInput, PH_MOBILE_ERROR, PROFILE_FIELD_LIMIT_ERRORS, PROFILE_FIELD_LIMITS, ProfilePhoneInputSchema, SelfProfileFieldSchemas, UpdateSelfProfileSchema } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { authApi } from '@/shared/services/auth.api';
@@ -46,7 +46,7 @@ export function ProfileForm() {
     try {
       await updateProfile(parsed.data);
       setEditing(false);
-      toast.success('Profile updated successfully.');
+      toast.success('Profile updated.');
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to save profile.'); }
     finally { busy.current = false; setSaving(false); }
   };

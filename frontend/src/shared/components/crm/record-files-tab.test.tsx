@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-vi.mock('sonner', () => ({ toast }));
+vi.mock('@/shared/utils/toast', () => ({ toast }));
 const mocks = vi.hoisted(() => ({ attachment: vi.fn(), canDelete: false }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.canDelete }));
 vi.mock('@/features/tenant/inbox/services/gmail.service', () => ({ fetchGmailAttachment: mocks.attachment }));

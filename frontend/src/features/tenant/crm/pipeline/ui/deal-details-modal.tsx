@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Deal, Pipeline, User as UserType, Task, TaskStatus } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -153,7 +153,7 @@ export function DealDetailsModal({
       priority: editFields.priority as Deal['priority'],
     });
     setIsEditing(false);
-    toast.success('Deal updated');
+    toast.success('Deal updated.');
   }
 
   function handleOpenEdit() {
@@ -173,7 +173,7 @@ export function DealDetailsModal({
       activities: [...(deal.activities || []), activity],
     });
     setNewActivity({ type: 'note', description: '', timestamp: new Date().toISOString().slice(0, 16), userId: currentUserId });
-    toast.success('Activity logged');
+    toast.success('Activity logged.');
   }
 
   const tabClass = (tab: DrawerTab) =>

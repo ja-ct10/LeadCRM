@@ -29,7 +29,7 @@ vi.mock('@/features/tenant/crm/accounts/ui/account-form', () => ({ AccountFormSh
 vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLeadDialog: () => null }));
 import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
 import { clearPageCache } from '@/shared/cache/page-cache';
-import { toast } from 'sonner';
+import { toast } from '@/shared/utils/toast';
 import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, type CustomFieldState } from '@leadcrm/shared';
 vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel, relatedRecord }: { onSubmit: (values: object) => Promise<void>; onCancel: () => void; relatedRecord: { type: string; id: string } }) => <form aria-label="New related Deal" onSubmit={event => { event.preventDefault(); void onSubmit({ ...(relatedRecord.type === 'lead' ? { leadId: relatedRecord.id } : { contactId: relatedRecord.id }), title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM', expectedCloseDate: '2026-10-20', customFieldValues: { evidence: 'Kept' } }); }}><button>Create Deal</button><button type="button" onClick={onCancel}>Cancel Deal</button></form> }));
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';

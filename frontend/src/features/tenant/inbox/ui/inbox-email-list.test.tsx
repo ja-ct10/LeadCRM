@@ -58,13 +58,13 @@ it('opens distinct Deal and no-Deal rows for the same correspondent using their 
   expect(buttons).toHaveLength(3);
   buttons.forEach((button, index) => { fireEvent.click(button); expect(options.onEmailClick).toHaveBeenLastCalledWith(emails[index]); });
 });
-it.each(['Archive', 'Delete Permanently'])('selects visible conversations and sends stable thread IDs for %s', async action => {
+it.each(['Archive', 'Move to Gmail Trash'])('selects visible conversations and sends stable thread IDs for %s', async action => {
   const options = props(), view = render(<InboxEmailList {...options} />);
   fireEvent.click(screen.getByLabelText('Select all emails'));
   view.rerender(<InboxEmailList {...options} emails={[{ ...row, id: 'new-latest', messageCount: 5 }]} />);
   expect((screen.getByLabelText('Select all emails') as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByLabelText(action));
-  if (action === 'Delete Permanently') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  if (action === 'Move to Gmail Trash') fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }));
   await waitFor(() => expect(action === 'Archive' ? mocks.archive : mocks.trash).toHaveBeenCalledWith(['thread']));
   expect(options.onEmailsChanged).toHaveBeenCalledOnce();
 });
@@ -78,14 +78,14 @@ it('requires confirmation, supports Cancel and describes Gmail Trash recovery', 
   const options = props(); render(<InboxEmailList {...options} />);
   fireEvent.click(screen.getByLabelText('Select email from Doris'));
   expect(options.onEmailClick).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByLabelText('Delete Permanently'));
+  fireEvent.click(screen.getByLabelText('Move to Gmail Trash'));
   expect(screen.getByRole('alertdialog').textContent).toContain('can be recovered there');
   expect(screen.getByRole('alertdialog').textContent).not.toContain('cannot be undone');
   expect(mocks.trash).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(mocks.trash).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByLabelText('Delete Permanently'));
-  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  fireEvent.click(screen.getByLabelText('Move to Gmail Trash'));
+  fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }));
   await waitFor(() => expect(mocks.trash).toHaveBeenCalledOnce());
 });
 

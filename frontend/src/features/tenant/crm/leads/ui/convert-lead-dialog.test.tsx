@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn().mockResolvedVa
 vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshContacts: mocks.refresh, refreshOrganizations: mocks.refresh, refreshDeals: mocks.refresh }) }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <div /> }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: mocks.data, error: null, isInitialLoad: false }) }));
 afterEach(cleanup);

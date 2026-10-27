@@ -11,7 +11,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
   tenant: { id: mocks.tenantId }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: (module: string, action: string) => !mocks.denied.includes(`${module}.${action}`),
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('sonner', () => ({ toast: mocks }));
+vi.mock('@/shared/utils/toast', () => ({ toast: mocks }));
 const savedRoles: object[] = [];
 let directoryUsers: object[] = [];
 let directoryPending: Promise<void> | undefined;
@@ -132,7 +132,7 @@ it('submits deletion exactly once while pending, closes on success and removes t
   await act(async () => finish());
   await waitFor(() => expect(screen.queryByText('Staff')).toBeNull());
   expect(screen.queryByRole('alertdialog')).toBeNull();
-  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role deleted');
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role deleted.');
 });
 
 it('retains the role and displays a backend conflict when assignment counts become stale', async () => {
@@ -465,7 +465,7 @@ it('saves the complete edited permission payload once, including hidden and addi
   ]));
   await act(async () => finish());
   await screen.findByRole('heading', { name: 'Roles & Permissions' });
-  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role updated');
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role updated.');
   expect(savedRoles[0]).toMatchObject({ id: 'staff-role', tenantId: 'tenant-a', userCount: 2, isSystemRole: false, isArchived: false });
   await enterEdit('Staff Updated');
   expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', body.name);

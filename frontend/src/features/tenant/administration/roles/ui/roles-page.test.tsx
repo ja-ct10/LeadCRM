@@ -6,7 +6,7 @@ import RolesPage from './roles-page';
 const state = vi.hoisted(() => ({ roles: [] as Array<{ id: string; name: string; userCount: number; isSystemRole: boolean; permissions: [] }>,
   canDelete: true, remove: vi.fn(), success: vi.fn() }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key === 'roles.archive' ? state.canDelete : true }));
-vi.mock('sonner', () => ({ toast: { success: state.success } }));
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: state.success } }));
 vi.mock('../hooks/use-roles', () => ({ useRoles: () => ({ isLoading: false, error: null, searchQuery: '', setSearchQuery: vi.fn(),
   filteredRoles: state.roles, selectedRole: null, isDetailOpen: false, isBuilderOpen: false, editingRole: null,
   openDetail: vi.fn(), closeDetail: vi.fn(), openBuilder: vi.fn(), closeBuilder: vi.fn(), refetch: vi.fn(), handleArchive: state.remove }) }));
@@ -35,7 +35,7 @@ it('confirms once and removes an unassigned role after success on the administra
   expect(state.remove).toHaveBeenCalledExactlyOnceWith('role');
   await act(async () => finish());
   await waitFor(() => expect(screen.queryByText('Staff')).toBeNull());
-  expect(screen.queryByRole('alertdialog')).toBeNull(); expect(state.success).toHaveBeenCalledWith('Role deleted');
+  expect(screen.queryByRole('alertdialog')).toBeNull(); expect(state.success).toHaveBeenCalledWith('Role deleted.');
 });
 
 it('keeps system roles protected and closes a confirmation when the existing archive grant is revoked', () => {
