@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { BUSINESS_INQUIRY_EMAIL, ManualCreateLeadSchema, isWorkspaceAccessible, isOnboardingComplete } from '@leadcrm/shared';
+import { BUSINESS_INQUIRY_EMAIL, ManualCreateLeadSchema, SESSION_IDLE_MS, isWorkspaceAccessible, isOnboardingComplete } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { mailConfig } from '../../config/mail.config';
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
@@ -46,7 +46,7 @@ export async function finishBusinessEmail(state: string, code: string) {
     if (!(await prisma.businessEmailOAuthState.deleteMany({ where: { stateHash, expiresAt: { gt: new Date() } } })).count) throw new AppError('Connection request was already used.', 400);
     const checkSession = async () => {
       const session = await prisma.session.findUnique({ where: { tokenHash: challenge.sessionHash } });
-      if (!session || session.revokedAt || +session.expiresAt <= Date.now() || session.userId !== challenge.userId || session.tenantId !== challenge.tenantId) throw new AppError('Sign in again to connect business email.', 401);
+      if (!session || session.revokedAt || +session.expiresAt <= Date.now() || +session.lastActiveAt <= Date.now() - SESSION_IDLE_MS || session.userId !== challenge.userId || session.tenantId !== challenge.tenantId) throw new AppError('Sign in again to connect business email.', 401);
       await requireBusinessEmailAdmin(challenge.tenantId, challenge.userId);
     };
     await checkSession();
@@ -72,10 +72,15 @@ export async function disconnectBusinessEmail(tenantId: string, userId: string) 
     await tx.auditLog.create({ data: { tenantId, userId, action: 'business_email.disconnected', entityType: 'BusinessEmailConnection' } });
   });
 }
-const listSchema = z.object({ messages: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200) })).optional(), nextPageToken: z.string().optional() });
-const messageSchema = z.object({ id: z.string(), snippet: z.string().default(''), internalDate: z.string(), labelIds: z.array(z.string()).default([]), payload: z.object({ headers: z.array(z.object({ name: z.string(), value: z.string() })) }) });
+const listSchema = z.object({ messages: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200) })).max(30).optional(), nextPageToken: z.string().max(4000).optional() });
+const messageSchema = z.object({ id: z.string().max(200), snippet: z.string().max(10000).default(''), internalDate: z.string().max(20), labelIds: z.array(z.string().max(100)).max(100).default([]), payload: z.object({ headers: z.array(z.object({ name: z.string().max(100), value: z.string().max(10000) })).max(100) }) });
 export function inquiryMetadata(input: unknown, startsAt: Date) {
-  const m = messageSchema.parse(input), header = (name: string) => m.payload.headers.find(h => h.name.toLowerCase() === name)?.value ?? '';
+  if (!input || typeof input !== 'object') return;
+  const raw = input;
+  if ('payload' in raw && raw.payload && typeof raw.payload === 'object' && 'headers' in raw.payload && Array.isArray(raw.payload.headers) && raw.payload.headers.length > 100) return;
+  if ('labelIds' in raw && Array.isArray(raw.labelIds) && raw.labelIds.length > 100) return;
+  const parsed = messageSchema.safeParse(input); if (!parsed.success) return;
+  const m = parsed.data, header = (name: string) => m.payload.headers.find(h => h.name.toLowerCase() === name)?.value ?? '';
   const sender = normalizeEmail(header('from')), to = header('to').toLowerCase(), receivedAt = new Date(Number(m.internalDate));
   if (!Number.isFinite(+receivedAt) || +receivedAt < +startsAt || +receivedAt > Date.now() + 300000 || !z.string().email().safeParse(sender).success || sender === BUSINESS_INQUIRY_EMAIL || !to.split(/[,;]/).some(v => normalizeEmail(v) === BUSINESS_INQUIRY_EMAIL)) return;
   if (m.labelIds.some(l => ['SPAM', 'TRASH', 'DRAFT', 'SENT'].includes(l)) || !m.labelIds.includes('INBOX')) return;

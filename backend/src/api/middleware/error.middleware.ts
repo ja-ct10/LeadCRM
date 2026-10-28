@@ -21,15 +21,17 @@ export function errorMiddleware(
   const importRequest = /\/crm\/(leads|contacts|accounts|deals)\/imports(?:\/|$)/.test(req.path);
   const recoveryRequest = /\/auth\/(forgot-password|reset-password)(?:\/|$)/.test(req.path);
   const loginRequest = /\/auth\/login(?:-lockout)?(?:\/|$)/.test(req.path);
-  const sensitiveRequest = importRequest || recoveryRequest || loginRequest;
+  const privateIntakeRequest = /\/(integrations\/(gmail|business-email)|public\/forms)(?:\/|$)/.test(req.path);
+  const sensitiveRequest = importRequest || recoveryRequest || loginRequest || privateIntakeRequest;
+  const development = process.env.NODE_ENV === 'development';
 
   // Expected credential denials use bounded LoginSecurity events. Avoid a second
   // security/error entry for every request throughout an active cooldown.
   if (!(loginRequest && err instanceof AppError && (err.statusCode === 401 || err.code === 'AUTH_LOGIN_LOCKED'))) console.error('[Error]', {
     name: err.name,
-    message: importRequest ? 'CRM import request failed' : recoveryRequest ? 'Password recovery request failed' : loginRequest ? 'Login request failed' : err.message,
+    message: importRequest ? 'CRM import request failed' : recoveryRequest ? 'Password recovery request failed' : loginRequest ? 'Login request failed' : privateIntakeRequest ? 'Private intake request failed' : development ? err.message : 'Request failed',
     ...(prismaCode !== undefined && { code: prismaCode }),
-    ...(!sensitiveRequest && prismaMeta !== undefined && { meta: prismaMeta }),
+    ...(development && !sensitiveRequest && prismaMeta !== undefined && { meta: prismaMeta }),
     path: req.path,
     method: req.method,
     stack: !sensitiveRequest && process.env.NODE_ENV === 'development' ? err.stack : undefined,

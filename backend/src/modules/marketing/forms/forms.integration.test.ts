@@ -714,6 +714,54 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       expect(limited).toHaveBeenCalledTimes(1);
     } finally { vi.stubGlobal('fetch', original); }
   });
+  it('protects inquiry data, credentials and review actions across tenant and role boundaries', async () => {
+    const { encryptToken } = await import('../../../core/encryption/crypto.service');
+    const sender = randomUUID() + '@example.test';
+    const connection = await prisma.businessEmailConnection.upsert({ where: { tenantId }, create: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: encryptToken('private-provider-token'), refreshToken: encryptToken('private-refresh-token'), tokenExpiresAt: new Date(Date.now()+3600000) }, update: {} });
+    const inquiry = await prisma.businessEmailInquiry.create({ data: { tenantId, connectionId: connection.id, providerMessageId: randomUUID(), sender, subject: 'Private inquiry', snippet: 'Private pricing request', receivedAt: new Date() } });
+    const outsider = await prisma.user.create({ data: { tenantId: otherTenant, email: randomUUID()+'@camxian.com', firstName: 'Other', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
+    const foreignToken = (await issueAuthSession(outsider)).token;
+    for (const endpoint of ['/status', '/inquiries']) {
+      expect((await request('/integrations/business-email'+endpoint, 'GET', undefined, '')).status).toBe(401);
+      expect((await request('/integrations/business-email'+endpoint, 'GET', undefined, denied)).status).toBe(403);
+    }
+    const foreignList = await request('/integrations/business-email/inquiries', 'GET', undefined, foreignToken);
+    expect(foreignList.status).toBe(200); expect(JSON.stringify(foreignList.body)).not.toContain(sender);
+    expect((await request('/integrations/business-email/inquiries/'+inquiry.id+'/review', 'POST', { action: 'dismiss' }, foreignToken)).status).toBe(404);
+    expect((await request('/integrations/business-email/disconnect', 'POST', {}, denied)).status).toBe(403);
+    expect((await prisma.businessEmailInquiry.findUniqueOrThrow({ where: { id: inquiry.id } })).status).toBe('review');
+    const status = await request('/integrations/business-email/status');
+    expect(status.headers.get('cache-control')).toBe('no-store');
+    for (const secret of ['accessToken', 'refreshToken', 'private-provider-token', 'private-refresh-token']) expect(JSON.stringify(status.body)).not.toContain(secret);
+  });
+  it('rejects OAuth callbacks for expired, revoked and idle sessions before contacting Google', async () => {
+    const { finishBusinessEmail } = await import('../../../integrations/gmail/business-email.service');
+    const { hashToken } = await import('../../../core/auth/session.service');
+    const { encryptToken } = await import('../../../core/encryption/crypto.service');
+    const { SESSION_IDLE_MS } = await import('@leadcrm/shared');
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    for (const invalid of [{ revokedAt: new Date() }, { expiresAt: new Date(Date.now()-1000) }, { lastActiveAt: new Date(Date.now()-SESSION_IDLE_MS-1000) }]) {
+      const session = await issueAuthSession(user), state = randomUUID();
+      await prisma.session.update({ where: { tokenHash: hashToken(session.token) }, data: invalid });
+      await prisma.businessEmailOAuthState.create({ data: { stateHash: hashToken(state), tenantId, userId, sessionHash: hashToken(session.token), verifier: encryptToken('disposable-verifier'), expiresAt: new Date(Date.now()+60000) } });
+      const provider = vi.spyOn(globalThis, 'fetch');
+      try {
+        await expect(finishBusinessEmail(state, 'never-exchange-this-code')).rejects.toMatchObject({ statusCode: 401 });
+        expect(provider).not.toHaveBeenCalled();
+        await expect(finishBusinessEmail(state, 'replay')).rejects.toMatchObject({ statusCode: 400 });
+      } finally { provider.mockRestore(); }
+    }
+  });
+  it('rejects abusive public payloads and honeypots without storing Leads or exposing submitted data', async () => {
+    const form = await publish((await draft()).id), answer = values();
+    const path = '/public/forms/'+form.publicId+'/submissions';
+    for (const [body, expected] of [[{ requestId: randomUUID(), version: 1, values: answer, website: 'bot' }, 400], [{ values: { private: 'x'.repeat(70000) } }, 413], [{ values: Array(10001).fill('x') }, 413]] as const) {
+      const result = await request(path, 'POST', body, '');
+      expect(result.status).toBe(expected); expect(JSON.stringify(result.body)).not.toContain(answer.email);
+    }
+    expect(await prisma.lead.count({ where: { tenantId, email: answer.email } })).toBe(0);
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
+  });
   it('rate limits anonymous submissions with 429', async () => {
     let status = 0;
     for (let i = 0; i < 22; i++) { status = (await request('/public/forms/' + randomUUID() + '/submissions', 'POST', { requestId: randomUUID(), version: 1, values: values() }, '')).status; if (status === 429) break; }

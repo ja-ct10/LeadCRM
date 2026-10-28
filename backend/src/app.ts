@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { errorMiddleware } from './api/middleware/error.middleware';
+import { requestComplexityMiddleware } from './api/middleware/request-complexity.middleware';
 import { loggerMiddleware } from './api/middleware/logger.middleware';
 import { rateLimitMiddleware } from './api/middleware/rate-limit.middleware';
 import router from './api/routes/index';
@@ -56,6 +57,7 @@ app.use(cookieParser());
 // ── Request Logging & Rate Limiting ──────────────────
 app.use(loggerMiddleware);
 app.use(rateLimitMiddleware);
+app.use(requestComplexityMiddleware);
 app.use(crmRetirementMaintenance.middleware);
 
 // ── Routes ────────────────────────────────────────────
