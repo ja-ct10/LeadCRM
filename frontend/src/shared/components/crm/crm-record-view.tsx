@@ -1,4 +1,5 @@
 'use client';
+import { SourceAttributionPanel } from '@/features/tenant/crm/leads/ui/source-attribution-panel';
 import { CrmStatusBadge, CustomerStatusMenu } from './crm-status';
 import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
@@ -496,6 +497,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} allowCreate={module === "deals" && recordAccess.canMutate(record)} readOnly={module !== "deals" && user?.role !== 'Client Admin'} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
+            {module !== 'accounts' && <SourceAttributionPanel attribution={record.attribution as import('@leadcrm/shared').SourceAttribution | null | undefined} sourceDetail={text(record.sourceDetail)} />}
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
             {module === 'deals' && <InlineEditRows canEdit={false} onSave={saveField} rows={[{ label: 'Deal Engagement', value: record.engagementStatus, alwaysVisible: true, renderValue: () => <CrmStatusBadge status={text(record.engagementStatus)} /> }]} />}
             {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}

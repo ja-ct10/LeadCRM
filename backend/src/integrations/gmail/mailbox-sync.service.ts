@@ -1,4 +1,5 @@
 import { refreshDealClassification } from '../../modules/crm/customer-classification.service';
+import { syncBusinessEmailConnections } from './business-email.service';
 import { Prisma } from '@prisma/client';
 import { mailboxProviderQueries, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
@@ -305,6 +306,8 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
 }
 
 export function startMailboxScheduler() {
+  let businessRunning = false;
+  let businessJob: Promise<void> | undefined;
   let running = false, sending = false, stopped = false;
   let syncJob: Promise<void> | undefined, sendJob: Promise<void> | undefined;
   const sendDue = async () => {
@@ -327,6 +330,10 @@ export function startMailboxScheduler() {
     finally { running = false; }
   };
   const tick = () => {
+    if (!businessRunning && !stopped) {
+      businessRunning = true;
+      businessJob = syncBusinessEmailConnections().catch(() => console.warn('[business-email] Intake sync unavailable.')).finally(() => { businessRunning = false; });
+    }
     if (!running && !stopped) syncJob = run();
     if (!sending && !stopped) sendJob = sendDue();
   };
@@ -334,5 +341,5 @@ export function startMailboxScheduler() {
   const timer = setInterval(tick, 10000);
   timer.unref();
   console.info('[mailbox-worker]', { queueCheckMs: 10000, mailboxConcurrency: 3, gmailSyncIntervalMs: mailboxSyncIntervalMs() });
-  return async () => { stopped = true; clearInterval(timer); await Promise.all([syncJob, sendJob]); };
+  return async () => { stopped = true; clearInterval(timer); await Promise.all([syncJob, sendJob, businessJob]); };
 }

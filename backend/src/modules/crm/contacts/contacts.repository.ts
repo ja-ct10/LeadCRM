@@ -152,6 +152,7 @@ export async function createContact(
   tenantId: string,
   dto: CreateContactDto,
   createdById?: string,
+  verifiedAttribution?: import('@prisma/client').Prisma.InputJsonObject,
 ) {
   const { requestId, productInterest, customFieldValues, newAccount, ...fields } = dto;
   await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId, 'leads');
@@ -168,7 +169,9 @@ export async function createContact(
       if (!account) throw new NotFoundError('Active Account');
       fields.companyName = account.name;
     }
-    const lead = await createAssignedLead(tx, { ...fields, companyFromAccount: !!fields.accountId, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
+    const manualEvidence = fields.source ? { source: fields.sourceDetail || fields.source, medium: 'manual', campaign: '', category: fields.source, channel: fields.source === 'Others' ? 'Offline' : 'Manual', method: 'manual', observedAt: new Date().toISOString() } : undefined;
+    const attribution = verifiedAttribution ?? (manualEvidence ? { first: manualEvidence, last: manualEvidence, captureMethod: 'manual' } : undefined);
+    const lead = await createAssignedLead(tx, { ...fields, ...(attribution ? { attribution } : {}), companyFromAccount: !!fields.accountId, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
       ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById);
     if (!existing) await saveRecordValues(tx, tenantId, 'leads', lead.id, customFieldValues, createdById);
     return lead;

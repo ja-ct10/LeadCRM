@@ -60,7 +60,7 @@ export function getAuthorizationUrl(state: string, verifier?: string, email?: st
 /**
  * Exchanges the authorization code for access + refresh tokens.
  */
-export async function exchangeCodeForTokens(code: string, verifier?: string): Promise<TokenResponse> {
+export async function exchangeCodeForTokens(code: string, verifier?: string, callbackUri?: string): Promise<TokenResponse> {
   const { clientId, clientSecret, redirectUri } = mailConfig.gmail;
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -71,7 +71,7 @@ export async function exchangeCodeForTokens(code: string, verifier?: string): Pr
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: redirectUri,
+      redirect_uri: callbackUri ?? redirectUri,
       grant_type: 'authorization_code',
       ...(verifier ? { code_verifier: verifier } : {}),
     }),

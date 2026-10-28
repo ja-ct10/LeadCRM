@@ -30,6 +30,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     companyName: data.companyName || undefined,
     status: toBackendStatus(data.status),
     source: data.source ?? data.leadSource ?? undefined,
+    ...('sourceDetail' in data ? { sourceDetail: (data as { sourceDetail?: string }).sourceDetail ?? '' } : {}),
     accountId: data.accountId || undefined,
     assignedUserId: data.assignedUserId || undefined,
     productInterest: data.productInterestIds ?? data.productInterest,
@@ -58,6 +59,7 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   if (data.companyName !== undefined) result.companyName = data.companyName ?? '';
   if (data.status !== undefined) result.status = toBackendStatus(data.status);
   if (data.leadSource !== undefined || data.source !== undefined) result.source = data.source ?? data.leadSource ?? '';
+  if ('sourceDetail' in data) (result as Record<string, unknown>).sourceDetail = data.sourceDetail ?? '';
   if (data.accountId !== undefined) result.accountId = data.accountId || null;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || null;
   if (data.productInterestIds !== undefined || data.productInterest !== undefined) result.productInterest = data.productInterestIds ?? data.productInterest ?? [];

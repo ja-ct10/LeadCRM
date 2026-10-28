@@ -3,7 +3,6 @@ import { applyCrmFieldErrors, showCrmMutationError, isStaffEmailError } from '@/
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 import { usePhoneAvailability } from '@/shared/hooks/use-phone-availability';
 import { STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
-import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
@@ -12,7 +11,7 @@ import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
-import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
+import { ProductInterestField, ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
@@ -312,10 +311,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               </div>}
             </FieldWrap>
 
-            <FieldWrap fieldKey="productInterestIds" label="Product Interest" beforeLabel={<ProductCategoryValue values={selectedProducts} valueMode="name" products={[...(initialData?.productInterestRecords ?? []).map(retained => productRecords.find(product => product.id === retained.id) ?? retained), ...productRecords.filter(product => !initialData?.productInterestRecords?.some(retained => retained.name === product.name))]} />}>
+            <ProductInterestField fieldKey="productInterestIds" label="Product Interest" error={productError || errors.productInterest?.message}>
               <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true, shouldDirty: true })} disabled={productsLoading || !!productError} />
-              {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
-            </FieldWrap>
+            </ProductInterestField>
           </div>
           <CustomFieldGroup form={customFields} group="Status & Interest" />
         </div>
@@ -445,12 +443,12 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, fieldKey, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
-    <div className="space-y-1.5">
+    <div className={`min-w-0 space-y-1.5 ${fieldKey === 'status' ? 'sm:col-span-2' : ''}`}>
       {beforeLabel}
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>

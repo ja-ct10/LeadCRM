@@ -20,6 +20,14 @@ vi.mock('@/shared/components/crm/record-custom-fields', async () => {
   return { useRecordCustomFields: () => ({ layout, fields: [], blocked: false, validate: () => true, payload: () => ({}), query: {} }), CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null };
 });
 afterEach(() => { cleanup(); access.restricted = false; });
+it('shows Call and SMS detail only for Others', async () => {
+  const save = vi.fn(); render(<AddLeadForm onSave={save} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Lead Source'), { target: { value: 'Others' } });
+  fireEvent.change(screen.getByLabelText('Source detail'), { target: { value: 'SMS' } });
+  expect(screen.getByText('Calls and SMS are entered by staff after receiving the inquiry.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Lead Source'), { target: { value: 'Website' } });
+  expect(screen.queryByLabelText('Source detail')).toBeNull();
+});
 it('groups all company fields under Organization and submits one nested Account draft', async () => {
   const save = vi.fn(); render(<AddLeadForm onSave={save} onCancel={vi.fn()} />);
   const organization = screen.getByRole('heading', { name: 'Organization' }).closest('section')!;

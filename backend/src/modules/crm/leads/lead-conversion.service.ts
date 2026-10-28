@@ -115,13 +115,14 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   const status = (lead.manualCancellation ? 'CANCELLED' : (aggregate ?? normalizeCrmStatus(lead.status)).toUpperCase().replace(' ', '_')) as ContactStatus;
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, companyName: lead.companyName, companyFromAccount: lead.companyFromAccount, address: lead.address,
-    source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
+    source: lead.source, ...(lead.attribution ? { attribution: lead.attribution as Prisma.InputJsonObject } : {}), notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED_DEAL' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
     lastCustomerReplyAt: lead.lastCustomerReplyAt, firstUnansweredOutboundAt: lead.firstUnansweredOutboundAt, firstStaffOutreachAt: lead.firstStaffOutreachAt,
     manualCancellation: lead.manualCancellation, customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
   else {
     const current = contact;
     const data = { accountId,
+      ...(!current.attribution && lead.attribution ? { attribution: lead.attribution as Prisma.InputJsonObject } : {}),
       ...(firstWon ? { lifecycleStage: 'CUSTOMER' as const, customerSince: current.customerSince && current.customerSince <= firstWon ? current.customerSince : firstWon,
         lastStatusChangedAt: current.status === 'CLOSED_DEAL' ? current.lastStatusChangedAt : now } : {}),
       convertedAt: current.convertedAt ?? now,

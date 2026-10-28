@@ -649,6 +649,71 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const response = await request(`/public/forms/${form.publicId}/submissions`, 'POST', { requestId: randomUUID(), version: 1, values: values() }, '');
     expect(response.status).toBe(201);
   });
+  it('attributes tagged captures, retains first touch, snapshots repeat Deal sources, and checks PDF access', async () => {
+    const f = await publish((await draft()).id), v = values(), observedAt = new Date().toISOString();
+    const context = (source: string, medium: string) => ({ first: { params: { utm_source: source, utm_medium: medium, utm_campaign: 'demo' }, observedAt }, last: { params: { utm_source: source, utm_medium: medium, utm_campaign: 'demo' }, observedAt }, storage: 'session' });
+    const input = { requestId: randomUUID(), version: f.publishedVersion, values: v, attribution: context('google', 'cpc') };
+    await submitPublicForm(f.publicId, input); await submitPublicForm(f.publicId, input);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: v.email } });
+    expect(lead.source).toBe('Google Ads'); expect(lead.attribution).toMatchObject({ first: { source: 'google' }, last: { source: 'google' } });
+    expect(await prisma.formSubmission.count({ where: { formId: f.id } })).toBe(1);
+    await submitPublicForm(f.publicId, { ...input, requestId: randomUUID(), attribution: context('newsletter', 'email') });
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).attribution).toMatchObject({ first: { source: 'google' }, last: { source: 'newsletter' } });
+    expect(await prisma.deal.findMany({ where: { tenantId, automationKey: { startsWith: 'form:' }, leadDeals: { some: { tenantId, leadId: lead.id } } } })).toEqual(expect.arrayContaining([expect.objectContaining({ leadSource: 'Email Campaign' })]));
+    expect((await request(`/marketing/forms/${f.id}/source-links`, 'GET', undefined, denied)).status).toBe(403);
+    expect((await request(`/marketing/forms/${f.id}/source-links`)).body.rows).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'Direct Email', link: expect.stringContaining('mailto:goldenbits.1993@gmail.com') })]));
+    const pdf = await fetch(base + `/marketing/forms/${f.id}/source-links.pdf`, { headers: { Authorization: 'Bearer ' + token } });
+    expect(pdf.status).toBe(200); expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+  });
+  it('preserves source and Product Deal relationships when converting a captured Lead', async () => {
+    const f = await publish((await draft()).id), v = values(), observedAt = new Date().toISOString();
+    const touch = { params: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'conversion_demo' }, observedAt };
+    const capture = await request('/public/forms/' + f.publicId + '/submissions', 'POST', { requestId: randomUUID(), version: f.publishedVersion, values: v, attribution: { first: touch, last: touch, storage: 'session' } }, '');
+    expect(capture.status).toBe(201);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: v.email } });
+    const linked = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId: lead.id } } } });
+    expect(linked.length).toBeGreaterThan(0);
+    const converted = await request('/crm/leads/' + lead.id + '/convert', 'POST', { skipAccountCreation: true, createContact: true, createDeal: false });
+    expect(converted.status).toBe(200);
+    const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId, email: v.email } });
+    expect(contact.attribution).toMatchObject({ first: { source: 'google' }, last: { campaign: 'conversion_demo' } });
+    expect(await prisma.contactProductInterest.findMany({ where: { tenantId, contactId: contact.id } })).toEqual(expect.arrayContaining([expect.objectContaining({ productInterestId: v.productInterest })]));
+    for (const deal of linked) expect(await prisma.contactDeal.findFirst({ where: { tenantId, contactId: contact.id, dealId: deal.id } })).not.toBeNull();
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).toMatchObject({ contactId: contact.id, convertedAt: expect.any(Date) });
+  });
+  it('persists staff-created Call and SMS details under Others', async () => {
+    for (const sourceDetail of ['Call', 'SMS']) {
+      const result = await request('/crm/leads', 'POST', { firstName: 'Manual', lastName: sourceDetail, email: `${randomUUID()}@example.test`, source: 'Others', sourceDetail });
+      expect(result.status).toBe(201);
+      expect(result.body.data).toMatchObject({ source: 'Others', sourceDetail, attribution: { captureMethod: 'manual', first: { source: sourceDetail } } });
+    }
+  });
+  it('captures unknown business senders separately and creates one reviewed Lead', async () => {
+    const { encryptToken } = await import('../../../core/encryption/crypto.service');
+    const { syncBusinessEmail } = await import('../../../integrations/gmail/business-email.service');
+    const sender = `${randomUUID()}@example.test`;
+    await prisma.businessEmailConnection.create({ data: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: encryptToken('disposable'), refreshToken: encryptToken('disposable'), tokenExpiresAt: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() - 60000) } });
+    const original = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ messages: [{ id: 'inquiry1' }] })).mockImplementation(async (url: string | URL | Request) => String(url).includes('inquiry1') ? Response.json({ id: 'inquiry1', snippet: 'Please send pricing.', labelIds: ['INBOX'], internalDate: String(Date.now() - 1000), payload: { headers: [{ name: 'From', value: `New Prospect <${sender}>` }, { name: 'To', value: 'goldenbits.1993@gmail.com' }, { name: 'Subject', value: 'Product inquiry' }] } }) : Response.json({ messages: [{ id: 'inquiry1' }] })));
+    try { await scoped(() => syncBusinessEmail(tenantId)); await scoped(() => syncBusinessEmail(tenantId)); }
+    finally { vi.stubGlobal('fetch', original); }
+    expect(await prisma.lead.count({ where: { tenantId, email: sender } })).toBe(0);
+    const inquiries = await request('/integrations/business-email/inquiries'); expect(inquiries.status).toBe(200);
+    const inquiry = inquiries.body.data.find((row: { sender: string }) => row.sender === sender); expect(inquiry).toBeTruthy();
+    expect((await request('/integrations/business-email/inquiries', 'GET', undefined, denied)).status).toBe(403);
+    const body = { action: 'create', lead: { firstName: 'New', lastName: 'Prospect', email: sender, source: 'Direct Email', status: 'Inquiry' } };
+    const reviewed = await request(`/integrations/business-email/inquiries/${inquiry.id}/review`, 'POST', body); expect(reviewed.status).toBe(200);
+    expect((await request(`/integrations/business-email/inquiries/${inquiry.id}/review`, 'POST', body)).body.leadId).toBe(reviewed.body.leadId);
+    expect(await prisma.lead.count({ where: { tenantId, email: sender } })).toBe(1);
+    expect(await prisma.lead.findFirst({ where: { tenantId, email: sender } })).toMatchObject({ source: 'Direct Email', attribution: { captureMethod: 'business_email' } });
+    const limited = vi.fn(async () => new Response('{}', { status: 429, headers: { 'Retry-After': '120' } }));
+    vi.stubGlobal('fetch', limited);
+    try {
+      await expect(scoped(() => syncBusinessEmail(tenantId))).rejects.toMatchObject({ statusCode: 503 });
+      expect(await scoped(() => syncBusinessEmail(tenantId))).toMatchObject({ busy: true });
+      expect(limited).toHaveBeenCalledTimes(1);
+    } finally { vi.stubGlobal('fetch', original); }
+  });
   it('rate limits anonymous submissions with 429', async () => {
     let status = 0;
     for (let i = 0; i < 22; i++) { status = (await request('/public/forms/' + randomUUID() + '/submissions', 'POST', { requestId: randomUUID(), version: 1, values: values() }, '')).status; if (status === 429) break; }

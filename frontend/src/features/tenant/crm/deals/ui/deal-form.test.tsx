@@ -27,7 +27,7 @@ it.each(['create', 'edit'] as const)('retains a rejected employee association an
   render(<DealForm mode={mode} initialData={mode === 'edit' ? { id: 'deal', title: 'Draft opportunity', productInterestId: product.id, leadIds: ['leads-1'], leadId: 'leads-1' } : undefined} onSubmit={save} onCancel={close} />);
   fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Draft opportunity' } });
   if (mode === 'create') {
-    fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Product Interests?$/ }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
     fireEvent.change(screen.getByLabelText(/Associate Deal To/), { target: { value: 'lead' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Search leads' }), { target: { value: 'leads-1' } });
@@ -58,7 +58,7 @@ it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visi
 it('requires a catalog product and submits its ID array without a manual value', async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<DealForm mode="create" preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={save} onCancel={() => {}} />);
-  const selector = screen.getByRole('button', { name: 'Product Interest' });
+  const selector = screen.getByRole('button', { name: /^Product Interests?$/ });
   expect(screen.queryByLabelText('Value')).toBeNull();
   expect(screen.queryByLabelText('Industry')).toBeNull();
   fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Installation' } });
@@ -128,7 +128,7 @@ it.each(['lead', 'contact'] as const)('requires a type and valid %s selection an
   expect(screen.queryByText('Account')).toBeNull();
   expect(screen.queryByText('Assigned Agent')).toBeNull();
   fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Associated Deal' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Product Interests?$/ }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
   const form = screen.getByLabelText(/Title/).closest('form')!;
   fireEvent.submit(form);

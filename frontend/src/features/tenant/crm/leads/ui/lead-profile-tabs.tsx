@@ -1,4 +1,5 @@
 'use client';
+import { SourceAttributionPanel } from './source-attribution-panel';
 import { useTasks } from '@/features/tenant/operations/tasks/use-tasks';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import { uuid } from '@/lib/utils';
@@ -272,6 +273,7 @@ export const ClientProfileTabs = ({
             </span>
           </div>
 
+          <SourceAttributionPanel attribution={lead.attribution} sourceDetail={lead.sourceDetail} />
           {onEditClick && (
             <button
               onClick={onEditClick}

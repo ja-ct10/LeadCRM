@@ -18,6 +18,7 @@ const fields = {
     companyName: (0, administration_user_schema_1.cleanText)(2000).optional(),
     status: record_experience_1.LeadStatusSchema,
     source: exports.OptionalLeadSourceSchema.optional(),
+    sourceDetail: (0, administration_user_schema_1.cleanText)(200).optional(),
     accountId: zod_1.z.string().uuid().nullable().optional(),
     newAccount: organization_1.NewAccountSchema.optional(),
     assignedUserId: zod_1.z.string().uuid().nullable().optional(),

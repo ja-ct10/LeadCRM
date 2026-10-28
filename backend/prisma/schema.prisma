@@ -424,6 +424,8 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  sourceDetail String?
+  attribution Json?
   manualStatusContext Json?
   // Retained historical metadata; customer records have no group ownership.
   ownerGroupId String? @ignore
@@ -507,6 +509,7 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  attribution Json?
   manualStatusContext Json?
   // Retained historical metadata; customer records have no group ownership.
   ownerGroupId String? @ignore
@@ -637,6 +640,7 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  attribution Json?
   // Retained historical metadata; customer records have no group ownership.
   ownerGroupId String? @ignore
   engagementStatus String @default("Inquiry")
@@ -1112,6 +1116,8 @@ model MarketingForm {
 }
 
 model FormSubmission {
+  attribution Json?
+  attributionInput Json?
   requestKey String?
   @@unique([formId, requestKey])
   id String @id @default(uuid())
@@ -1551,6 +1557,55 @@ model MailboxOAuthState {
   verifier String
   expiresAt DateTime
   @@index([expiresAt])
+}
+
+// Business inquiry intake is independent of employee-owned mailbox history.
+model BusinessEmailConnection {
+  id String @id @default(uuid())
+  tenantId String @unique
+  connectedById String
+  email String @unique
+  accessToken String
+  refreshToken String
+  tokenExpiresAt DateTime
+  startsAt DateTime @default(now())
+  lastSyncAt DateTime?
+  nextPageToken String?
+  syncError String?
+  leaseUntil DateTime?
+  leaseId String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  inquiries BusinessEmailInquiry[]
+}
+
+model BusinessEmailOAuthState {
+  stateHash String @id
+  tenantId String
+  userId String
+  sessionHash String
+  verifier String
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model BusinessEmailInquiry {
+  id String @id @default(uuid())
+  tenantId String
+  connectionId String
+  providerMessageId String
+  sender String
+  senderName String
+  subject String
+  snippet String
+  receivedAt DateTime
+  status String @default("review")
+  leadId String?
+  reviewedById String?
+  reviewedAt DateTime?
+  connection BusinessEmailConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  @@unique([connectionId, providerMessageId])
+  @@index([tenantId, status, receivedAt])
 }
 
 model MailboxMessage {

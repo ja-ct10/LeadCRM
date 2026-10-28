@@ -12,6 +12,8 @@ import type { Contact as SharedContact, CreateLeadInput, UpdateLeadInput } from 
  * firstName/lastName are optional to stay assignable from Contact (which has them optional).
  */
 export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
+  sourceDetail?: string | null;
+  attribution?: import('@leadcrm/shared').SourceAttribution | null;
   statusManagedByDeals?: boolean;
   manualCancellation?: boolean;
   firstStaffOutreachAt?: string | null;

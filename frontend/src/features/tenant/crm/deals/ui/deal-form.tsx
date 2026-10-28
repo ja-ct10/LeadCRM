@@ -1,5 +1,4 @@
 'use client';
-import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
 import { DealAddressSourceSchema, dealAddressKey, resolveDealAddress, dealAddressMessage, dealCustomerAddressMessage } from '@leadcrm/shared';
 import { useDealAddressOptions } from '@/shared/hooks/use-deal-address-options';
 import { applyCrmAssociationError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
@@ -7,7 +6,7 @@ import { LEAD_SOURCES, defaultFieldGroupId, type DealAssociationChange } from '@
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
-import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
+import { ProductInterestField, ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 
@@ -353,7 +352,7 @@ export function DealForm({
               placeholder="Enter deal title"
             />
           </FieldWrap>
-          <FieldWrap fieldKey="productInterestIds" error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`} beforeLabel={<ProductCategoryValue values={watch('productInterests') ?? []} products={[...products, ...(initialData?.productInterestRecords ?? []).filter(product => !products.some(current => current.id === product.id))]} />}>
+          <ProductInterestField fieldKey="productInterestIds" error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
             <Controller
               name="productInterests"
               control={control}
@@ -367,7 +366,7 @@ export function DealForm({
             <ul className="mt-2 space-y-2">{selectedProducts.map(product => <li key={product.id} className="flex min-w-0 flex-wrap justify-between gap-2"><span className="min-w-0 [overflow-wrap:anywhere]">{product.name}</span><span>{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(product.dealValue)}</span></li>)}</ul>
             <p className="mt-2 text-xs text-muted-foreground">Each Deal keeps its own Product value. Multiple Deal titles include the Product name.</p>
           </div> : <FieldWrap fieldKey="value" label="Value" htmlFor={`${fieldId}-value`}><Input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
-          </FieldWrap>
+          </ProductInterestField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap fieldKey="priority" label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">

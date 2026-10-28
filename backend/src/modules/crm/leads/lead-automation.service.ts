@@ -111,7 +111,8 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
     }
     const deal = await runCrmAutomaticCreation(tx, 'deals', lead.assignedUserId, () => tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
       productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
-      pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } }));
+      pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source,
+      ...(lead.attribution ? { attribution: lead.attribution as Prisma.InputJsonObject } : {}), tags: [] } }));
     if (kind === 'lead') await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     else await tx.contactDeal.create({ data: { ...scope, contactId: lead.id, dealId: deal.id, addedById: actorId } });
     if (actorId) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id } });

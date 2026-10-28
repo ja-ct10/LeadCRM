@@ -67,3 +67,5 @@ __exportStar(require("./contracts/customer-classification"), exports);
 __exportStar(require("./contracts/deal-address"), exports);
 __exportStar(require("./contracts/email-availability"), exports);
 __exportStar(require("./contracts/phone-availability"), exports);
+__exportStar(require("./contracts/source-attribution"), exports);
+__exportStar(require("./contracts/business-email"), exports);
