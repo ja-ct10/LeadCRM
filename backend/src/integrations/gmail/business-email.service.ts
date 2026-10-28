@@ -24,7 +24,12 @@ export function businessEmailCallback() {
   const configured = process.env.BUSINESS_EMAIL_REDIRECT_URI || mailConfig.gmail.redirectUri;
   if (!configured) throw new AppError('Configure the business email callback URL.', 503);
   const url = new URL(process.env.BUSINESS_EMAIL_REDIRECT_URI || new URL('/api/v1/integrations/business-email/callback', configured).toString());
-  if (url.pathname !== '/api/v1/integrations/business-email/callback' || (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname))) throw new AppError('Configure the business email HTTPS callback URL.', 503);
+  const loopback = ['localhost', '127.0.0.1'].includes(url.hostname);
+  if (url.pathname !== '/api/v1/integrations/business-email/callback' ||
+      url.username || url.password || url.search || url.hash ||
+      (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) {
+    throw new AppError('Configure the business email HTTPS callback URL.', 503);
+  }
   return url.toString();
 }
 export async function beginBusinessEmail(tenantId: string, userId: string, sessionToken: string) {
@@ -93,7 +98,12 @@ export async function syncBusinessEmail(tenantId: string) {
   if (!row?.isActive) throw new AppError('Connect the business inquiry mailbox first.', 409);
   await requireBusinessEmailAdmin(tenantId, row.connectedById);
   const now = new Date(), leaseId = randomUUID();
-  if (!(await prisma.businessEmailConnection.updateMany({ where: { id: row.id, isActive: true, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, data: { leaseId, leaseUntil: new Date(+now + 120000) } })).count) return { busy: true, captured: 0 };
+  // Cover one bounded page: 31 provider calls can each take 15 seconds.
+  const acquired = await prisma.businessEmailConnection.updateMany({
+    where: { id: row.id, isActive: true, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] },
+    data: { leaseId, leaseUntil: new Date(+now + 600000) },
+  });
+  if (!acquired.count) return { busy: true, captured: 0 };
   let coolingDown = false, cooldownMs = 60000;
   try {
     if (+row.tokenExpiresAt < Date.now() + 60000) {

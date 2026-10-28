@@ -83,6 +83,9 @@ try {
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('heading', { name: 'Source links and QR codes' }).waitFor();
   await page.screenshot({ path: resolve(output, '01-forms-source-links.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await page.screenshot({ path: resolve(output, '01-forms-source-links-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1500 });
   console.log('Captured source-link sharing screen.');
   const pdf = await context.request.get(base + `/api/proxy/marketing/forms/${form.id}/source-links.pdf`);
   if (!pdf.ok()) throw Error('PDF download failed: ' + pdf.status());
@@ -109,11 +112,11 @@ try {
   if (!process.argv.includes('--embed-only')) {
     await page.goto(base + '/crm/contacts');
     await page.getByRole('button', { name: /Create Contact|Add Contact|New Contact/ }).first().click();
+    await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
     await verifyProductPanel('07-contact-panel', true);
     await page.goto(base + '/crm/deals');
     await page.getByRole('button', { name: /Create Deal|Add Deal|New Deal/ }).first().click();
-    const createNew=page.getByRole('menuitem', { name: 'Create New', exact: true });
-    if (await createNew.isVisible()) await createNew.click();
+    await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
     await verifyProductPanel('08-deal-panel', false);
   }
   await page.goto(base + '/forms/' + form.publicId + '?utm_source=flyer&utm_medium=direct_mail&utm_campaign=source_demo');
@@ -131,7 +134,14 @@ try {
   await embedded.getByText('Thank you!', { exact: true }).waitFor();
   const embeddedLead = await prisma.lead.findFirstOrThrow({ where: { tenantId: tenant.id, email: 'embed.prospect@example.test' } });
   if (embeddedLead.source !== 'Google Ads') throw Error('Embedded website attribution was not preserved across navigation.');
-  writeFileSync(resolve(output, 'verification.json'), JSON.stringify({ screenshots: 11, formId: form.id, publicId: form.publicId, leadId: lead.id, localOnly: true, pageErrors: errors }, null, 2));
+  const moduleResponses=[];
+  for (const endpoint of ['/marketing/forms', '/crm/leads', '/crm/contacts', '/crm/deals', '/administration/product-interests', '/operations/tasks', '/automation/workflows', '/marketing/campaigns', '/integrations/gmail/status', '/notifications/counts', '/reporting/dashboard']) {
+    const response=await context.request.get(base+'/api/proxy'+endpoint);
+    moduleResponses.push({ endpoint, status: response.status() });
+    if (!response.ok()) throw Error('Local module read failed: '+endpoint+' ('+response.status()+')');
+  }
+  writeFileSync(resolve(output, 'module-checks.json'), JSON.stringify(moduleResponses,null,2));
+  writeFileSync(resolve(output, 'verification.json'), JSON.stringify({ screenshots: 12, formId: form.id, publicId: form.publicId, leadId: lead.id, localOnly: true, pageErrors: errors }, null, 2));
   if (errors.length) throw Error('Browser errors: ' + errors.join('; '));
   console.log('Screenshots saved:', output);
   if (process.argv.includes('--serve')) {
