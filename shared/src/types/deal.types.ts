@@ -97,6 +97,8 @@ export interface CreateDealRequest {
  * Stage changes must go through PATCH /deals/:id/stage.
  */
 export interface UpdateDealRequest {
+  engagementStatus?: import('../contracts/record-experience').CrmStatus;
+  lostReason?: string;
   primaryAssociation?: DealAssociationChange;
   title?: string;
   value?: number;

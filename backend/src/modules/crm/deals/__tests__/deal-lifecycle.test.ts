@@ -112,12 +112,17 @@ describe('governed Deal stage changes', () => {
     await move();
     expect(state.deal).toMatchObject({ stageId: 'Qualified', closedAt: null, lostReason: null, assignedUserId: 'agent', hasEverBeenWon: false });
   });
-  it.each(['won', 'lost-after-won', 'uncertain', 'lost-to-lead'])('blocks %s without altering terminal sale evidence', async condition => {
+  it('allows verified Cancelled → Lead as Inquiry while clearing current cancellation metadata', async () => {
+    Object.assign(state.deal, { stageId: 'Cancelled', stage: stage('Cancelled', false, true), closedAt: new Date(), lostReason: 'Ended' });
+    state.next = stage('Lead');
+    await move();
+    expect(state.deal).toMatchObject({ stageId: 'Lead', engagementStatus: 'Inquiry', closedAt: null, lostReason: null });
+  });
+  it.each(['won', 'lost-after-won', 'uncertain'])('blocks %s without altering terminal sale evidence', async condition => {
     const wasWon = condition === 'won';
     Object.assign(state.deal, { stageId: wasWon ? 'Won' : 'Lost', stage: stage(wasWon ? 'Won' : 'Lost', wasWon, !wasWon),
       hasEverBeenWon: condition === 'won' || condition === 'lost-after-won', wonHistoryVerified: condition !== 'uncertain',
       closingSnapshot: { signed: 'historical' }, wonConfirmedAt: wasWon ? new Date() : null });
-    if (condition === 'lost-to-lead') state.next = stage('Lead');
     await expect(move()).rejects.toThrow(/won|history|only be reopened/i);
     expect(state.tx.deal.update).not.toHaveBeenCalled();
     expect(state.tx.dealStageHistory.create).not.toHaveBeenCalled();

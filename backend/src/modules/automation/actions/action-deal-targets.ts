@@ -20,6 +20,8 @@ export async function relatedDealMoveGuard(action: WorkflowAction, entity: Workf
 export async function resolveDealTargets(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {
   if (entity === 'deal') return [String(context['deal.id'])];
   if (entity !== 'lead' && entity !== 'contact') throw new ValidationError('Choose a Lead, Contact or Deal trigger.');
+  // Customer-only replies have no Deal target; ordinary customer workflows omit this key.
+  if (context['event.originDealId'] === null) return [];
   const stage = await prisma.stage.findFirst({ where: { tenantId, id: String(action.config.stageId) } });
   if (!stage) throw new NotFoundError('Stage');
   const relation = entity === 'lead' ? { leadDeals: { some: { tenantId, leadId: String(context['lead.id']) } } }

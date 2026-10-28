@@ -69,7 +69,7 @@ function classifyDealEngagement(events, now = new Date(), outcome) {
             baseline = +event.at;
         }
         else if (baseline === undefined) {
-            status = 'Warm';
+            status = 'Inquiry';
             baseline = +event.at;
         }
     }

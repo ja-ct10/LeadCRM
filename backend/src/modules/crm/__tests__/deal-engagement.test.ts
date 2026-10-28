@@ -12,7 +12,7 @@ describe('independent Deal engagement', () => {
   it('does not expire Inquiry without confirmed outreach', () => expect(classifyDealEngagement([], at(365))).toBe('Inquiry'));
   it('ignores staff follow-ups when timing Inquiry inactivity', () => {
     expect(classifyDealEngagement([event('outreach', 0), event('outreach', 29)], at(30))).toBe('Cold');
-    expect(classifyDealEngagement([event('outreach', 0)], at(30 - 1 / day))).toBe('Warm');
+    expect(classifyDealEngagement([event('outreach', 0)], at(30 - 1 / day))).toBe('Inquiry');
   });
   it('restores Hot on verified replies after qualification, including after cooling', () => {
     expect(classifyDealEngagement([event('qualified', 0), event('reply', 7)], at(14))).toBe('Hot');
@@ -38,8 +38,9 @@ describe('independent Deal engagement', () => {
     expect(classifyDealEngagement(events, at(3), 'won')).toBe('Closed Deal');
     expect(classifyDealEngagement(events, at(3), 'lost')).toBe('Cancelled');
   });
-  it('rejects browser-written engagement status', () => {
-    expect(UpdateDealSchema.safeParse({ engagementStatus: 'Hot' }).success).toBe(false);
+  it('accepts validated Deal status updates while rejecting status at creation', () => {
+    expect(UpdateDealSchema.safeParse({ engagementStatus: 'Hot' }).success).toBe(true);
+    expect(UpdateDealSchema.safeParse({ engagementStatus: 'Unknown' }).success).toBe(false);
     expect(CreateDealSchema.safeParse({ title: 'Deal', stageId: 'lead', pipelineId: 'sales', engagementStatus: 'Hot' }).success).toBe(false);
   });
 });

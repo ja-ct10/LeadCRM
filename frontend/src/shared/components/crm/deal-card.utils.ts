@@ -6,6 +6,7 @@
 // ─── DealCard Data Shape ─────────────────────────────────────────────────────
 
 export interface DealCardData {
+  engagementStatus?: string;
   id: string;
   title: string;
   value?: number;
@@ -102,6 +103,7 @@ export function mapToDealCardData(deal: Record<string, unknown>): DealCardData {
 
   return {
     id: String(deal.id ?? ''),
+    engagementStatus: typeof deal.engagementStatus === 'string' ? deal.engagementStatus : undefined,
     title: String(deal.title ?? ''),
     value: typeof deal.value === 'number' ? deal.value : undefined,
     currency: typeof deal.currency === 'string' ? deal.currency : 'PHP',

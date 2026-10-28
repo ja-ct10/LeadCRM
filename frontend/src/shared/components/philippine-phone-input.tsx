@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useId } from 'react';
+import React, { useRef, useId, useLayoutEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
 
@@ -28,11 +28,30 @@ export function PhilippinePhoneInput({
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const inputRef = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (caret.current !== null && inputRef.current) {
+      inputRef.current.setSelectionRange(caret.current, caret.current);
+      caret.current = null;
+    }
+  });
+  const change = (raw: string, position: number) => {
+    const normalized = normalizePhInput(raw);
+    caret.current = Math.min(normalizePhInput(raw.slice(0, position)).length, normalized.length);
+    onChange(normalized);
+    // Identical replacements do not rerender a controlled parent.
+    if (normalized === value && inputRef.current) {
+      inputRef.current.value = normalized;
+      inputRef.current.setSelectionRange(caret.current, caret.current);
+      caret.current = null;
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     const allowedKeys = [
       'Backspace', 'Delete', 'Tab',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+      'Home', 'End', 'Enter', '+',
     ];
     const isDigit = /^[0-9]$/.test(e.key);
 
@@ -48,15 +67,15 @@ export function PhilippinePhoneInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const normalized = normalizePhInput(e.target.value);
-    onChange(normalized);
+    change(e.target.value, e.target.selectionStart ?? e.target.value.length);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>): void => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text');
-    const normalized = normalizePhInput(pasted);
-    onChange(normalized);
+    const start = e.currentTarget.selectionStart ?? value.length;
+    const end = e.currentTarget.selectionEnd ?? start;
+    change(value.slice(0, start) + pasted + value.slice(end), start + pasted.length);
   };
 
   return (
@@ -93,7 +112,7 @@ export function PhilippinePhoneInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="9xxxxxxxxx"
-          maxLength={10}
+          maxLength={32}
           className="flex-1 min-w-0 px-3 py-2.5 bg-transparent border-none outline-none focus:ring-0 placeholder:text-slate-400 text-slate-900 dark:text-white text-sm"
         />
       </div>

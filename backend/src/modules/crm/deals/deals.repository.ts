@@ -1,7 +1,8 @@
 import { refreshDealClassification } from '../customer-classification.service';
+import { manualStatusCheckpoint } from '../status-checkpoint';
 import { assertExternalCustomerParticipants } from '../record-validation';
 import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
-import { salesContext } from '../leads/sales-context';
+import { communicationDealContext, salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
 import { assertCrmRecordMutation, assertCrmCreateAssignment, assertCrmRecordRead, crmReadWhere } from '../access/crm-record-access.service';
 import { resolveProducts } from '../leads/lead-automation.service';
@@ -16,7 +17,7 @@ import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { assertDealStageTransition, dealHasEverBeenWon, isQualifiedStage, type RelatedDealMoveGuard } from './deal-lifecycle';
+import { assertDealStageTransition, dealHasEverBeenWon, dealStageStatus, isQualifiedStage, type RelatedDealMoveGuard } from './deal-lifecycle';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
@@ -281,7 +282,10 @@ export async function moveDealStage(
       if (missing.length) throw new ValidationError(`Missing stage requirements: ${missing.join(', ')}`);
       const now = new Date();
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
+      const engagementStatus = dealStageStatus(newStage, deal.engagementStatus);
       await tx.deal.update({ where: { id, ...scope, isArchived: false, deletedAt: null, ...eligibility, stageId: deal.stageId, updatedAt: deal.updatedAt }, data: { stageId: newStageId,
+        engagementStatus,
+        ...(!policy.automatic ? { manualStatusContext: manualStatusCheckpoint(engagementStatus) } : {}),
         hasEverBeenWon: hasEverBeenWon || newStage.isWon,
         ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,
@@ -289,7 +293,7 @@ export async function moveDealStage(
         closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason?.trim() || null : null,
         ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
       if (newStage.isWon) {
-        await resolveWonRelationships(tx, deal, movedById);
+        await communicationDealContext.run(id, () => resolveWonRelationships(tx, deal, movedById));
         const contacts = await tx.contactDeal.findMany({ where: { tenantId, dealId: id } });
         for (const { contactId } of contacts) await finalizeContactLifecycle(tx, tenantId, contactId, movedById);
       }
@@ -337,9 +341,12 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     });
     if (missing.length) throw new ValidationError('Missing stage requirements: ' + missing.join(', '));
     const now = new Date();
+    const engagementStatus = dealStageStatus(stage, previousDeal.engagementStatus);
     const written = await tx.deal.updateMany({ where: { id, tenantId, isArchived: false, deletedAt: null,
       pipelineId: previousDeal.pipelineId, stageId: previousDeal.stageId, updatedAt: previousDeal.updatedAt },
-      data: { pipelineId: pipeline.id, stageId: stage.id, stageChangedAt: now, ...(isQualifiedStage(stage) ? { priority: 'HIGH' } : {}) } });
+      data: { pipelineId: pipeline.id, stageId: stage.id, stageChangedAt: now,
+        engagementStatus, manualStatusContext: manualStatusCheckpoint(engagementStatus),
+        ...(isQualifiedStage(stage) ? { priority: 'HIGH' } : {}) } });
     if (written.count !== 1) throw new ConflictError('This Deal changed. Reopen it before moving it.');
     const note = 'Moved from ' + previousDeal.pipeline.name + ' / ' + previousDeal.stage.name + ' to ' + pipeline.name + ' / ' + stage.name;
     const stageHistory = await tx.dealStageHistory.create({ data: { tenantId, dealId: id, movedById: actorId,

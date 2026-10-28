@@ -18,6 +18,7 @@ import { DEALS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared'
 import Link from 'next/link';
 import type { SortState } from '@/shared/components/data-grid';
 import { StatusBadge } from '@/shared/components/crm';
+import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
 import {
   DataGrid,
   useDataGridColumns,
@@ -143,7 +144,7 @@ export function DealsDataGrid({
     stageId: (_value: unknown, row: Deal) => {
       const stageName = stageNameMap[row.stageId] ?? '—';
       return (
-        <StatusBadge label={stageName} variant="info" />
+        <div className="space-y-1"><CrmStatusBadge status={row.engagementStatus} /><span className="block text-[11px] text-muted-foreground">Stage: {stageName}</span></div>
       );
     },
 

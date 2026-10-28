@@ -150,7 +150,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
             if (!stageActionsClaimed) { status = 'skipped'; errorMessage = 'Actions already started for this stage entry.';
               await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped', output: { reason: errorMessage } }); recordedSteps++; continue; }
           }
-          if (freshContext && context['event.originDealId']) freshContext['event.originDealId'] = context['event.originDealId'];
+          if (freshContext && 'event.originDealId' in context) freshContext['event.originDealId'] = context['event.originDealId'];
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
           await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));

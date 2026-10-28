@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DealAddressSourceSchema } from '@leadcrm/shared';
 import { CustomFieldValuesSchema, DealAssociationChangeSchema, validateManualDealAssociation } from '@leadcrm/shared';
 import { recordName, recordText } from '../record-validation';
-import { ProductInterestIdSchema, ClosedWonConfirmationSchema } from '@leadcrm/shared';
+import { ProductInterestIdSchema, ClosedWonConfirmationSchema, CRM_STATUSES } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
 // Format validation is not a business rule; referential integrity is enforced by the DB.
@@ -44,6 +44,8 @@ export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineI
   assignedUserId: id().nullable().optional(),
   expectedCloseDate: z.string().datetime().nullable().optional(),
   primaryAssociation: DealAssociationChangeSchema.optional(),
+  engagementStatus: z.enum(CRM_STATUSES).optional(),
+  lostReason: z.string().trim().max(2000).optional(),
 }).superRefine((data, ctx) => {
   if (data.primaryAssociation && (data.leadIds !== undefined || data.contactIds !== undefined)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['primaryAssociation'], message: 'Change the primary association separately from additional relationships.' });
 });

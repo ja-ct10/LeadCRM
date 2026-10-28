@@ -367,11 +367,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: contacted.id, currentStageId: deal.stageId, targetMode } }], {
       trigger: `${entity}.status_changed`, conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }] },
     });
-    const qualifier = count ? await relatedDeal(entity, record.id) : undefined;
-    if (qualifier) await prisma.deal.update({ where: { id: qualifier.id }, data: { expectedCloseDate: new Date('2026-10-10T00:00:00Z') } });
-    const changed = qualifier
-      ? await call(`/crm/deals/${qualifier.id}/stage`, 'PATCH', { stageId: required.id })
-      : await call(`/crm/${entity === 'lead' ? 'leads' : 'contacts'}/${record.id}`, 'PUT', { status: 'Hot' });
+    // An explicit customer edit retains configured routing; Deal qualification is isolated.
+    const changed = await call(`/crm/${entity === 'lead' ? 'leads' : 'contacts'}/${record.id}`, 'PUT', { status: 'Hot' });
     expect(changed.status, JSON.stringify(changed.body)).toBe(200);
     const history = await runs(workflow.id);
     expect(history).toHaveLength(1);

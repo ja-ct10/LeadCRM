@@ -72,7 +72,7 @@ async function sourceDemoRecords(tenant) {
     }
     const connection = await prisma.businessEmailConnection.upsert({ where: { tenantId: tenant.id }, create: { tenantId: tenant.id, connectedById: admin.id, email: 'goldenbits.1993@gmail.com', accessToken: '', refreshToken: '', tokenExpiresAt: new Date(0), isActive: false }, update: {} });
     await prisma.businessEmailInquiry.upsert({ where: { connectionId_providerMessageId: { connectionId: connection.id, providerMessageId: 'local-demo-inquiry' } }, create: { tenantId: tenant.id, connectionId: connection.id, providerMessageId: 'local-demo-inquiry', sender: 'prospect.demo@example.test', senderName: 'Demo Prospect', subject: 'LOCAL DEMO - Product inquiry', snippet: 'Synthetic sample for testing staff review. No real email was received. Complete the Lead details to test this flow.', receivedAt: new Date() }, update: {} });
-    fs.writeFileSync(path.join(path.dirname(settingsFile), 'DEMO.json'), JSON.stringify({ tenantId: tenant.id, formId: form.id, publicForm: `http://localhost:3000/forms/${form.publicId}`, settings: 'http://localhost:3000/settings?tab=forms', businessEmail: 'http://localhost:3000/inbox/business-email', realMailboxConnected: false }, null, 2));
+    fs.writeFileSync(path.join(path.dirname(settingsFile), 'DEMO.json'), JSON.stringify({ tenantId: tenant.id, formId: form.id, publicForm: `http://localhost:3000/forms/${form.publicId}`, settings: 'http://localhost:3000/settings?tab=forms', realMailboxConnected: false }, null, 2));
   });
   console.log('Source demo ready: published form, attributed Leads, Call/SMS samples and a clearly labeled synthetic email inquiry. Real mailbox disconnected.');
 }

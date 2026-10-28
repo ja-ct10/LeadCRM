@@ -61,6 +61,11 @@ export async function presentDealResponse<T>(tenantId: string, response: T, now 
       }
       return [key, Object.prototype.hasOwnProperty.call(visible, key) && typeof entry === 'string' && !visible[key as keyof typeof visible].has(entry) ? null : visit(entry, key)];
     }));
+    delete presented.manualStatusContext;
+    if ('pipelineId' in record && 'stageId' in record) {
+      const stage = record.stage as { isWon?: boolean; isLost?: boolean } | undefined;
+      presented.statusEditOptions = stage?.isWon ? ['Closed Deal'] : stage?.isLost ? ['Inquiry', 'Cancelled'] : ['Inquiry', 'Warm', 'Hot', 'Cold', 'Closed Deal', 'Cancelled'];
+    }
     // Singular compatibility fields follow the first remaining visible participant.
     for (const type of ['lead', 'contact'] as const) {
       const links = presented[`${type}Deals`] as Record<string, unknown>[] | undefined;

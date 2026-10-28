@@ -1,4 +1,5 @@
-import { classifyCustomerRecord, refreshDealClassification, recordStaffOutreach } from '../../modules/crm/customer-classification.service';
+import { classifyCustomerRecord, refreshDealClassification, recordStaffOutreach, acceptCustomerReply } from '../../modules/crm/customer-classification.service';
+import { acceptDealReply } from '../../modules/crm/deals/deal-engagement.service';
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -25,6 +26,9 @@ async function validatedReplyDeal(tx: Tx, account: EmailAccount, email: GmailEma
   }, distinct: ['dealId'], take: 2, select: { dealId: true } }) : [];
   const id = sentContext?.dealId || (sources.length === 1 ? sources[0].dealId : undefined);
   if (!id) return;
+  if (mailboxAddress(email.from) !== mailboxAddress(account.email) && (!link || !await tx.deal.findFirst({
+    where: { ...customerDealWhere(account.tenantId, link), id }, select: { id: true },
+  }))) return;
   const deal = await tx.deal.findFirst({ where: { tenantId: account.tenantId, id, deletedAt: null }, include: {
     leadDeals: { where: { tenantId: account.tenantId, lead: { isArchived: false, deletedAt: null } }, include: { lead: { select: { email: true } } } },
     contactDeals: { where: { tenantId: account.tenantId, contact: { isArchived: false, deletedAt: null } }, include: { contact: { select: { email: true } } } },
@@ -170,7 +174,16 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const link = selected ? selectedLink : matched ?? (priorLink && (priorLink.leadId ? currentScope.leadIds.includes(priorLink.leadId) : currentScope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
       const prior = link ? await tx.mailboxMessage.findMany({ where: { ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId }, select: { dealId: true } }) : [];
       const association = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
-      const contextDealId = permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, context) : undefined;
+      let contextDealId = permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, context) : undefined;
+      // A verified manual thread association also proves later replies, without
+      // retroactively treating the associated history as a new inbound event.
+      if (!contextDealId && link && association && permissions.dealsView && sentAt > association.linkedAt) {
+        const [related, proof] = await Promise.all([
+          tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id: association.dealId }, select: { id: true } }),
+          tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, threadId: email.threadId, dealId: association.dealId, NOT: { dealAttribution: { equals: Prisma.DbNull } } }, select: { id: true } }),
+        ]);
+        if (related && proof) contextDealId = related.id;
+      }
       const explicitIds = existing?.dealId ? [existing.dealId] : contextDealId
         ? [contextDealId]
         : [...new Set([association?.dealId, ...prior.map(row => row.dealId)].filter((id): id is string => !!id))];
@@ -189,6 +202,17 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
       await persistEmailActivity(tx, account, stored);
+      const duplicateReply = genuineReply && email.rfcMessageId && link ? await tx.mailboxMessage.findFirst({ where: {
+        ...await historyWhere(tx, account.tenantId, link), id: { not: stored.id }, rfcMessageId: email.rfcMessageId, direction: 'inbound', meaningful: true,
+      }, select: { id: true } }) : null;
+      // Keep the provider copy and activity, but count one RFC reply as one piece of evidence.
+      if (!existing && duplicateReply) await tx.mailboxMessage.update({ where: { id: stored.id }, data: { meaningful: false } });
+      if (!existing && genuineReply && link && !duplicateReply) {
+        const key = email.rfcMessageId || `${account.id}:${email.id}`;
+        const verifiedDealId = stored.dealAttribution ? stored.dealId ?? undefined : undefined;
+        if (verifiedDealId && permissions.dealsEdit && permissions.dealsView) await acceptDealReply(tx, account.tenantId, link, verifiedDealId, account.userId, sentAt, key);
+        if (link.leadId ? permissions.leadsEdit : permissions.contactsEdit) await acceptCustomerReply(tx, account.tenantId, link, account.userId, sentAt, key, verifiedDealId);
+      }
       if (!email.labels.includes('DRAFT') && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
       if (email.labels.includes('DRAFT') || !link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
