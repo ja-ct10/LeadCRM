@@ -103,6 +103,7 @@ export function DropdownMenuContent({
   align = 'end',
   sideOffset = 4,
   formContent = false,
+  style,
   children,
   ...props
 }: DropdownMenuContentProps) {
@@ -207,7 +208,7 @@ export function DropdownMenuContent({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -4 }}
           transition={{ duration: 0.12 }}
-          style={{ ...position, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100dvh - 16px)' }}
+          style={{ ...style, ...position, maxWidth: style?.maxWidth ?? 'calc(100vw - 16px)', maxHeight: style?.maxHeight ?? 'calc(100dvh - 16px)' }}
           className={cn(
             'pointer-events-auto absolute z-[300] min-w-[12rem] overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg',
             className

@@ -48,3 +48,18 @@ it('retains a consumer-cancelled action and does not steal focus while async ite
   view.rerender(<Menu loading />); const outside = screen.getByRole('button', { name: 'Outside' }); outside.focus();
   view.rerender(<Menu />); await frame(); expect(document.activeElement).toBe(outside);
 });
+
+it('keeps custom picker width anchored to the trigger after opening and resizing', async () => {
+  render(<DropdownMenu><DropdownMenuTrigger>Products</DropdownMenuTrigger><DropdownMenuContent align="start" style={{ width: 220 }}><DropdownMenuItem>Camera</DropdownMenuItem></DropdownMenuContent></DropdownMenu>);
+  const trigger=screen.getByRole('button', { name: 'Products' });
+  let left=700, bottom=344;
+  const bounds=vi.spyOn(trigger, 'getBoundingClientRect').mockImplementation(() => ({ x:left, y:bottom-44, left, right:left+220, top:bottom-44, bottom, width:220, height:44, toJSON:()=>({}) }));
+  try {
+    fireEvent.click(trigger); const menu=await screen.findByRole('menu');
+    await waitFor(() => expect(menu.style.left).toBe('700px'));
+    expect(menu.style.top).toBe('348px'); expect(menu.style.width).toBe('220px');
+    left=500; bottom=294; fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(menu.style.left).toBe('500px'));
+    expect(menu.style.top).toBe('298px'); expect(menu.style.width).toBe('220px');
+  } finally { bounds.mockRestore(); }
+});

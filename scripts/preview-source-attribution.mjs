@@ -67,6 +67,14 @@ try {
     await checkbox.check(); await page.keyboard.press('Escape');
     await category.selectOption(''); await picker.focus(); await page.keyboard.press('Enter');
     if (!(await checkbox.isChecked())) throw Error(name+': category change lost the selection');
+    const menu=page.getByRole('group', { name: 'Product interests', exact: true });
+    await page.waitForFunction(() => {
+      const menu=document.querySelector('[role="group"][aria-label="Product interests"]');
+      const trigger=document.querySelector('button[aria-expanded="true"][aria-label^="Product Interest"]');
+      if (!menu || !trigger) return false;
+      const m=menu.getBoundingClientRect(), p=trigger.getBoundingClientRect();
+      return Math.abs(m.x-p.x)<4 && Math.abs(m.width-p.width)<4 && (Math.abs(m.y-p.bottom-4)<6 || Math.abs(m.bottom+4-p.y)<6);
+    });
     await page.screenshot({ path: resolve(output, name+'-desktop.png'), fullPage: true });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 1000 });
