@@ -41,9 +41,9 @@ try {
   api = app.listen(4300, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   website = createServer((_req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<!doctype html><html><head><title>Demo company website</title><script src="${base}/leadcrm-forms.js" defer></script></head><body><a href="/inquiry">Continue to inquiry</a><iframe title="Business inquiry" data-leadcrm-form src="${base}/forms/${form.publicId}" style="width:100%;height:1200px;border:0"></iframe></body></html>`); });
   await new Promise(done => website.listen(3301, '127.0.0.1', done));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), process.argv.includes('--production') ? 'start' : 'dev', '--hostname', '127.0.0.1', '--port', '3300'], { cwd: resolve(root, 'frontend'), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '--hostname', '127.0.0.1', '--port', '3300'], { cwd: resolve(root, 'frontend'), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   const log = createWriteStream(resolve(output, 'frontend.log')); frontend.stdout.pipe(log); frontend.stderr.pipe(log);
-  // Production assets run with isolated QA configuration so the API stays on loopback.
+  // Local browser fixtures retain the development server and loopback API.
   let frontendReady = false;
   for (let i = 0; i < 120; i++) { try { if ((await fetch(base + '/login')).ok) { frontendReady = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
   if (!frontendReady) throw Error('The disposable frontend did not become ready; inspect frontend.log.');
