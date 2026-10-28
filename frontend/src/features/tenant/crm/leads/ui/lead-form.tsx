@@ -4,6 +4,9 @@ import { cn } from '@/lib/utils';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { applyCrmFieldErrors, isStaffEmailError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
+import { usePhoneAvailability } from '@/shared/hooks/use-phone-availability';
+import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
+import { LeadPhoneSchema, STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
 
 import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
@@ -46,7 +49,7 @@ const LeadFormSchema = z.object({
   firstName: LeadNameSchema,
   lastName: LeadNameSchema,
   email: CrmEmailSchema,
-  phone: z.string().optional(),
+  phone: LeadPhoneSchema.optional(),
   companyName: LeadFieldsSchema.shape.companyName,
   status: LeadStatusSchema,
   source: OptionalLeadSourceSchema.optional(),
@@ -148,6 +151,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const watchedEmail = watch('email');
   const emailCheck = useEmailAvailability(watchedEmail, 'leads', !isEdit && canSubmit);
   const emailError = emailCheck.error || errors.email?.message;
+  const phoneCheck = usePhoneAvailability(watch('phone') ?? '', 'leads', canSubmit);
+  const phoneError = phoneCheck.error || errors.phone?.message || (phoneTouched ? validatePhMobile(phoneLocal) : null);
   const watchedFirstName = watch('firstName');
   const watchedLastName = watch('lastName');
   const { matches: duplicateMatches, isChecking: isDuplicateChecking, hasDuplicates, dismiss: dismissDuplicates } = useDuplicateCheck({
@@ -171,7 +176,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         firstName: initialData.firstName || '',
         lastName: initialData.lastName || '',
         email: initialData.email || '',
-        phone: phone,
+        phone: normalizePhInput(phone) ? toE164(normalizePhInput(phone)) : '',
         companyName: initialData.companyName || '',
         status: normalizeCrmStatus(initialData.status),
         source: OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').data ?? '',
@@ -203,6 +208,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
   const onFormSubmit = async (data: LeadFormData): Promise<void> => {
     if (!canSubmit || saving.current) return;
+    if (!phoneCheck.confirm(data.phone ?? '')) return;
     if (!isEdit && !emailCheck.confirm(data.email)) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
@@ -236,6 +242,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     setIsSaving(true);
     try { await onSave(payload); }
     catch (error: unknown) {
+      if ((error as { fieldErrors?: { phone?: string[] } }).fieldErrors?.phone?.includes(STAFF_PHONE_CONFLICT)) {
+        phoneCheck.reject(); setError('phone', { type: 'server', message: STAFF_PHONE_CONFLICT }); setSubmitError(null); return;
+      }
       if (!isEdit && isStaffEmailError(error)) {
         emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
         setSubmitError(null);
@@ -300,11 +309,13 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 {emailCheck.available && !emailError && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
               </div>
             </FieldWrap>
-            <FieldWrap fieldKey="phone" label="Phone">
+            <FieldWrap fieldKey="phone" label="Phone" htmlFor={`${fieldId}-phone`}>
               <PhilippinePhoneInput
+                id={`${fieldId}-phone`}
                 value={phoneLocal}
-                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); setValue('phone', v ? toE164(v) : '', { shouldDirty: true }); }}
-                error={phoneTouched ? validatePhMobile(phoneLocal) : null}
+                onBlur={phoneCheck.retry}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); clearErrors('phone'); setValue('phone', v ? toE164(v) : '', { shouldDirty: true, shouldValidate: true }); }}
+                error={phoneError}
               />
             </FieldWrap>
           </div>
@@ -340,7 +351,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>}
             </FieldWrap>
-            <FieldWrap fieldKey="productInterestIds" label="Product Interest">
+            <FieldWrap fieldKey="productInterestIds" label="Product Interest" beforeLabel={<ProductCategoryValue values={selectedProducts} products={[...productRecords, ...(initialData?.productInterestRecords ?? []).filter(product => !productRecords.some(current => current.id === product.id))]} />}>
 <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
@@ -439,7 +450,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || !canSubmit || emailCheck.blocked || customFields.blocked || productsLoading || !!productError}
+          disabled={isSubmitting || !canSubmit || emailCheck.blocked || phoneCheck.blocked || customFields.blocked || productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
           {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Lead'}
@@ -460,12 +471,13 @@ function SectionHeader({ title }: { num?: number; title: string }): React.ReactE
   );
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
     <div className="space-y-1.5">
+      {beforeLabel}
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
       </label>

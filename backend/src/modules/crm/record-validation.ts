@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm/shared';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR, STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
+import { normalizePhone } from './duplicate-detection/duplicate-detection.service';
 import { readCrmStatusEvidence } from './access/crm-record-access.service';
 
 // Store literal plain text; renderers escape it at the output boundary.
@@ -20,6 +21,19 @@ export async function assertExternalCustomerEmail(tx: Prisma.TransactionClient, 
   const candidates = await readCrmStatusEvidence(() => tx.user.findMany({ where: { tenantId, email: { contains: normalized, mode: 'insensitive' } }, select: { email: true } }));
   if (candidates.some(user => user.email.trim().toLowerCase() === normalized)) {
     throw new z.ZodError([{ code: z.ZodIssueCode.custom, path, message: INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR }]);
+  }
+}
+
+/** Same tenant-authoritative identity boundary as staff email, including inactive users. */
+export async function assertExternalCustomerPhone(tx: Prisma.TransactionClient, tenantId: string,
+  phone: string | null | undefined, path: (string | number)[] = ['phone']): Promise<void> {
+  if (!phone?.trim()) return;
+  const normalized = normalizePhone(phone);
+  const staff = await readCrmStatusEvidence(async () => await tx.user.findMany({
+    where: { tenantId, phone: { not: null } }, select: { phone: true },
+  }));
+  if (staff.some(user => user.phone && normalizePhone(user.phone) === normalized)) {
+    throw new z.ZodError([{ code: z.ZodIssueCode.custom, path, message: STAFF_PHONE_CONFLICT }]);
   }
 }
 

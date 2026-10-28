@@ -46,7 +46,8 @@ export function ProductInterestSelect({ id, values, onChange, products, categori
   </div>;
 }
 
-export function CatalogProductInterestSelect(props: Omit<Props, 'products'>) {
+export function CatalogProductInterestSelect({ onCatalog, ...props }: Omit<Props, 'products'> & { onCatalog?: (products: ProductInterest[]) => void }) {
   const { products, categories, loading, error, refresh } = useProductInterests();
+  React.useEffect(() => { onCatalog?.(products); }, [products, onCatalog]);
   return <><ProductInterestSelect {...props} products={products} categories={props.categories ?? categories} disabled={props.disabled || loading || !!error} />{error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={refresh}>Retry products</button></p>}</>;
 }

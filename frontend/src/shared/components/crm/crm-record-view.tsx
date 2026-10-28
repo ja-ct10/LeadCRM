@@ -53,6 +53,8 @@ import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose
 import { copyTextWithFeedback } from '@/shared/utils/clipboard';
 import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { PhoneInlineEditor } from './phone-inline-editor';
+import { LeadPhoneSchema, type ProductInterestRecord } from '@leadcrm/shared';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
@@ -329,6 +331,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
   const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', showUncategorized: false, valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
+  if (module !== 'accounts') productRow.productRecords = record.productInterestRecords as ProductInterestRecord[] | undefined ?? [];
   const aboutRows: InlineRowDef[] = module === 'deals' ? [
     { label: 'Deal title', value: title, apiField: 'title' },
     { technicalKey: 'value', label: 'Deal value', value: subtitle.split(' · ')[0] },
@@ -352,7 +355,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       { label: 'First name', value: record.firstName, apiField: 'firstName', required: true },
       { label: 'Last name', value: record.lastName, apiField: 'lastName', required: true },
       { label: 'Email', value: record.email, apiField: 'email', type: 'email' as const },
-      { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
+      { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const, customEditorActions: true,
+        validate: (value: string) => { const parsed = LeadPhoneSchema.safeParse(value); return parsed.success ? undefined : parsed.error.issues[0].message; },
+        renderEditor: props => <PhoneInlineEditor {...props} module={module as 'leads' | 'contacts'} /> },
       { label: 'Company', value: record.companyName, apiField: 'companyName' },
       ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.account)?.name ?? object(record.organization)?.name }] : []),
       { label: 'Source', value: source, apiField: 'source' },

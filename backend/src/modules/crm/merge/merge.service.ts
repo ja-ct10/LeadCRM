@@ -1,5 +1,5 @@
 import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
-import { assertExternalCustomerEmail } from '../record-validation';
+import { assertExternalCustomerEmail, assertExternalCustomerPhone } from '../record-validation';
 import { productRelationData } from '../leads/product-relations';
 import { serializeLead } from '../leads/lead-serializer';
 import prisma from '../../../config/database.config';
@@ -125,6 +125,7 @@ async function executeLeadMerge(
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
     await assertExternalCustomerEmail(tx, tenantId, mergedData.email !== undefined ? mergedData.email as string | null : primary.email);
+    await assertExternalCustomerPhone(tx, tenantId, mergedData.phone !== undefined ? mergedData.phone as string | null : primary.phone);
     if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
       (fieldResolutions.companyName === 'secondary' ? secondary : primary).companyFromAccount;
 
@@ -220,6 +221,7 @@ async function executeContactMerge(
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
     await assertExternalCustomerEmail(tx, tenantId, mergedData.email !== undefined ? mergedData.email as string | null : primary.email);
+    await assertExternalCustomerPhone(tx, tenantId, mergedData.phone !== undefined ? mergedData.phone as string | null : primary.phone);
     if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
       (fieldResolutions.companyName === 'secondary' ? secondary : primary).companyFromAccount;
 

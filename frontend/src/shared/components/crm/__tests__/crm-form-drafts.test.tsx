@@ -1,20 +1,23 @@
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'My', lastName: 'Agent', email: 'my@camxian.com' } }) }));
 import React from 'react';
 vi.mock('@/shared/hooks/use-email-availability', () => ({ useEmailAvailability: () => ({ available: true, blocked: false, confirm: () => true, retry: vi.fn(), reject: vi.fn() }) }));
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
 import { ContactFormSheet as ContactForm } from '@/features/tenant/crm/contacts/ui/contact-form';
 import type { Lead } from '@/store/types';
 import { AccountFormSheet } from '@/features/tenant/crm/accounts/ui/account-form';
-import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm/shared';
+import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR, STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
 import { toast } from '@/shared/utils/toast';
 
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+const phoneApi = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: phoneApi.get } }));
+beforeEach(() => phoneApi.get.mockReset().mockResolvedValue({ success: true, data: { available: true } }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { clientAdmin: true } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [], organizations: [] }) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined, isInitialLoad: false, refetch: vi.fn() }) }));
-vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [{ id: 'product', name: 'Camera', dealValue: 100 }], loading: false }) }));
+vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [{ id: 'product', name: 'Camera', category: 'Security', dealValue: 100 }], loading: false }) }));
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {} }));
 vi.mock('@/shared/hooks/use-duplicate-check', () => ({ useDuplicateCheck: () => ({ matches: [], hasDuplicates: false, isChecking: false, dismiss: vi.fn() }) }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ onChange }: { onChange: (id: string) => void }) => <button type="button" onClick={() => onChange('account')}>Choose account</button> }));
@@ -24,6 +27,37 @@ vi.mock('@/shared/utils/toast', () => ({ toast: { error: vi.fn(), success: vi.fn
 afterEach(cleanup);
 
 const forms = [{ name: 'Lead', Form: LeadFormSheet }, { name: 'Contact', Form: ContactForm }] as const;
+
+it.each(forms.flatMap(form => [false, true].map(edit => ({ ...form, edit }))))('$name rejects staff phone directly below the field and allows correction (edit=$edit)', async ({ Form, edit }) => {
+  phoneApi.get.mockResolvedValue({ success: true, data: { available: false, reason: 'STAFF_PHONE_NOT_ALLOWED' } });
+  const save = vi.fn();
+  render(<Form isOpen onClose={vi.fn()} onSave={save} initialData={edit ? { id: 'existing', firstName: 'Ada', lastName: 'Reyes', email: 'ada@example.test', status: 'Inquiry' } as any : undefined} />);
+  changeDraft.name();
+  fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Reyes' } });
+  fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'ada@example.test' } });
+  fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9171234567' } });
+  const message = await screen.findByText(STAFF_PHONE_CONFLICT);
+  const input = screen.getByLabelText('Phone');
+  expect(document.getElementById(input.getAttribute('aria-describedby')!)).toBe(message);
+  expect(input.getAttribute('aria-invalid')).toBe('true');
+  fireEvent.submit(input.closest('form')!); expect(save).not.toHaveBeenCalled();
+  phoneApi.get.mockResolvedValue({ success: true, data: { available: true } });
+  fireEvent.change(input, { target: { value: '9181234567' } });
+  const button = await screen.findByRole('button', { name: edit ? 'Save Changes' : `Create ${Form === LeadFormSheet ? 'Lead' : 'Contact'}` });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false), { timeout: 2000 });
+  fireEvent.submit(input.closest('form')!);
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0].phone).toBe('+639181234567');
+});
+
+it.each(forms)('$name derives Product Category above Product Interest from the current selection', async ({ Form }) => {
+  render(<Form isOpen onClose={vi.fn()} onSave={vi.fn()} />);
+  changeDraft.products();
+  const category = await screen.findByText('Product Category');
+  expect(category.parentElement?.textContent).toContain('Security');
+  expect(category.compareDocumentPosition(screen.getByRole('button', { name: 'Product Interest' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(category.closest('section')?.textContent).toContain('Status & Interest');
+});
 
 it.each(forms.flatMap(form => [false, true].map(edit => ({ ...form, edit }))))('$name employee email rejection preserves the draft, shows one toast and inline error, and retries (edit=$edit)', async ({ Form, edit }) => {
   vi.clearAllMocks();

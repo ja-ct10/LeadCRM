@@ -31,32 +31,47 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
     if (reporting) await dashboardAccess(req.user!);
     if (prefix === 'pipeline') await assertPermissions(req.user!, ['deals.view']);
     if (prefix === 'crm') await assertRecordAccess(req);
+    if (res.destroyed || res.writableEnded) return;
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
     res.write('retry: 3000\n\n');
     let busy = false, stopped = false, previous = '', queued = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribe: (() => void) | undefined;
+    const closed = () => stopped || res.destroyed || res.writableEnded;
+    const cleanup = () => {
+      stopped = true; queued = false;
+      unsubscribe?.(); unsubscribe = undefined;
+      clearInterval(timer); clearTimeout(expiry);
+    };
+    const end = () => { if (!closed()) { cleanup(); res.end(); } };
     const tenantId = req.user!.tenantId;
-    const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    const send = (event: string, data: unknown) => { if (!closed()) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
     const tick = async () => {
-      if (stopped) return;
+      if (closed()) return;
       if (busy) { queued = true; return; }
       busy = true;
       try {
         await new Promise<void>((resolve, reject) => {
           void authMiddleware(req, res, error => error ? reject(error) : resolve());
         });
+        if (closed()) return;
         if (ready) await new Promise<void>((resolve, reject) => {
           void workspaceReadyMiddleware(req, res, error => error ? reject(error) : resolve());
         });
+        if (closed()) return;
         if (req.user!.tenantId !== tenantId) throw new AppError('Workspace changed', 403);
         const revision = await tenantContext.run({ tenantId }, async () => {
           if (reporting) await dashboardAccess(req.user!);
           if (prefix === 'pipeline') await assertPermissions(req.user!, ['deals.view']);
           if (prefix === 'crm') await assertRecordAccess(req);
+          if (closed()) return null;
           return prisma.dashboardRevision.findUnique({ where: { tenantId } });
         });
+        if (closed()) return;
         const counters = { analytics: String(revision?.analytics ?? 0), leads: String(revision?.leads ?? 0),
           actions: String(revision?.actions ?? 0), access: String(revision?.access ?? 0) };
         let payload: unknown = reporting ? counters : { access: counters.access };
@@ -65,22 +80,24 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
           // Hash metadata only. Deal/task writes do not cause selector refetches.
           const stages = await tenantContext.run({ tenantId }, () => prisma.stage.findMany({ where: { tenantId, pipeline: { isArchived: false } }, orderBy: { id: 'asc' },
             select: { id: true, pipelineId: true, name: true, color: true, order: true, probability: true, isDefault: true, isWon: true, isLost: true, requiredFields: true, rottenAfterDays: true } }));
+          if (closed()) return;
           payload = { metadata: createHash('sha256').update(JSON.stringify(stages)).digest('hex') };
         }
         const key = JSON.stringify(payload);
         if (key !== previous) { send(`${prefix}-change`, payload); previous = key; }
         send(`${prefix}-heartbeat`, {});
       } catch (error) {
+        if (closed()) return;
         if (error instanceof AppError && [401,403].includes(error.statusCode)) {
-          send(`${prefix}-access-changed`, ['PASSWORD_CHANGE_REQUIRED', 'SESSION_IDLE_EXPIRED'].includes(error.code ?? '') ? { code: error.code } : {}); res.end();
+          send(`${prefix}-access-changed`, ['PASSWORD_CHANGE_REQUIRED', 'SESSION_IDLE_EXPIRED'].includes(error.code ?? '') ? { code: error.code } : {}); end();
         } else send(`${prefix}-unavailable`, {});
-      } finally { busy = false; if (queued && !stopped) { queued = false; void tick(); } }
+      } finally { busy = false; if (queued && !closed()) { queued = false; void tick(); } }
     };
-    const timer = setInterval(() => void tick(), 3000);
-    const unsubscribe = prefix === 'crm' ? subscribeRecordChanges(tenantId, () => { void tick(); }) : undefined;
-    const expiry = setTimeout(() => res.end(), 45000);
+    timer = setInterval(() => void tick(), 3000);
+    unsubscribe = prefix === 'crm' ? subscribeRecordChanges(tenantId, () => { void tick(); }) : undefined;
+    expiry = setTimeout(end, 45000);
     timer.unref(); expiry.unref();
-    res.on('close', () => { stopped = true; unsubscribe?.(); clearInterval(timer); clearTimeout(expiry); });
+    res.once('close', cleanup); res.once('finish', cleanup); res.once('error', cleanup);
     void tick();
   } catch (error) { next(error); }
 }

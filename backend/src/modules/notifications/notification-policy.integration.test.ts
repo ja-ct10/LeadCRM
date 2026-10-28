@@ -98,7 +98,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   });
 
   it.each(['Sales Representative', 'Sales Manager'])('preserves assigned operational notifications for %s', async name => {
-    const role = await prisma.roleDefinition.create({ data: { tenantId, name, permissions: { create: { module: 'contacts', canView: true } } } });
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name, permissions: { create: { module: 'contacts', canView: true, canViewMy: true } } } });
     const user = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Sales', lastName: name,
       role: name, userRoles: { create: { roleId: role.id } } } });
     const record = await contact(user.id); await prisma.contact.update({ where: { id: record.id }, data: { status: 'HOT' } }); await processEvents();

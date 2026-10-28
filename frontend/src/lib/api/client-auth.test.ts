@@ -5,6 +5,17 @@ import { SESSION_ENDED_EVENT, SESSION_METADATA_EVENT, advanceAuthEpoch } from '@
 import { clearPageCache, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
 
 afterEach(() => vi.unstubAllGlobals());
+it('passes an optional POST cancellation signal to the credentialed transport', async () => {
+  const controller = new AbortController();
+  const fetchMock = vi.fn().mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  const request = apiClient.post('/crm/duplicate-check', { email: 'customer@example.test' }, { signal: controller.signal });
+  controller.abort();
+  await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  expect(fetchMock).toHaveBeenCalledWith('/api/proxy/crm/duplicate-check', expect.objectContaining({ signal: controller.signal, credentials: 'include' }));
+});
 it('signals password-change-required without retrying the protected request', async () => {
   const changed = vi.fn();
   window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed);

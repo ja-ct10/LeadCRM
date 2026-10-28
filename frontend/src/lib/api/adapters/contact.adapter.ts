@@ -100,6 +100,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     email: backendContact.email || '',
     phone: backendContact.phone || '',
     productInterestIds: backendContact.productInterestIds,
+    productInterestRecords: backendContact.productInterestRecords,
     productInterests: Array.isArray(backendContact.productInterest)
       ? backendContact.productInterest
       : (Array.isArray(backendContact.productInterests) ? backendContact.productInterests : []),

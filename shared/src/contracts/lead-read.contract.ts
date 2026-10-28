@@ -17,6 +17,7 @@ export type LeadRead = {
   accountId: string | null;
   assignedUserId: string | null;
   productInterestIds: string[];
+  productInterestRecords?: import('./product-interests.contract').ProductInterestRecord[];
   productInterest: string[];
   productInterests: string[];
   firstStaffOutreachAt?: string | null;

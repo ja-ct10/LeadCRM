@@ -15,7 +15,7 @@ import { Router } from 'express';
 import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
-import { authorize, authorizeAll, authorizeArchivedQuery } from '../middleware/rbac.middleware';
+import { authorize, authorizeAll, authorizeAny, authorizeArchivedQuery } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 // Controllers
@@ -30,6 +30,8 @@ import * as activityController     from '../../modules/crm/activities/activities
 import * as duplicateDetectionController from '../../modules/crm/duplicate-detection/duplicate-detection.controller';
 import { CrmEmailAvailabilityQuerySchema } from '@leadcrm/shared';
 import { emailAvailability } from '../../modules/crm/email-availability.controller';
+import { CrmPhoneAvailabilityQuerySchema } from '@leadcrm/shared';
+import { phoneAvailability } from '../../modules/crm/phone-availability.controller';
 import * as mergeController            from '../../modules/crm/merge/merge.controller';
 import * as relationshipsController    from '../../modules/crm/relationships/relationships.controller';
 
@@ -73,6 +75,11 @@ router.get('/email-availability', (req, res, next) => {
   if (!parsed.success) return next(parsed.error);
   return authorize(`${parsed.data.module}.create`)(req, res, next);
 }, emailAvailability);
+router.get('/phone-availability', (req, res, next) => {
+  const parsed = CrmPhoneAvailabilityQuerySchema.safeParse(req.query);
+  if (!parsed.success) return next(parsed.error);
+  return authorizeAny(`${parsed.data.module}.create`, `${parsed.data.module}.edit`)(req, res, next);
+}, phoneAvailability);
 router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, next) => authorizeAll(...req.body.entityTypes.map((type: string) => `${type}s.view` as PermissionKey))(req, res, next), duplicateDetectionController.duplicateCheck);
 
 // ── Merge ─────────────────────────────────────────────────────────────────

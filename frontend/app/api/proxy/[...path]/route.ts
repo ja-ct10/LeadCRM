@@ -78,21 +78,74 @@ async function proxyRequest(
     }
   }
 
-  // Allow cold starts and transactional workspace provisioning.
-  // Longer cold starts return an explicit retryable error.
-  // When the signal fires, fetch throws AbortError, caught below and returned as 503.
+  // Ordinary responses remain bounded until their body has been consumed.
+  // Event streams use this deadline only for the upstream handshake.
   const controller = new AbortController();
-  const abortStream = () => controller.abort();
-  if (mailboxStream) req.signal.addEventListener('abort', abortStream, { once: true });
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const abortRequest = () => controller.abort();
+  req.signal.addEventListener('abort', abortRequest, { once: true });
+  if (req.signal.aborted) abortRequest();
+  let timedOut = false, streaming = false;
+  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 25000);
+  const cleanup = () => { clearTimeout(timeoutId); req.signal.removeEventListener('abort', abortRequest); };
 
   try {
     const backendRes = await fetch(url, { method: req.method, headers, body, signal: controller.signal, cache: 'no-store', redirect: 'manual' });
-    clearTimeout(timeoutId);
     if (mailboxStream && backendRes.ok && backendRes.body) {
-      return new NextResponse(backendRes.body, { status: 200, headers: {
+      clearTimeout(timeoutId);
+      const reader = backendRes.body.getReader();
+      let stopped = false;
+      let downstream: ReadableStreamDefaultController<Uint8Array>;
+      const finish = () => {
+        stopped = true;
+        cleanup();
+        controller.signal.removeEventListener('abort', abortBody);
+      };
+      const cancelReader = async () => {
+        try { await reader.cancel(); } catch { /* The upstream may already have disconnected. */ }
+        finally { reader.releaseLock(); }
+      };
+      const abortBody = () => {
+        if (stopped) return;
+        finish();
+        downstream.close();
+        void cancelReader();
+      };
+      const stream = new ReadableStream<Uint8Array>({
+        start(target) {
+          downstream = target;
+          controller.signal.addEventListener('abort', abortBody, { once: true });
+          if (controller.signal.aborted) abortBody();
+        },
+        async pull(target) {
+          try {
+            const chunk = await reader.read();
+            if (stopped) return;
+            if (chunk.done) { finish(); reader.releaseLock(); target.close(); }
+            else target.enqueue(chunk.value);
+          } catch {
+            if (stopped) return;
+            finish();
+            reader.releaseLock();
+            // Headers have already been sent. End cleanly so EventSource can
+            // reconnect, rather than resetting the browser's HTTP/2 stream.
+            console.error('[Proxy] Upstream event stream interrupted for %s %s', req.method, path);
+            target.close();
+          }
+        },
+        async cancel() {
+          if (stopped) return;
+          finish();
+          controller.abort();
+          await cancelReader();
+        },
+      });
+      const response = new NextResponse(stream, { status: backendRes.status, headers: {
         'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no',
+        'X-Content-Type-Options': 'nosniff',
       } });
+      forwardAuthCookies(backendRes.headers, response.headers);
+      streaming = true;
+      return response;
     }
     const data = await backendRes.arrayBuffer();
 
@@ -120,12 +173,12 @@ async function proxyRequest(
 
     return response;
   } catch (err: unknown) {
-    clearTimeout(timeoutId);
-    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    // A departed browser is not a cold start or an upstream outage.
+    if (req.signal.aborted) return new NextResponse(null, { status: 499 });
     const message = err instanceof Error ? err.message : 'Unknown proxy error';
     console.error('[Proxy] Backend fetch failed for %s %s: %s', req.method, path, message);
 
-    if (isTimeout) {
+    if (timedOut) {
       // The backend exceeded the 25s proxy timeout.
       // Return 503 so the frontend can show a "server waking up" message.
       return NextResponse.json(
@@ -144,6 +197,8 @@ async function proxyRequest(
       },
       { status: 502 },
     );
+  } finally {
+    if (!streaming) cleanup();
   }
 }
 

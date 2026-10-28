@@ -27,6 +27,7 @@ export interface Contact {
   description?: string;
   website?: string;
   productInterest?: string[];
+  productInterestRecords?: import('../contracts/product-interests.contract').ProductInterestRecord[];
   source?: string;
   assignedUserId?: string;
   accountId?: string | null;

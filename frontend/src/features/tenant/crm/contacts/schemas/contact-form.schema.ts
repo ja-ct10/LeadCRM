@@ -1,4 +1,4 @@
-import { CrmEmailSchema } from '@leadcrm/shared';
+import { CrmEmailSchema, LeadPhoneSchema } from '@leadcrm/shared';
 /**
  * Contact form validation schemas — mirrors the contacts-v2 API DTOs.
  */
@@ -9,7 +9,7 @@ export const CreateContactFormSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
   lastName: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less'),
   email: CrmEmailSchema,
-  phone: z.string().optional(),
+  phone: LeadPhoneSchema.optional(),
   companyName: z.string().optional(),
   notes: z.string().max(10000).optional(),
   status: CrmStatusSchema.default('Inquiry'),
@@ -24,7 +24,7 @@ export const UpdateContactFormSchema = z.object({
   firstName: CreateContactFormSchema.shape.firstName,
   lastName: CreateContactFormSchema.shape.lastName,
   email: CrmEmailSchema,
-  phone: z.string().optional(),
+  phone: LeadPhoneSchema.optional(),
   companyName: z.string().optional(),
   notes: z.string().max(10000).optional(),
   status: CrmStatusSchema.optional(),

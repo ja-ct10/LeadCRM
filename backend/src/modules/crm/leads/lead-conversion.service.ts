@@ -1,5 +1,5 @@
 import { productRelationData } from './product-relations';
-import { assertExternalCustomerEmail } from '../record-validation';
+import { assertExternalCustomerEmail, assertExternalCustomerPhone } from '../record-validation';
 import { isDeepStrictEqual } from 'node:util';
 import type { ContactStatus, Deal, Prisma } from '@prisma/client';
 import { aggregateDealEngagement, normalizeCrmStatus, type NewAccountInput } from '@leadcrm/shared';
@@ -46,6 +46,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   }
   const deals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId } } }, include: { stage: true, pipeline: true } });
   await assertExternalCustomerEmail(tx, tenantId, lead.email);
+  await assertExternalCustomerPhone(tx, tenantId, lead.phone);
   const source = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId }, select: { productsNormalized: true } });
   const initialInterests = source.productsNormalized ? { ids: lead.productInterestIds } : { names: lead.productInterest };
   // Merge canonical IDs, including retired Products, without resolving a reused name.
@@ -80,7 +81,10 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     contact = matches[0] ?? null;
   }
   if (contact?.isArchived || contact?.deletedAt) throw conflict();
-  if (contact) await assertExternalCustomerEmail(tx, tenantId, contact.email);
+  if (contact) {
+    await assertExternalCustomerEmail(tx, tenantId, contact.email);
+    await assertExternalCustomerPhone(tx, tenantId, contact.phone);
+  }
   const previousContact = contact;
   if (lead.accountId && contact?.accountId && lead.accountId !== contact.accountId) throw conflict();
   let accountId = lead.accountId ?? contact?.accountId ?? null;

@@ -97,6 +97,8 @@ function InboxMailbox(): React.ReactElement {
   const [selectedSchedule, setSelectedSchedule] = useState<string>();
   const [authorizationRevision, setAuthorizationRevision] = useState(0);
   const authorizationGeneration = useRef(0);
+  const [loadedQuery, setLoadedQuery] = useState<string>();
+  const mailboxQuery = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, view, filter, sort, debouncedSearch.trim()]);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [readFailure, setReadFailure] = useState<{ email: GmailEmail; message: string }>();
@@ -123,6 +125,7 @@ function InboxMailbox(): React.ReactElement {
     request.current?.controller.abort(); request.current = null; requestId.current++;
     authorizationGeneration.current++; setAuthorizationRevision(value => value + 1);
     setEmails([]); setSelectedEmail(null); setSelectedSchedule(undefined); setUnreadCount(undefined);
+    setLoadedQuery(undefined);
     setReadFailure(undefined);
     readOperations.current.clear(); setReadBusy(false);
     setNextPageToken(undefined); setPage(1); pageRef.current = 1; tokenRef.current = undefined; pageTokens.current = [undefined];
@@ -160,10 +163,12 @@ function InboxMailbox(): React.ReactElement {
 
   const loadEmails = useCallback((pageToken?: string, targetPage = 1, authorizationRefresh = false): Promise<void> => {
     if (!authorizationRefresh && Date.now() < cooldownRef.current) return Promise.resolve();
-    const key = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, view, filter, sort, debouncedSearch, pageToken]);
+    const query = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, view, filter, sort, debouncedSearch.trim()]);
+    const key = JSON.stringify([query, pageToken]);
     if (request.current?.key === key) return request.current.promise;
     request.current?.controller.abort();
     const controller = new AbortController(), id = ++requestId.current;
+    setError('');
     setRefreshing(true); if (!loaded.current) setInitialLoading(true);
     const promise = (async () => {
       try {
@@ -178,6 +183,7 @@ function InboxMailbox(): React.ReactElement {
         });
         if (controller.signal.aborted || id !== requestId.current) return;
         setEmails(result.emails); setUnreadCount(result.unreadCount); setNextPageToken(result.nextPageToken); setError('');
+        setLoadedQuery(query);
         if (result.unreadCount !== undefined) window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: result.unreadCount }));
         loaded.current = true; pageRef.current = currentPage; tokenRef.current = currentToken; setPage(currentPage);
         if (currentPage === 1) pageTokens.current = [undefined];
@@ -408,9 +414,9 @@ function InboxMailbox(): React.ReactElement {
         </div>
       </>}
       {syncError && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{syncError}</p>}
-      {error && <p role="alert" className="px-4 py-3 text-sm text-red-600">{error}</p>}
+      {error && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{error}</p>{connectionStatus?.isConnected && <button type="button" className={control} disabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onClick={() => void loadEmails(tokenRef.current, pageRef.current)}>Retry loading emails</button>}</div>}
       {readFailure && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{readFailure.message}</p><button type="button" className={control} disabled={readBusy || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void markOpenedRead(readFailure.email)}>Retry marking as read</button></div>}
-      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList key={view} view={view} emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
+      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList key={view} view={view} emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading || (!error && loadedQuery !== mailboxQuery)} hasLoadError={!!error || loadedQuery !== mailboxQuery} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     <ConfirmActionDialog open={confirmDisconnect} onOpenChange={setConfirmDisconnect} title="Disconnect mailbox?"
