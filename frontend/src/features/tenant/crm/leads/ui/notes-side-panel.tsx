@@ -13,6 +13,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from '@/shared/utils/toast';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 interface NotesSidePanelProps {
   isOpen: boolean;
@@ -367,24 +369,24 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
 
                   {/* Title field */}
                   <div>
-                    <input
+                    <Input
                       type="text"
                       value={title}
                       onChange={e => setTitle(e.target.value)}
                       placeholder="Note Heading (e.g. Call logs with John)"
-                      className="w-full text-sm font-semibold bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/8 rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-primary"
+                      className="w-full text-sm font-semibold border rounded-xl px-3 py-2"
                     />
                   </div>
 
                   {/* Content field */}
                   <div>
-                    <textarea
+                    <Textarea
                       value={content}
                       onChange={e => setContent(e.target.value)}
                       rows={4}
                       required
                       placeholder="Jot down customer specifications, billing details or meeting notes details..."
-                      className="w-full text-xs font-normal bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/8 rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-primary resize-none"
+                      className="w-full text-xs font-normal border rounded-xl px-3 py-2 resize-none"
                     />
                   </div>
 
@@ -523,12 +525,12 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                 {/* Search */}
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
+                  <Input
                     type="text"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Search scratchpad notes..."
-                    className="w-full text-xs bg-gray-50 dark:bg-white/2/30 border border-gray-200 dark:border-white/8 rounded-full pl-9 pr-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
+                    className="w-full text-xs border rounded-full pl-9 pr-4 py-2"
                   />
                   {searchQuery && (
                     <button 

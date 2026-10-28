@@ -99,6 +99,16 @@ function ModuleNavigation({ label, module }: { label: string; module: string }) 
   return <nav aria-label="Modules"><button onClick={() => requestNavigation(() => navigate(module))}>{label}</button></nav>;
 }
 describe('visual workflow editor', () => {
+  it('saves literal Unicode names and multiline descriptions from shared details fields', async () => {
+    const { save } = setup();
+    const name = `ñ é 中文 日本語 한글 مرحبا 😊 & ' " < > ∑ ₱ e\u0301`;
+    const description = `${name}\n<tag>literal text</tag>`;
+    fireEvent.click(button('Workflow details'));
+    fireEvent.change(screen.getByPlaceholderText('Enter workflow name...'), { target: { value: name } });
+    fireEvent.change(screen.getByPlaceholderText('Describe what this workflow does...'), { target: { value: description } });
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ name, description })));
+  });
   it('edits a configured stage template, saves an inactive draft and preserves custom actions across option refresh', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const options = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'contacted', name: 'Contacted' }, { id: 'won', name: 'Approved', isWon: true }] }] };

@@ -7,6 +7,7 @@ import { authApi } from '@/shared/services/auth.api';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from '@/shared/utils/toast';
 import { Button } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
 
 export function PasswordChangeForm({ mode = 'standard', onSuccess, onCancel, onBusy }: { mode?: 'standard' | 'mandatory'; onSuccess?: () => void; onCancel?: () => void; onBusy?: (busy: boolean) => void }) {
   const { user, applyAuthUser } = useAuth();
@@ -56,10 +57,10 @@ export function PasswordChangeForm({ mode = 'standard', onSuccess, onCancel, onB
       const error = key === 'confirm' ? confirmError : errors[key];
       return <div key={key}>
       <label className="block text-xs font-semibold mb-1.5" htmlFor={`security-${key}`}>{label} <span className="text-red-500">*</span></label>
-      <div className="relative"><input id={`security-${key}`} type={shown[key] ? 'text' : 'password'} autoComplete={key === 'currentPassword' ? 'current-password' : 'new-password'}
+      <div className="relative"><Input placeholder={key === 'currentPassword' ? 'Enter your current password...' : key === 'confirm' ? 'Repeat your new password...' : 'Enter a new password...'} id={`security-${key}`} type={shown[key] ? 'text' : 'password'} autoComplete={key === 'currentPassword' ? 'current-password' : 'new-password'}
         value={values[key]} maxLength={72} disabled={busy} required aria-invalid={!!error} aria-describedby={error ? `${key}-error` : key === 'password' ? 'password-requirements' : undefined}
         onBlur={() => { if (key === 'confirm') setConfirmTouched(true); }}
-        onChange={event => { setValues(previous => ({ ...previous, [key]: event.target.value })); setErrors({}); }} className="w-full min-w-0 rounded-lg border border-gray-200 dark:border-slate-700 px-3 py-2.5 pr-12 text-sm bg-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        onChange={event => { setValues(previous => ({ ...previous, [key]: event.target.value })); setErrors({}); }} className="w-full min-w-0 rounded-lg border px-3 py-2.5 pr-12 text-sm" />
         <button type="button" aria-label={`${shown[key] ? 'Hide' : 'Show'} ${label.toLowerCase()}`} onClick={() => setShown(previous => ({ ...previous, [key]: !previous[key] }))} className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-slate-500">{shown[key] ? <EyeOff size={18} /> : <Eye size={18} />}</button>
       </div>
       {error && <p id={`${key}-error`} role="alert" className="text-xs text-red-600 mt-1">{error}</p>}

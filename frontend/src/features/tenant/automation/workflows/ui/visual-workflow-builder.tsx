@@ -68,6 +68,7 @@ import {
   type Placement,
   type StepSelection,
 } from '../services/workflow-editor';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 interface Props {
   initial: WorkflowDraft;
@@ -575,7 +576,6 @@ export default function WorkflowBuilder({
               <Input
                 aria-label="Workflow name"
                 placeholder="Enter workflow name..."
-                className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                 aria-required="true"
                 aria-invalid={!!nameIssue}
                 aria-describedby={
@@ -599,7 +599,7 @@ export default function WorkflowBuilder({
             </label>
             <label className="block space-y-2 text-sm">
               Description
-              <textarea
+              <Textarea
                 className={workflowControl}
                 rows={4}
                 maxLength={2000}

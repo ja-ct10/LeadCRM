@@ -46,12 +46,12 @@ it('defers record reads until the authorized destination has successfully opened
   expect(mocks.markRead).not.toHaveBeenCalled();
 });
 
-it('continues marking user notifications read when clicked before opening Team Management', async () => {
-  records[0] = { ...records[0], entityType: 'User', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a', type: 'user_created' };
-  mocks.destination.mockResolvedValue({ success: true, destination: '/settings?tab=users' });
+it.each([['User', 'user_created', 'users'], ['RoleDefinition', 'role_created', 'roles']])('preserves %s notification reads on click before opening its Settings directory', async (entityType, type, tab) => {
+  records[0] = { ...records[0], entityType, entityId: '23e0334f-f10b-4cf1-b67c-42984828890a', type };
+  mocks.destination.mockResolvedValue({ success: true, destination: '/settings?tab=' + tab });
   render(<NotificationsPage />);
   fireEvent.click(await screen.findByRole('button', { name: /Notice 0/ }));
-  await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/settings?tab=users'));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/settings?tab=' + tab));
   expect(mocks.markRead).toHaveBeenCalledWith('0'); expect(records[0].isRead).toBe(true);
 });
 

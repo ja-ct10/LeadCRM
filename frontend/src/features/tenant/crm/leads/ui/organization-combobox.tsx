@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Building, Plus, Search, X, ChevronsUpDown, Check } from 'lucide-react';
 import { Organization } from '@/store/types';
+import { Input } from '@/shared/components/ui/input';
 
 interface OrganizationComboboxProps {
   organizations: Organization[];
@@ -93,10 +94,10 @@ export function OrganizationCombobox({ organizations, value, companyName, onChan
       ) : (
         <div className="relative w-full flex items-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
+          <Input
             ref={inputRef}
             type="text"
-            className="w-full pl-9 pr-10 bg-white dark:bg-slate-900 border-2 border-primary rounded-xl py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none shadow-sm transition-all"
+            className="w-full pl-9 pr-10 border-2 rounded-xl py-2 text-sm shadow-sm transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => {

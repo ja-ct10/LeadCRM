@@ -128,7 +128,7 @@ export function normalizeSavedWorkflowAssignment(action: WorkflowAction): Workfl
 export type WorkflowEntity = 'lead' | 'contact' | 'deal' | 'account';
 export const WorkflowDraftSchema = z.object({
   name: z.string().regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.').trim().min(1, 'Workflow name is required.').max(255),
-  description: z.string().max(2000).transform(value => value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').trim()).nullable().optional(),
+  description: z.string().max(2000).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Control characters are not allowed.').transform(value => value.trim()).nullable().optional(),
   trigger: z.string().min(1, 'Choose a trigger.'),
   conditions: WorkflowConditionSchema.nullable().optional(),
   actions: z.array(WorkflowActionSchema).max(20),

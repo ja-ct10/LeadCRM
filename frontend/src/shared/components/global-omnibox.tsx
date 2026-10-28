@@ -15,6 +15,7 @@ import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { dealsApi } from '@/shared/services/deals.api';
 import type { Contact, Organization, Deal } from '@/store/types';
+import { Input } from '@/shared/components/ui/input';
 
 type ScopedModule = 'all' | 'leads' | 'contacts' | 'accounts' | 'deals';
 
@@ -229,7 +230,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
           ) : (
             <Search size={13} className="absolute left-2.5 text-slate-400" />
           )}
-          <input
+          <Input
             ref={inputRef}
             type="text"
             value={query}
@@ -237,7 +238,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
             onChange={(e) => { searchVersion.current++; setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]); setIsSearching(false); setQuery(e.target.value); setIsDropdownOpen(true); }}
             aria-label="Search CRM records"
             placeholder={isTagSearch ? "Search sources or categories..." : "Search records (Press '/' or '#')..."}
-            className="min-w-0 w-full h-full pl-8 pr-8 text-[12px] bg-transparent text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+            className="min-w-0 w-full h-full pl-8 pr-8 text-[12px]"
           />
           {isSearching && cleanQuery.length >= 3 && (
             <div

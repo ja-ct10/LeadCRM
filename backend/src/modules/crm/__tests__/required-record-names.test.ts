@@ -3,21 +3,23 @@ import { CreateClientContactSchema, UpdateClientContactSchema } from '../contact
 import { CreateCompanySchema, UpdateCompanySchema } from '../companies/companies.dto';
 
 it.each(['firstName', 'lastName'])('requires trimmed Contact %s on create and update', field => {
-  for (const value of ['', '   ', '<b> </b>']) {
+  for (const value of ['', '   ']) {
     expect(CreateClientContactSchema.safeParse({ firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.test', [field]: value }).success).toBe(false);
     expect(UpdateClientContactSchema.safeParse({ [field]: value }).success).toBe(false);
   }
   expect(UpdateClientContactSchema.parse({ [field]: '  Ada  ' })).toEqual({ [field]: 'Ada' });
+  expect(UpdateClientContactSchema.parse({ [field]: '<b> </b>' })).toEqual({ [field]: '<b> </b>' });
   expect(UpdateClientContactSchema.safeParse({ notes: 'Unrelated edit' }).success).toBe(true);
 });
 
 it('requires trimmed Account Name while retaining 255 characters and partial edits', () => {
-  for (const value of ['', '   ', '<b> </b>']) {
+  for (const value of ['', '   ']) {
     expect(CreateCompanySchema.safeParse({ name: value }).success).toBe(false);
     expect(UpdateCompanySchema.safeParse({ name: value }).success).toBe(false);
   }
   expect(CreateCompanySchema.parse({ name: '  Camxian  ' }).name).toBe('Camxian');
   expect(UpdateCompanySchema.parse({ name: '  Camxian  ' }).name).toBe('Camxian');
+  expect(UpdateCompanySchema.parse({ name: '<b> </b>' }).name).toBe('<b> </b>');
   expect(UpdateCompanySchema.safeParse({ name: 'A'.repeat(255) }).success).toBe(true);
   expect(UpdateCompanySchema.safeParse({ name: 'A'.repeat(256) }).success).toBe(false);
   expect(UpdateCompanySchema.safeParse({ notes: 'Unrelated edit' }).success).toBe(true);

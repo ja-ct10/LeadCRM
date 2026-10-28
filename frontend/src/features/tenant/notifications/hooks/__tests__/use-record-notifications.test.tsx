@@ -147,7 +147,7 @@ it('replaces record identities even when totals stay equal and rejects stale ide
   expect(screen.queryByRole('status')).toBeNull(); expect(feed.result.current.unreadRecords).toEqual([]);
 });
 
-it.each(['Lead', 'Contact', 'Account', 'Task', 'Campaign', 'Workflow', 'Form'] as const)('uses the same read flow for %s', async entityType => {
+it.each(['Lead', 'Contact', 'Account', 'Task', 'Campaign', 'Workflow', 'Form', 'User', 'RoleDefinition'] as const)('uses the same read flow for %s', async entityType => {
   const record = { ...first, entityType };
   records = [{ ...record, count: 2 }];
   renderHook(() => useReadRecordNotifications(entityType, record.entityId, true));

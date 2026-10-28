@@ -41,6 +41,8 @@ import {
   type UpdateContactFormValues,
 } from '../schemas/contact-form.schema';
 import type { Contact } from '@/store/types';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -207,7 +209,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
   // Style classes
   const inputCls = panelInputClass;
-  const inputErrorCls = '!border-red-500 focus:!ring-red-500/20';
+  const inputErrorCls = '!border-red-500';
   const selectCls = panelInputClass + ' appearance-none pr-8 cursor-pointer';
 
   return (
@@ -224,22 +226,22 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           {/* First & Last Name (required) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap fieldKey="firstName" label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
-              <input
+              <Input
                 {...register('firstName')}
                 id={`${fieldId}-firstName`}
                 aria-invalid={!!errors.firstName}
                 aria-describedby={errors.firstName ? `${fieldId}-firstName-error` : undefined}
-                className={`${inputCls} ${errors.firstName ? inputErrorCls : ''}`}
+                className={`${inputCls}  ${errors.firstName ? inputErrorCls : ''}`}
                 placeholder="Enter first name"
               />
             </FieldWrap>
             <FieldWrap fieldKey="lastName" label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
-              <input
+              <Input
                 {...register('lastName')}
                 id={`${fieldId}-lastName`}
                 aria-invalid={!!errors.lastName}
                 aria-describedby={errors.lastName ? `${fieldId}-lastName-error` : undefined}
-                className={`${inputCls} ${errors.lastName ? inputErrorCls : ''}`}
+                className={`${inputCls}  ${errors.lastName ? inputErrorCls : ''}`}
                 placeholder="Enter last name"
               />
             </FieldWrap>
@@ -250,13 +252,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={emailError}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                <input
+                <Input
                   type="email"
                   {...register('email', !isEdit ? { onChange: () => clearErrors('email'), onBlur: emailCheck.retry } : {})} required aria-required="true" maxLength={254}
                   id={`${fieldId}-email`}
                   aria-invalid={!!emailError}
                   aria-describedby={emailError ? `${fieldId}-email-error` : undefined}
-                  className={`${inputCls} pl-9${!isEdit ? ' pr-10' : ''} ${emailError ? inputErrorCls : ''}`}
+                  className={`${inputCls} pl-9${!isEdit ? ' pr-10' : ''}  ${emailError ? inputErrorCls : ''}`}
                   placeholder="email@example.com"
                 />
                 {emailCheck.available && !emailError && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
@@ -281,7 +283,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Status */}
             <FieldWrap fieldKey="status" label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
-              {!initialData ? <input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
+              {!initialData ? <Input id={`${fieldId}-status`} value="Inquiry" readOnly className={selectCls} /> : <div className="relative">
                 <select
                   {...register('status')}
                   id={`${fieldId}-status`}
@@ -341,19 +343,19 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               <FieldWrap fieldKey="address" label="Contact Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
-              <textarea
+              <Textarea
                 {...register('address')}
                 id={`${fieldId}-address`}
                 aria-invalid={!!errors.address}
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={3}
-                className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
+                className={`w-full pl-9 pr-4 border rounded-xl py-2.5 text-sm transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
                 placeholder="123 Main St, City, State, Zip Code"
               />
             </div>
           </FieldWrap>
           {isEdit && <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
-            <textarea {...register('notes')} id={`${fieldId}-notes`} rows={3} maxLength={10000} className={`${inputCls} ${errors.notes ? inputErrorCls : ''}`} placeholder="Add notes" />
+            <Textarea {...register('notes')} id={`${fieldId}-notes`} rows={3} maxLength={10000} className={`${inputCls}  ${errors.notes ? inputErrorCls : ''}`} placeholder="Add notes" />
           </FieldWrap>}
           <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
@@ -361,7 +363,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         <div className="space-y-4">
           <SectionHeader num={5} title="Assigned Agent" />
           <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
-            {selfAssigned ? <input id={`${fieldId}-assignedUserId`} value={currentAgentName} readOnly className={inputCls} /> : (
+            {selfAssigned ? <Input id={`${fieldId}-assignedUserId`} value={currentAgentName} readOnly className={inputCls} /> : (
               <Controller
               name="assignedUserId"
               control={control}

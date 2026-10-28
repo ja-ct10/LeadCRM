@@ -9,6 +9,7 @@ import { authApi } from '@/shared/services/auth.api';
 import { UserAvatar } from '@/shared/components/user-avatar';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
 import { AvatarCropDialog } from './avatar-crop-dialog';
+import { Input } from '@/shared/components/ui/input';
 
 const fields = [
   ['firstName', 'First Name'], ['lastName', 'Last Name'], ['phone', 'Phone Number'],
@@ -92,10 +93,10 @@ export function ProfileForm() {
           <label htmlFor={`profile-${key}`} className="block text-xs font-semibold text-slate-500 mb-1">{label}{(key === 'firstName' || key === 'lastName') && <span aria-hidden="true" className="ml-1 text-red-500">*</span>}</label>
           <div className={key === 'phone' ? 'flex min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-muted' : undefined}>
             {key === 'phone' && <span aria-hidden="true" className="flex shrink-0 items-center border-r border-slate-200 dark:border-slate-700 px-3 text-sm text-slate-500">+63</span>}
-            <input id={`profile-${key}`} aria-label={label} value={draft[key]} disabled={!editing || saving} required={key === 'firstName' || key === 'lastName'}
+            <Input id={`profile-${key}`} aria-label={label} value={draft[key]} disabled={!editing || saving} required={key === 'firstName' || key === 'lastName'}
               type={key === 'phone' ? 'tel' : 'text'} inputMode={key === 'phone' ? 'numeric' : undefined}
               aria-invalid={!!fieldErrors[key]} aria-describedby={fieldErrors[key] ? `profile-${key}-error` : undefined}
-              placeholder={key === 'phone' ? '9XXXXXXXXX' : 'Not set'}
+              placeholder={key === 'phone' ? '9XXXXXXXXX' : `Enter ${label.toLowerCase()}...`}
               onChange={event => {
                 const value = event.target.value;
                 if (key === 'phone' && !isPhMobileInput(value)) {
@@ -110,13 +111,13 @@ export function ProfileForm() {
                 const result = (key === 'phone' ? ProfilePhoneInputSchema : SelfProfileFieldSchemas[key]).safeParse(value);
                 setFieldErrors(current => ({ ...current, [key]: result.success ? '' : result.error.issues[0].message }));
               }}
-              className={`w-full min-w-0 ${key === 'phone' ? 'flex-1 bg-transparent rounded-r-lg' : 'bg-muted border rounded-lg'} ${fieldErrors[key] ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} px-3 py-2 text-sm disabled:cursor-default`} />
+              className={`w-full min-w-0 ${key === 'phone' ? 'flex-1 rounded-r-lg' : 'border rounded-lg'}  ${fieldErrors[key] ? 'border-red-500' : ''} px-3 py-2 text-sm disabled:cursor-default`} />
           </div>
           {fieldErrors[key] && <p id={`profile-${key}-error`} role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors[key]}</p>}
         </div>)}
         <div><span className="block text-xs font-semibold text-slate-500 mb-1">Groups</span><p aria-label="Groups" className="text-sm">{user?.groups?.map(group => group.name).join(', ') || 'No groups assigned'}</p><p className="mt-1 text-xs text-slate-500">Managed in Team Management → Groups.</p></div>
         <div><label htmlFor="profile-email" className="block text-xs font-semibold text-slate-500 mb-1">Email Address</label>
-          <input id="profile-email" value={user?.email ?? ''} disabled className="w-full bg-muted border rounded-lg px-3 py-2 text-sm" />
+          <Input id="profile-email" value={user?.email ?? ''} disabled className="w-full border rounded-lg px-3 py-2 text-sm" />
         </div>
       </div>
       {editing && <div className="flex justify-end gap-2">

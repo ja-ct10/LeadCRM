@@ -56,8 +56,8 @@ function validateDealWrites(data, ctx) {
 }
 const instant = zod_1.z.string().datetime({ offset: true });
 const taskFields = zod_1.z.object({
-    title: zod_1.z.string().trim().min(1, "Enter a task title.").max(255),
-    description: zod_1.z.string().max(10000).nullable().optional(),
+    title: zod_1.z.string().refine(value => !value.includes('\u0000'), 'Text must not contain NUL characters.').transform(value => value.trim()).pipe(zod_1.z.string().min(1, "Enter a task title.").max(255)),
+    description: zod_1.z.string().max(10000).refine(value => !value.includes('\u0000'), 'Text must not contain NUL characters.').nullable().optional(),
     status: exports.TaskStatusSchema.default("pending"),
     priority: zod_1.z.enum(["Low", "Medium", "High"]).default("Medium"),
     dueDate: instant,

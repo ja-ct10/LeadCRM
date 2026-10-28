@@ -15,6 +15,8 @@ import { LeadSmsTab } from './tabs/lead-sms-tab';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { toast } from '@/shared/utils/toast';
 import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForOrg } from '@/lib/utils';
+import { Input } from '@/shared/components/ui/input';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 
 
@@ -475,11 +477,11 @@ export const CompanyProfileTabs = ({
             <div className="space-y-4 text-left animate-in fade-in duration-100">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">General Corporate History Dossier</label>
-                <textarea 
+                <Textarea
                   rows={4} 
                   value={companyNotes} 
                   onChange={e => setCompanyNotes(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-xl p-3 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:focus:border-white/10 transition-all"
+                  className="w-full border rounded-xl p-3 text-xs transition-all"
                   placeholder="History or account logs..."
                 />
               </div>
@@ -675,46 +677,46 @@ export const CompanyProfileTabs = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">Company Website Domain</label>
-                    <input 
+                    <Input
                       type="text" 
                       value={cascadeWeb}
                       onChange={e => setCascadeWeb(e.target.value)}
                       placeholder="e.g. acme.com or https://acme.org"
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-xs focus:outline-none dark:text-white"
+                      className="w-full border rounded-lg px-3 py-2 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">Primary Industry Sector</label>
-                    <input 
+                    <Input
                       type="text" 
                       value={cascadeIndustry}
                       onChange={e => setCascadeIndustry(e.target.value)}
                       placeholder="e.g. Hospital & Health Care"
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-xs focus:outline-none dark:text-white"
+                      className="w-full border rounded-lg px-3 py-2 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">Account Size Bracket</label>
-                    <input 
+                    <Input
                       type="text" 
                       value={cascadeSize}
                       onChange={e => setCascadeSize(e.target.value)}
                       placeholder="e.g. 100-500 employees"
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-xs focus:outline-none dark:text-white"
+                      className="w-full border rounded-lg px-3 py-2 text-xs"
                     />
                   </div>
 
 
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">HQ Corporate Address details</label>
-                    <input 
+                    <Input
                       type="text" 
                       value={cascadeAddress}
                       onChange={e => setCascadeAddress(e.target.value)}
                       placeholder="Street, City, General Coordinates..."
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-xs focus:outline-none dark:text-white"
+                      className="w-full border rounded-lg px-3 py-2 text-xs"
                     />
                   </div>
                 </div>

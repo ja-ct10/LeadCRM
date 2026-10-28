@@ -8,6 +8,7 @@ import { helpCategories, helpArticles, getArticle, getCategoryArticles, popularA
 import { searchHelp } from '../search';
 import { ArticleResult, HelpFooter, articleHref, categoryHref } from './help-shared';
 import styles from './help.module.css';
+import { Input } from '@/shared/components/ui/input';
 
 const icons = { 'getting-started': Compass, leads: Target, contacts: Users, accounts: Building2, deals: Briefcase, tasks: CheckSquare, campaigns: Mail, automation: Workflow, dashboard: BarChart3, team: UserRoundCog, roles: Shield, settings: Settings, security: LockKeyhole, troubleshooting: CircleHelp };
 
@@ -38,7 +39,7 @@ export default function HelpHome() {
         <label htmlFor="help-search">Search LeadCRM help</label>
         <div className={styles.searchBox}>
           <Search size={20} aria-hidden="true" className={styles.muted} />
-          <input ref={input} id="help-search" type="search" value={query} maxLength={180} placeholder="Try “create role” or “pipeline”" onChange={event => updateQuery(event.target.value)} />
+          <Input ref={input} id="help-search" type="search" value={query} maxLength={180} placeholder="Try “create role” or “pipeline”" onChange={event => updateQuery(event.target.value)} />
           {query && <button type="button" aria-label="Clear help search" onClick={() => { updateQuery(''); input.current?.focus(); }}><X size={18} aria-hidden="true" /></button>}
         </div>
         <p className={styles.searchHint}>Search guides by topic, question, or field name.</p>

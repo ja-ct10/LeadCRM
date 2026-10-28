@@ -24,6 +24,7 @@ import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { matchesSearch } from '@/shared/utils/search';
 import { Badge } from '@/shared/components/ui/badge';
 import { GroupHeadDialog, GroupMemberIdentity } from './group-head-dialog';
+import { Input } from '@/shared/components/ui/input';
 
 interface GroupsSubTabProps {
   tenantUsers: User[];
@@ -243,8 +244,8 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         <DialogHeader><DialogTitle id="group-modal-title">{modal === 'create' ? 'New Group' : modal === 'rename' ? 'Rename Group' : 'Add Members'}</DialogTitle></DialogHeader>
         <form onSubmit={save} noValidate className="mt-5 space-y-4">
           {modal !== 'members' && <div><label htmlFor="group-name" className="mb-2 block text-xs font-semibold text-slate-700 dark:text-slate-300">Name <span className="text-red-500" aria-hidden="true">*</span></label>
-            <input id="group-name" required autoFocus maxLength={100} disabled={busy} value={name} onChange={event => { setName(event.target.value); setNameError(''); }} aria-invalid={!!nameError} aria-describedby={nameError ? 'group-name-error' : undefined}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+            <Input placeholder="Enter group name..." id="group-name" required autoFocus maxLength={100} disabled={busy} value={name} onChange={event => { setName(event.target.value); setNameError(''); }} aria-invalid={!!nameError} aria-describedby={nameError ? 'group-name-error' : undefined}
+              className="w-full rounded-lg border px-3 py-2 text-sm" />
             {nameError && <p id="group-name-error" role="alert" className="mt-1 text-xs text-red-500">{nameError}</p>}
           </div>}
           {modal !== 'rename' && canManageMembers && <div className="space-y-2">

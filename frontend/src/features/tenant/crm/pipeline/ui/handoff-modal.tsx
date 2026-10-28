@@ -3,6 +3,8 @@ import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 import { X, Calendar, User, FileText, CheckCircle2 } from 'lucide-react';
 import { Deal, User as SystemUser } from '@/store/types';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 interface HandoffModalProps {
   isOpen: boolean;
@@ -73,11 +75,11 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-2">
                   <Calendar size={16} /> Target Kickoff Date
                 </label>
-                <input
+                <Input
                   type="date"
                   value={kickoffDate}
                   onChange={(e) => setKickoffDate(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full border rounded-xl px-4 py-2.5 text-sm"
                 />
               </div>
 
@@ -85,12 +87,12 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-2">
                   <FileText size={16} /> Handoff Notes
                 </label>
-                <textarea
+                <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Important details for the onboarding team..."
                   rows={3}
-                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                  className="w-full border rounded-xl px-4 py-2.5 text-sm resize-none"
                 />
               </div>
               

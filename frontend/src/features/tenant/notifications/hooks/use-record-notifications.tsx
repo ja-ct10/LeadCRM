@@ -8,7 +8,8 @@ import { useNotifications } from './use-notifications';
 export function UnreadRecordDot({ entityType, entityId }: NotificationRecordTarget) {
   const { unreadRecords } = useNotifications('all', { countsOnly: true });
   if (!unreadRecords.some(record => record.entityType === entityType && record.entityId === entityId)) return null;
-  return <span role="status" aria-label={`Unread ${entityType} notifications`} className="inline-block h-2 w-2 shrink-0 rounded-full bg-blue-500" />;
+  const label = entityType === 'RoleDefinition' ? 'Role' : entityType;
+  return <span role="status" aria-label={`Unread ${label} notifications`} className="inline-block h-2 w-2 shrink-0 rounded-full bg-blue-500" />;
 }
 
 /** Consume the open snapshot once, only after the existing detail reader succeeds. */

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import type { RoleDetail } from '@/store/types/roles.types';
 import { PermissionMatrix } from './permission-matrix';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 
 interface RoleDetailDrawerProps {
   role:    RoleDetail | null;
@@ -22,6 +23,11 @@ function buildPermissionsMap(role: RoleDetail): Record<string, { canView: boolea
   return map;
 }
 
+function ReadRoleNotifications({ id }: { id: string }) {
+  useReadRecordNotifications('RoleDefinition', id, true);
+  return null;
+}
+
 export function RoleDetailDrawer({ role, isOpen, onClose }: RoleDetailDrawerProps): React.ReactElement {
   return (
     <Sheet open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
@@ -30,6 +36,7 @@ export function RoleDetailDrawer({ role, isOpen, onClose }: RoleDetailDrawerProp
         'border-l border-slate-200 dark:border-slate-700 shadow-2xl',
         'flex flex-col',
       )}>
+        {isOpen && role && <ReadRoleNotifications key={role.id} id={role.id} />}
         {/* Header */}
         <div className={panelHeaderClass + " flex items-start justify-between gap-3"}>
           {role && (

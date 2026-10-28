@@ -16,6 +16,8 @@ import { toast } from '@/shared/utils/toast';
 import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import type { PermissionKey } from '@leadcrm/shared';
+import { Input } from '@/shared/components/ui/input';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -237,7 +239,7 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
   }
 
   // ── Edit mode ───────────────────────────────────────────────────────────
-  const inputClasses = 'w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:opacity-50';
+  const inputClasses = 'w-full rounded-md border px-3 py-1.5 text-sm shadow-sm transition-colors disabled:opacity-50';
 
   return (
     <div className="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-3 px-4 py-2">
@@ -262,7 +264,7 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
               ))}
             </select>
           ) : field.type === 'textarea' ? (
-            <textarea
+            <Textarea placeholder={`Enter ${field.label.toLowerCase()}...`}
               ref={inputRef as React.RefObject<HTMLTextAreaElement>}
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
@@ -272,7 +274,7 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
               rows={3}
             />
           ) : (
-            <input
+            <Input
               ref={inputRef as React.RefObject<HTMLInputElement>}
               type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
               value={editValue}
@@ -281,7 +283,7 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
               onBlur={handleSave}
               className={inputClasses}
               disabled={isSaving}
-              placeholder={field.label}
+              placeholder={field.type === 'number' || field.type === 'date' ? undefined : `Enter ${field.label.toLowerCase()}...`}
             />
           )}
         </div>

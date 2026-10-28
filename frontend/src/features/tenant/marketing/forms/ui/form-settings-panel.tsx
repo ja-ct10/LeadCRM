@@ -1,6 +1,7 @@
 'use client';
 import type { FormSettings } from '../types/form.types';
 import { FORM_TRACKING_KEYS, FormSettingsSchema } from '@leadcrm/shared';
+import { Input } from '@/shared/components/ui/input';
 export function FormSettingsPanel({ settings, onChange }: { settings: FormSettings; onChange: (s: FormSettings) => void }) {
   const email = FormSettingsSchema.safeParse(settings);
   const error = email.success ? '' : email.error.issues.find(i => i.path[0] === 'notificationEmail')?.message;
@@ -8,7 +9,7 @@ export function FormSettingsPanel({ settings, onChange }: { settings: FormSettin
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground sm:p-5 space-y-2">
       <label htmlFor="notification-email" className="block text-sm font-semibold">Email notification for form submissions</label>
       <p className="text-xs text-muted-foreground">Optional</p>
-      <input id="notification-email" type="email" value={settings.notificationEmail} maxLength={254} onChange={e => onChange({ ...settings, notificationEmail: e.target.value })} placeholder="e.g. alerts@yourcompany.com" aria-invalid={!!error} aria-describedby={error ? 'notification-email-error' : undefined} className="w-full min-w-0 rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+      <Input id="notification-email" type="email" value={settings.notificationEmail} maxLength={254} onChange={e => onChange({ ...settings, notificationEmail: e.target.value })} placeholder="e.g. alerts@yourcompany.com" aria-invalid={!!error} aria-describedby={error ? 'notification-email-error' : undefined} className="w-full min-w-0 rounded-md border p-2 text-sm" />
       {error && <p id="notification-email-error" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </section>
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground sm:p-5">

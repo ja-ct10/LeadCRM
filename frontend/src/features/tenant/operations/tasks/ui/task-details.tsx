@@ -32,6 +32,7 @@ import { taskStatusClasses } from './task-status';
 import { TaskSelector } from './task-selector';
 import { TaskRecordCreator } from './task-record-creator';
 import type { TaskLinks } from './task-editor';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 const idle: InlineEditState = { field: null, dirty: false, busy: false };
 
@@ -127,7 +128,7 @@ export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', r
     if (!detail.data || pending) return;
     setSaved(detail.data); setInline(idle); setGeneration(value => value + 1); setSaveConflict(false); setError(''); setNewDeal(undefined); setCreatedDeals([]);
   };
-  const rows = (definitions: InlineRowDef[]) => <InlineEditRows key={generation} rows={definitions} canEdit={editing && mutable} lockWhileEditing onEscape={closeGuard.requestClose}
+  const rows = (definitions: InlineRowDef[]) => <InlineEditRows key={generation} rows={definitions} canEdit={mutable} lockWhileEditing onEscape={closeGuard.requestClose}
     disabled={pending || conflict || !!detail.error || !!inline.field && !definitions.some(row => row.apiField === inline.field)} onEditStateChange={definitions.some(row => row.apiField === inline.field) || !inline.field ? reportEdit : undefined} onSave={saveField} />;
   const agent = saved?.assignedUser?.id === saved?.assignedUserId ? saved?.assignedUser : saved?.assignedUserId === user?.id ? user : users.find(person => person.id === saved?.assignedUserId);
   const agentName = agent ? `${agent.firstName} ${agent.lastName}` : '—';
@@ -173,12 +174,12 @@ export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', r
                 { label: 'Due date and time', value: manilaLocalDateTime(saved.dueDate), displayValue: formatDateTime(saved.dueDate), apiField: canEdit ? 'dueDate' : undefined, alwaysVisible: true, editorFullWidth: true,
                   renderEditor: props => <TaskDueEditor {...props} /> },
                 { label: 'Assigned Agent', value: saved.assignedUserId, displayValue: agentName, apiField: canAssign ? 'assignedUserId' : undefined, alwaysVisible: true, editorFullWidth: true,
-                  renderEditor: ({ value, onChange, disabled }) => <TaskSelector appearance="panel" kind="user" label="Assigned Agent" required value={value} selectedLabel={value === saved.assignedUserId ? agentName : undefined} disabled={disabled} onChange={onChange} /> },
+                  renderEditor: ({ value, onChange, disabled }) => <TaskSelector appearance="panel" dropdownPlacement="inline" kind="user" label="Assigned Agent" required value={value} selectedLabel={value === saved.assignedUserId ? agentName : undefined} disabled={disabled} onChange={onChange} /> },
               ])}</RecordSection>
               <RecordSection title="Additional Information" forceOpen={editing}>{rows([
                 { label: 'Notes', value: saved.description, alwaysVisible: true, apiField: canEdit ? 'description' : undefined, preserveWhitespace: true, editorFullWidth: true,
                   validate: value => value.length > 10000 ? 'Max 10000 characters' : undefined,
-                  renderEditor: ({ value, onChange, disabled }) => <label className="min-w-0"><textarea aria-label="Notes" autoFocus rows={5} maxLength={10000} className={panelInputClass} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /><span className="text-xs text-muted-foreground">{value.length}/10000</span></label> },
+                  renderEditor: ({ value, onChange, disabled }) => <label className="min-w-0"><Textarea placeholder="Add task notes..." aria-label="Notes" autoFocus rows={5} maxLength={10000} className={panelInputClass} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /><span className="text-xs text-muted-foreground">{value.length}/10000</span></label> },
               ])}<p className="px-3 pb-2 text-xs text-muted-foreground">{saved.description.length}/10000</p></RecordSection>
               <RecordSection title="Associated Deals" count={taskAssociationIds(saved, 'deal').length} forceOpen={editing}>{rows([
                 { label: 'Associated Deals', value: taskAssociationIds(saved, 'deal'), displayValue: taskRecordOptions(saved, 'deal').map(option => option.label), alwaysVisible: true, apiField: canEdit && readableRecords.deal ? 'dealIds' : undefined, editorFullWidth: true,
@@ -205,7 +206,7 @@ export function TaskDetails({ task: initialTask, taskId, initialMode = 'view', r
 
 function TaskDueEditor({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) {
   const [open, setOpen] = useState(true);
-  return <div className="min-w-0 space-y-2"><Button variant="outline" disabled={disabled} onClick={() => setOpen(!open)} aria-expanded={open}>{value.replace('T', ' ')}</Button>{open && <ManilaDateTimePicker value={value} rollPastToday prefix="Due" label="Choose due date and time" busy={disabled} onCancel={() => setOpen(false)} onDone={next => { onChange(next); setOpen(false); }} />}</div>;
+  return <div className="min-w-0 max-w-full space-y-2"><Button variant="outline" className="max-w-full whitespace-normal" disabled={disabled} onClick={() => setOpen(!open)} aria-expanded={open}>{value.replace('T', ' ')}</Button>{open && <ManilaDateTimePicker value={value} rollPastToday prefix="Due" label="Choose due date and time" busy={disabled} onCancel={() => setOpen(false)} onDone={next => { onChange(next); setOpen(false); }} />}</div>;
 }
 
 function TaskDealEditor({ values, onChange, disabled, saved, newDeal, onNewDealApplied, createdDeals, onCreate }: { values: string[]; onChange: (values: string[]) => void; disabled: boolean; saved: TaskRecord; newDeal?: TaskOption; onNewDealApplied: () => void; createdDeals: TaskOption[]; onCreate?: () => void }) {

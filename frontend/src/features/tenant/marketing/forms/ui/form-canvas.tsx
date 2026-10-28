@@ -7,6 +7,8 @@ import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { type CrmFieldCatalogEntry, type FormField, type FormDesign, type FormProductCatalog } from '@leadcrm/shared';
 import { FormInput } from './form-input';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 export const CANVAS_DROPPABLE_ID = 'form-canvas';
 function FieldRow({ field, design, configured, onUpdate, onRemove, productCatalog }: { field: FormField; design: FormDesign; configured?: CrmFieldCatalogEntry; onUpdate: (patch: Partial<FormField>) => void; onRemove: () => void; productCatalog?: FormProductCatalog }) {
   const [editing, setEditing] = useState(false);
@@ -23,15 +25,15 @@ function FieldRow({ field, design, configured, onUpdate, onRemove, productCatalo
       <FormInput field={field} design={design} productCatalog={productCatalog} value={field.mapToField === 'productInterest' ? previewProducts : undefined} onChange={value => { if (field.mapToField === 'productInterest' && Array.isArray(value)) setPreviewProducts(value); }} />
     </div>
     {editing && <div className={panelThemeClass + " mt-3 p-3 border rounded-md text-xs space-y-3"}>
-      <label className="block">Label<input className="w-full p-2 border border-border rounded mt-1 bg-card text-foreground focus-visible:ring-2 focus-visible:ring-ring" value={field.label} maxLength={500} onChange={e => onUpdate({ label: e.target.value })} /></label>
+      <label className="block">Label<Input placeholder="Enter field label..." className="w-full p-2 border rounded mt-1" value={field.label} maxLength={500} onChange={e => onUpdate({ label: e.target.value })} /></label>
       {!layout && <>
-        <label className="block">Placeholder<input className="w-full p-2 border border-border rounded mt-1 bg-card text-foreground focus-visible:ring-2 focus-visible:ring-ring" value={field.placeholder ?? ''} maxLength={500} onChange={e => onUpdate({ placeholder: e.target.value })} /></label>
+        <label className="block">Placeholder<Input placeholder="e.g. Enter your name..." className="w-full p-2 border rounded mt-1" value={field.placeholder ?? ''} maxLength={500} onChange={e => onUpdate({ placeholder: e.target.value })} /></label>
         <label className="flex gap-2 items-center"><input type="checkbox" checked={!!field.required} disabled={!!field.customFieldId && !!configured?.required && !!field.required} onChange={e => onUpdate({ required: e.target.checked })} />Required</label>
         {(field.mapToField || field.customFieldId) && <p>Lead {field.customFieldId ? 'Custom' : 'System'} field: {configured?.label ?? field.label}</p>}
         {(field.type === 'company-website' || field.mapToField === 'website') && <p>Website answers are saved in submission history. They do not update the CRM record.</p>}
         {field.mapToField === 'productInterest' && <p>Options are managed in Settings → Products.</p>}
         {(field.customFieldId || field.mapToField === 'source') && field.type === 'dropdown' && <p>Options are managed in Settings → Customize Fields → Leads.</p>}
-        {!field.customFieldId && !field.mapToField && ['dropdown', 'radio'].includes(field.type) && <label className="block">Options (one per line)<textarea rows={5} className="w-full p-2 border border-border rounded mt-1 bg-card text-foreground focus-visible:ring-2 focus-visible:ring-ring" value={field.options?.join('\n') ?? ''} onChange={e => onUpdate({ options: e.target.value.split('\n') })} /></label>}
+        {!field.customFieldId && !field.mapToField && ['dropdown', 'radio'].includes(field.type) && <label className="block">Options (one per line)<Textarea placeholder="Enter one option per line..." rows={5} className="w-full p-2 border rounded mt-1" value={field.options?.join('\n') ?? ''} onChange={e => onUpdate({ options: e.target.value.split('\n') })} /></label>}
       </>}
       <label className="block">Width<select className="w-full p-2 border border-border rounded mt-1 bg-card text-foreground focus-visible:ring-2 focus-visible:ring-ring" value={field.width ?? 'full'} onChange={e => onUpdate({ width: e.target.value as 'half' | 'full' })}><option value="full">Full width</option><option value="half">Half width on larger screens</option></select></label>
     </div>}

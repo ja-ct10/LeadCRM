@@ -5,11 +5,11 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 import { CrmRecordPanel, CrmRecordView } from './crm-record-view';
 import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false,
+const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false, role: 'Sales',
   files: [] as any[], emailFiles: [] as any[], emailDenied: false,
   status: { isConnected: true, syncError: null as string | null } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: 'Sales', tenantId: 'tenant' }, isLoading: false, authError: null }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: mocks.role, tenantId: 'tenant' }, isLoading: false, authError: null }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [], pipelines: [], deals: [], contacts: [], organizations: [] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key.endsWith('.view') || mocks.edit }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.edit, canReassign: false }) }));
@@ -22,7 +22,7 @@ vi.mock('./record-custom-fields', () => ({ useRecordCustomFieldDetails: () => ({
 vi.mock('./deal-closing-requirements', () => ({ DealClosingRequirements: () => null }));
 vi.mock('./inline-deal-form', () => ({ InlineDealForm: () => null }));
 vi.mock('./deal-card-menu', () => ({ DealCardMenu: () => null }));
-vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: () => null }));
+vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ readOnly, allowCreate }: { readOnly: boolean; allowCreate: boolean }) => <div data-testid="related-tasks" data-readonly={String(readOnly)} data-create={String(allowCreate)} /> }));
 vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLeadDialog: () => null }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.navigate, replace: mocks.navigate, back: mocks.navigate }) }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get } }));
@@ -39,19 +39,39 @@ const email = (direction: 'inbound' | 'outbound'): TimelineActivity => ({
 });
 let rows: TimelineActivity[];
 beforeEach(() => {
-  clearPageCache(); vi.clearAllMocks(); mocks.edit = false; streams.length = 0; rows = [note]; vi.stubGlobal('EventSource', FakeSource);
+  clearPageCache(); vi.clearAllMocks(); mocks.edit = false; mocks.role = 'Sales'; streams.length = 0; rows = [note]; vi.stubGlobal('EventSource', FakeSource);
   mocks.status = { isConnected: true, syncError: null };
   mocks.files = []; mocks.emailFiles = []; mocks.emailDenied = false;
   mocks.get.mockImplementation(async (path: string) => path.endsWith('/email-attachments')
     ? mocks.emailDenied ? Promise.reject(Object.assign(new Error('Mailbox access revoked'), { status: 403 })) : { data: { attachments: mocks.emailFiles } }
     : path === '/integrations/gmail/status' ? mocks.status : path.endsWith('/files') ? { data: mocks.files } : { data: {
-    id: 'record', firstName: 'Customer', lastName: 'Test', email: 'customer@example.test', title: 'Customer Deal', status: 'Warm', assignedUserId: 'owner',
+    id: 'record', name: 'Customer Account', firstName: 'Customer', lastName: 'Test', email: 'customer@example.test', title: 'Customer Deal', status: 'Warm', assignedUserId: 'owner',
     createdAt: note.createdAt, stage: { name: 'Lead' }, productInterests: [], leadDeals: [], contactDeals: [],
   } });
   mocks.getAll.mockImplementation(async ({ type }: { type?: string }) => {
     const data = rows.filter(row => !type || row.type === type);
     return { data, total: data.length, nextCursor: null };
   });
+});
+
+it.each((['Client Admin', 'Sales'] as const).flatMap(role => (['leads', 'contacts', 'accounts', 'deals'] as const).map(module => ({ role, module }))))('preserves $role Task panel access from $module', async ({ role, module }) => {
+  mocks.role = role; mocks.edit = true;
+  render(<CrmRecordView module={module} id="record" />);
+  const tasks = await screen.findByTestId('related-tasks');
+  expect(tasks.getAttribute('data-readonly')).toBe(String(role !== 'Client Admin' && module !== 'deals'));
+  expect(tasks.getAttribute('data-create')).toBe(String(module === 'deals'));
+});
+
+it.each(['panel', 'page'] as const)('removes duplication while preserving Edit and Archive in the Deal %s menu', async surface => {
+  mocks.edit = true;
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="record" open onOpenChange={mocks.close} /> : <CrmRecordView module="deals" id="record" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Record actions' }));
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Edit deal', 'Archive deal']);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit deal' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Details/ }).getAttribute('aria-selected')).toBe('true'));
+  fireEvent.click(screen.getByRole('button', { name: 'Record actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Archive deal' }));
+  expect(await screen.findByRole('heading', { name: 'Archive Deal' })).toBeTruthy();
 });
 
 it.each(['leads', 'contacts', 'deals'] as const)('pauses a disconnected %s timeline stream and recovers through explicit retry', async module => {

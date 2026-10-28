@@ -3,7 +3,6 @@ import { assertExternalCustomerEmail } from '../record-validation';
 import { importIdentity, importRowSchemas, normalizeAccountImportRow, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { createAssignedLead } from '../leads/lead-automation.service';
-import sanitizeHtml from 'sanitize-html';
 import { ZodError, type ZodIssue } from 'zod';
 import { createAssignedContact } from '../contacts-v2/contact-creation';
 
@@ -11,11 +10,7 @@ type Tx = Prisma.TransactionClient;
 export type MappedRow = { rowNumber: number; data: Record<string, string> };
 type Product = { id: string; name: string; dealValue: Prisma.Decimal; active: boolean };
 export interface ResolvedRow extends ImportReviewRow { products: Product[] }
-const plainTextFields = new Set(['firstName', 'lastName', 'name', 'companyName', 'address', 'city', 'province', 'country', 'source', 'industry']);
-const parseRow = (module: CrmImportModule, data: Record<string, string>) => importRowSchemas[module].safeParse(
-  Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
-    plainTextFields.has(key) ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value])),
-);
+const parseRow = (module: CrmImportModule, data: Record<string, string>) => importRowSchemas[module].safeParse(data);
 export function importValidationErrors(error: unknown): string[] | null {
   if (error instanceof ValidationError) return [error.message];
   if (error instanceof ZodError) {

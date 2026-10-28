@@ -10,6 +10,7 @@ import { dealsApi } from '@/shared/services/deals.api';
 import { toFrontendLead } from '@/lib/api/adapters/lead.adapter';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import type { Contact, Deal } from '@/store/types';
+import { Input } from '@/shared/components/ui/input';
 
 interface CommandPaletteProps {
   navigate: (path: string) => void;
@@ -139,10 +140,10 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
         {/* Search input */}
         <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white/5">
           <Search className="text-slate-500 dark:text-slate-400 mr-3 shrink-0" size={20} />
-          <input
+          <Input
             ref={inputRef}
             type="text"
-            className="flex-1 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none text-lg"
+            className="flex-1 text-lg"
             placeholder="Search leads, deals, or navigate..."
             value={query}
             onChange={(e) => { searchVersion.current++; setSearchedLeads([]); setSearchedDeals([]); setIsSearching(false); setQuery(e.target.value); }}

@@ -1,5 +1,6 @@
 "use client";
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { cn } from '@/lib/utils';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -13,8 +14,9 @@ import { tasksApi } from "@/shared/services/tasks.api";
 import { USE_MOCK_DATA } from "@/lib/config";
 import { Button } from "@/shared/components/ui/button";
 import { panelInputClass, panelLabelClass } from "@/shared/components/side-panel-styles";
+import { Input, textFieldClassName } from '@/shared/components/ui/input';
 export const taskInputClass =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  cn(textFieldClassName, "w-full rounded-lg border px-3 py-2 text-sm");
 type TaskSelectorProps = {
   kind: TaskOptionKind;
   label: string;
@@ -25,6 +27,7 @@ type TaskSelectorProps = {
   disabled?: boolean;
   leadIds?: string[];
   appearance?: "panel";
+  dropdownPlacement?: 'overlay' | 'inline';
   selfAssignmentOnly?: boolean;
 } & (
   | { multiple: true; value: string[]; onChange: (value: string[]) => void }
@@ -42,6 +45,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     disabled = false,
     leadIds = [],
     appearance,
+    dropdownPlacement = 'overlay',
     selfAssignmentOnly = false,
   } = props;
   const inputClass = appearance === "panel" ? panelInputClass : taskInputClass;
@@ -91,7 +95,7 @@ export function TaskSelector(props: TaskSelectorProps) {
   useEffect(() => {
     if (!open) return;
     const bounds = trigger.current?.getBoundingClientRect();
-    if (bounds)
+    if (bounds && dropdownPlacement === 'overlay')
       setAbove(bounds.bottom > window.innerHeight - 360 && bounds.top > 340);
     input.current?.focus();
     const outside = (event: PointerEvent) => {
@@ -99,7 +103,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [open]);
+  }, [open, dropdownPlacement]);
   useEffect(() => {
     if (!open) return;
     const abort = new AbortController();
@@ -217,7 +221,7 @@ export function TaskSelector(props: TaskSelectorProps) {
   return (
     <div
       ref={wrapper}
-      className="relative space-y-2"
+      className="relative min-w-0 max-w-full space-y-2"
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.preventDefault();
@@ -253,7 +257,7 @@ export function TaskSelector(props: TaskSelectorProps) {
       >
         <span
           className={
-            (appearance === "panel" ? "min-w-0 [overflow-wrap:anywhere] " : "truncate ") + (selectedIds.length ? "" : "text-muted-foreground")
+            (appearance === "panel" ? "min-w-0 [overflow-wrap:anywhere] " : "truncate ") + (selectedIds.length ? " " : "text-muted-foreground")
           }
         >
           {selectedIds.length
@@ -262,7 +266,7 @@ export function TaskSelector(props: TaskSelectorProps) {
               (kind === "account" ? "an " : "a ") +
               singular}
         </span>
-        <ChevronDown size={16} className={"shrink-0 " + (open ? "rotate-180" : "")} />
+        <ChevronDown size={16} className={"shrink-0 " + (open ? "rotate-180" : " ")} />
       </button>
       {open && (
         <div
@@ -270,9 +274,9 @@ export function TaskSelector(props: TaskSelectorProps) {
           role="dialog"
           aria-label={"Select " + singular}
           className={
-            "absolute left-0 right-0 z-30 overflow-hidden rounded-xl border border-border bg-background shadow-xl " +
-            (appearance === "panel" ? "bg-white dark:bg-slate-900 " : "") +
-            (above ? "bottom-full mb-1" : "top-full mt-1")
+            "min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-background shadow-xl " +
+            (appearance === "panel" ? "bg-white dark:bg-slate-900 " : " ") +
+            (dropdownPlacement === 'inline' ? "relative" : "absolute left-0 right-0 z-30 " + (above ? "bottom-full mb-1" : "top-full mt-1"))
           }
         >
           <div className="relative border-b border-border p-3">
@@ -280,7 +284,7 @@ export function TaskSelector(props: TaskSelectorProps) {
               size={16}
               className="absolute left-6 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
-            <input
+            <Input
               ref={input}
               aria-label={"Search " + singular}
               placeholder={"Search for " + singular}

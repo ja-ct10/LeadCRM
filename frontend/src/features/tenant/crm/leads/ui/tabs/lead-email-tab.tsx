@@ -1,5 +1,7 @@
 import React from 'react';
 import { Send } from 'lucide-react';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 interface EmailTemplate {
   id: string;
@@ -64,7 +66,7 @@ export function LeadEmailTab({
           <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">
             Outbound Email Address
           </label>
-          <input
+          <Input
             type="text"
             readOnly
             value={leadEmail}
@@ -75,26 +77,26 @@ export function LeadEmailTab({
           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
             Subject Header
           </label>
-          <input
+          <Input
             type="text"
             required
             placeholder="Brief email subject line..."
             value={emailSubject}
             onChange={e => onSubjectChange(e.target.value)}
-            className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+            className="w-full border rounded-lg px-3 py-1.5 text-xs"
           />
         </div>
         <div>
           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
             Message Body
           </label>
-          <textarea
+          <Textarea
             rows={6}
             required
             placeholder="Enter email content..."
             value={emailBody}
             onChange={e => onBodyChange(e.target.value)}
-            className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-lg p-3 text-xs text-slate-900 dark:text-white focus:outline-none resize-none font-sans"
+            className="w-full border rounded-lg p-3 text-xs resize-none font-sans"
           />
         </div>
         <div className="flex justify-end">

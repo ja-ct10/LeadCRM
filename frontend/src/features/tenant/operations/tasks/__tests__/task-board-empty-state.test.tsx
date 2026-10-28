@@ -46,12 +46,12 @@ function expectNoTable() {
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
 }
 
-it('disables every bulk mutation for a mixed-owner selection while preserving selection and viewing', () => {
+it('enables Client Admin bulk mutations for a mixed-creator selection', () => {
   mocks.data.tasks = ['agent', 'other'].map((createdById, index) => ({ id: `task-${index}`, tenantId: 'tenant', title: `Task ${index}`, createdById, assignedUserId: 'agent', status: 'pending', description: '', dueDate: '2030-01-01T00:00:00Z', createdAt: '2026-10-01T00:00:00Z' }));
   mocks.data.meta.total = 2;
   render(<TaskBoard />);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
-  for (const name of ['Mark as done', 'Assign', 'Reschedule', 'Archive']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+  for (const name of ['Mark as done', 'Assign', 'Reschedule', 'Archive']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', false);
   expect(screen.getByRole('checkbox', { name: 'Select all records' })).toHaveProperty('checked', true);
 });
 

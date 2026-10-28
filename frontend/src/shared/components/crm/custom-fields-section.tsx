@@ -138,7 +138,7 @@ export function CustomFieldsSection({
 
                       {editingFieldId === field.id ? (
                         <span className="flex items-center gap-1">
-                          <Input
+                          <Input placeholder={`Enter ${field.name.toLowerCase()}...`}
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, field.id)}

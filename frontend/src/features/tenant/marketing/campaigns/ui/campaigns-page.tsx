@@ -45,6 +45,8 @@ import { CAMPAIGNS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { ModuleTabs } from '@/shared/components/crm/module-tabs';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 
 export default function CampaignsPage() {
@@ -493,7 +495,7 @@ export default function CampaignsPage() {
         <div className="flex h-full min-h-0 flex-col"><div className={panelBodyClass + " space-y-4"}>
           <div>
             <label htmlFor="template-name" className={panelLabelClass + " mb-1.5"}>Template Name <span className="text-red-500">*</span></label>
-            <input
+            <Input
               id="template-name" className={panelInputClass}
               placeholder="e.g. Welcome Series - Email 1"
               value={newTemplate.name}
@@ -517,7 +519,7 @@ export default function CampaignsPage() {
           {newTemplateType === 'Email' && (
             <div>
               <label htmlFor="template-subject" className={panelLabelClass + " mb-1.5"}>Subject Line <span className="text-red-500">*</span></label>
-              <input
+              <Input
                 ref={templateSubjectRef} onFocus={() => { templateActiveField.current = 'subject'; }} id="template-subject" className={panelInputClass}
                 placeholder="Welcome to LeadCRM!"
                 value={newTemplate.subject}
@@ -541,13 +543,13 @@ export default function CampaignsPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <textarea
+            <Textarea
               ref={templateBodyRef} onFocus={() => { templateActiveField.current = 'content'; }} id="template-content" rows={8}
               className={panelInputClass + " resize-none"}
               placeholder={`Hi {{firstName}},\n\n...`}
               value={newTemplate.content}
               onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })}
-            ></textarea>
+            ></Textarea>
             <FieldError message={templateErrors.content} />
           </div>
           <FieldError message={templateErrors.form} />

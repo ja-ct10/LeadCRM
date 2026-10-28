@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
+import { Input } from '@/shared/components/ui/input';
 
 export interface Country {
   name: string;
@@ -72,12 +73,12 @@ export const CountryCodeSelector = ({ selectedCode, onChange, disabled, id }: Pr
         <div className="absolute left-0 mt-1 w-60 bg-white dark:bg-[#080d19] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-2xl z-55 p-2 animate-in fade-in duration-100">
           <div className="relative mb-2">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
-            <input 
+            <Input
               type="text" 
               placeholder="Search code..." 
               value={search} 
               onChange={e => setSearch(e.target.value)}
-              className="w-full text-[11px] px-2.5 pl-7 py-1.5 rounded-lg border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-slate-900 focus:outline-none text-slate-800 dark:text-white"
+              className="w-full text-[11px] px-2.5 pl-7 py-1.5 rounded-lg border"
             />
           </div>
           <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-0.5">

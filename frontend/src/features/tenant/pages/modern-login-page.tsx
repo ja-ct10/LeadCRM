@@ -16,6 +16,7 @@ import { PublicFooter } from '@/shared/components/public-footer';
 import { AppBrand, AppLogo } from '@/shared/components/app-logo';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { readRememberedEmail, rememberLoginEmail } from '@/shared/auth/remembered-login';
+import { Input } from '@/shared/components/ui/input';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Invalid email address'),
@@ -239,12 +240,12 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     New Password
                   </label>
                   <div className="relative">
-                    <input
+                    <Input
                       id="new-password"
                       type={showResetPassword ? 'text' : 'password'}
                       value={resetPassword}
                       onChange={(e) => setResetPassword(e.target.value)}
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
+                      className="w-full h-11 border rounded-xl px-4 pr-11 text-sm transition-colors"
                       required
                       minLength={8}
                       maxLength={72}
@@ -266,7 +267,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     Confirm Password
                   </label>
                   <div className="relative">
-                    <input
+                    <Input
                       id="confirm-password"
                       type={showResetConfirm ? 'text' : 'password'}
                       value={resetConfirm}
@@ -276,7 +277,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       aria-describedby={resetMismatch ? "reset-confirm-error" : undefined}
                       onBlur={() => setResetConfirmTouched(true)}
                       onChange={(e) => setResetConfirm(e.target.value)}
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
+                      className="w-full h-11 border rounded-xl px-4 pr-11 text-sm transition-colors"
                       required
                       placeholder="Repeat new password"
                     />
@@ -406,7 +407,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 <label htmlFor="forgot-email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                   Email Address
                 </label>
-                <input
+                <Input
                   id="forgot-email"
                   type="email"
                   value={forgotEmail}
@@ -414,7 +415,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                   disabled={forgotBusy}
                   maxLength={254}
                   autoComplete="email"
-                  className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
+                  className="w-full h-11 border rounded-xl px-4 text-sm transition-colors"
                   required
                   placeholder="name@email.com"
                   autoFocus
@@ -464,7 +465,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                   <label htmlFor="email" className={`${responsiveTypography.body} block font-semibold text-slate-700 dark:text-slate-300 mb-2`}>
                     Email address
                   </label>
-                  <input
+                  <Input
                     id="email"
                     type="email"
                     value={email}
@@ -472,7 +473,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     disabled={isSigningIn}
                     autoComplete="username"
                     maxLength={254}
-                    className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
+                    className="w-full h-11 border rounded-xl px-4 text-sm transition-colors"
                     placeholder="name@email.com"
                     required
                   />
@@ -483,14 +484,14 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     Password
                   </label>
                   <div className="relative">
-                    <input
+                    <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={isSigningIn || lockout.locked}
                       autoComplete="current-password"
-                      className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors"
+                      className="w-full h-11 border rounded-xl px-4 pr-11 text-sm transition-colors"
                       placeholder="••••••••••"
                       required
                     />

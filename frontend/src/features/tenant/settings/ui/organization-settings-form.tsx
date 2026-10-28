@@ -10,6 +10,8 @@ import { Badge, type BadgeProps } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
 import { useAuth } from '@/store/AuthContext';
 import { settingsApiService } from '../services/settings.service';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 const fields = [
   ['name', 'Organization Name', Building2], ['industry', 'Industry', Globe],
@@ -159,14 +161,14 @@ export function OrganizationSettingsForm() {
             setFieldErrors(errors => ({ ...errors, [key]: issue?.message ?? '' }));
             setDraft(value => value && ({ ...value, [key]: next }));
           },
-          className: `w-full min-w-0 pl-9 pr-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground outline-none transition-colors ${editing && !saving ? 'focus:border-primary' : 'cursor-default'}`,
+          className: `w-full min-w-0 pl-9 pr-3 py-2 border rounded-lg text-sm transition-colors ${editing && !saving ? '' : 'cursor-default'}`,
         };
         return <div key={key} className={`min-w-0 space-y-1.5 ${key === 'address' ? 'lg:col-span-2' : ''}`}>
           <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor={props.id}>{label}{props.required && <span aria-hidden="true" className="ml-1 text-red-500">*</span>}</label>
           {key === 'phone' ? <div className="flex min-w-0 rounded-lg border border-border bg-muted focus-within:border-primary">
             <span className="flex shrink-0 items-center border-r border-border px-3 text-sm text-slate-500">+63</span>
-            <input {...props} type="tel" inputMode="tel" placeholder="(28) 123-3488"
-              className="w-full min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground rounded-r-lg outline-none"
+            <Input {...props} type="tel" inputMode="tel" placeholder="(28) 123-3488"
+              className="w-full min-w-0 flex-1 px-3 py-2 text-sm rounded-r-lg"
               onBlur={() => setDraft(value => value && ({ ...value, phone: formatOrganizationPhone(value.phone) }))}
             />
           </div> : <div className="relative"><Icon aria-hidden="true" className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
@@ -174,7 +176,7 @@ export function OrganizationSettingsForm() {
               <option value="">Select industry</option>
               {draft.industry && !COMPANY_INDUSTRIES.includes(draft.industry as typeof COMPANY_INDUSTRIES[number]) && <option value={draft.industry} disabled>{draft.industry} (choose an industry)</option>}
               {COMPANY_INDUSTRIES.map(industry => <option key={industry} value={industry}>{industry}</option>)}
-            </select> : key === 'address' ? <textarea {...props} rows={2} /> : <input {...props} type={key === 'email' ? 'email' : 'text'} />}
+            </select> : key === 'address' ? <Textarea placeholder="Enter the complete company address..." {...props} rows={2} /> : <Input placeholder={key === 'email' ? 'company@example.com' : `Enter ${label.toLowerCase()}...`} {...props} type={key === 'email' ? 'email' : 'text'} />}
           </div>}
           {fieldErrors[key] && <p id={`org-${key}-error`} role="alert" className="text-xs text-red-600 dark:text-red-400">{fieldErrors[key]}</p>}
         </div>;

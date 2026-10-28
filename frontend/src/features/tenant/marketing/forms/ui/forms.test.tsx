@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ClosingFieldInputSchema, defaultContactForm, getCrmFieldCatalog, withProductOptions } from '@leadcrm/shared';
 import { FormBuilderPage } from './form-builder-page';
+import { FormInput } from './form-input';
 import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
@@ -49,6 +50,22 @@ const form = { ...defaultContactForm(), fields: withProductOptions(defaultContac
 beforeEach(() => { vi.resetAllMocks(); productCatalog.products = []; productCatalog.categories = []; permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  it('uses contextual fallbacks, preserves configured placeholders and retains public field design', () => {
+    const text = `ñ é 中文 日本語 한글 مرحبا 😊 & ' " < > ∑ ₱ e\u0301`;
+    const onChange = vi.fn();
+    const design = { ...form.design, fieldBg: '#ffeeee', fieldText: '#123456', fieldBorder: '#654321', fieldSize: 'lg' as const, fieldRadius: 'lg' as const };
+    const view = render(<FormInput field={{ id: 'unicode', type: 'multi-line', label: 'Notes' }} design={design} value={text} onChange={onChange} />);
+    const notes = screen.getByPlaceholderText('Enter notes...');
+    expect(notes).toHaveProperty('value', text);
+    expect(notes.style.backgroundColor).toBe('rgb(255, 238, 238)');
+    expect(notes.style.padding).toBe('12px');
+    expect(notes.style.borderRadius).toBe('12px');
+    fireEvent.change(notes, { target: { value: text + '\n<tag>literal</tag>' } });
+    expect(onChange).toHaveBeenLastCalledWith(text + '\n<tag>literal</tag>');
+    view.rerender(<FormInput field={{ id: 'unicode', type: 'single-line', label: text, placeholder: 'Your preferred name...' }} design={design} value={text} onChange={onChange} />);
+    expect(screen.getByPlaceholderText('Your preferred name...')).toHaveProperty('value', text);
+    expect(view.container.querySelector('tag')).toBeNull();
+  });
   it('keeps a rejected employee email submission open with one inline error and corrected retry', async () => {
     const definition = defaultContactForm();
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...definition, fields: definition.fields.filter(field => field.mapToField !== 'productInterest'), version: 1, trackUrlParams: false } }) })

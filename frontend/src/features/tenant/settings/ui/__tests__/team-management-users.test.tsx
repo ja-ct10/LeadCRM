@@ -32,7 +32,10 @@ beforeEach(() => {
   mocks.rolesLoading = false; mocks.rolesError = '';
   mocks.groups.mockResolvedValue({ data: [] }); mocks.counts.mockImplementation(async () => notificationSummary());
   mocks.markRead.mockImplementation(async (id: string) => { notifications = notifications.map(row => row.id === id ? { ...row, isRead: true } : row); return notificationSummary(); });
-  mocks.markAllRead.mockImplementation(async () => { notifications = notifications.map(row => ({ ...row, isRead: true })); return notificationSummary(); });
+  mocks.markAllRead.mockImplementation(async (before, record) => {
+    notifications = notifications.map(row => !record || row.entityType === record.entityType && row.entityId === record.entityId ? { ...row, isRead: true } : row);
+    return { ...notificationSummary(), readBefore: before, readRecord: record };
+  });
   mocks.delete.mockImplementation(async (ids: string[]) => { notifications = notifications.filter(row => !ids.includes(row.id)); return notificationSummary(); });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 });
@@ -419,7 +422,7 @@ it('preserves a valid page and search through refresh', async () => {
   expect(screen.getByLabelText('Pagination').textContent).toContain('Page 2 of 2');
 });
 
-it('matches unread dots by user ID across pages and synchronizes reads, read-all and deletion without reading on open', async () => {
+it('matches unread dots by user ID across pages and synchronizes reads, read-all and deletion without reading on module load', async () => {
   const users = Array.from({ length: 27 }, (_, index) => ({ ...savedUser,
     id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, email: `user${index}@camxian.com`,
     firstName: 'Same', lastName: 'Name',
@@ -439,10 +442,7 @@ it('matches unread dots by user ID across pages and synchronizes reads, read-all
   for (const index of [1, 2, 3, 4]) expect(dot(index)).toBeNull();
   expect(screen.getAllByRole('status', { name: 'Unread User notifications' })).toHaveLength(1);
   expect(mocks.notificationList).not.toHaveBeenCalled();
-  fireEvent.click(within(row(0)).getByRole('button', { name: 'View Same Name' }));
-  await screen.findByRole('dialog', { name: 'User Details' });
   expect(mocks.markRead).not.toHaveBeenCalled(); expect(mocks.markAllRead).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }));
   await act(async () => { await reader.result.current.markAsRead('first'); });
   expect(dot(0)).toBeTruthy();
   await act(async () => { await reader.result.current.markAsRead('second'); });
@@ -460,6 +460,26 @@ it('matches unread dots by user ID across pages and synchronizes reads, read-all
   fireEvent.change(screen.getByPlaceholderText('Search users...'), { target: { value: users[0].email } });
   await waitFor(() => expect(screen.getByText(users[0].email)).toBeTruthy());
   expect(dot(0)).toBeNull();
+});
+
+it('reads only the opened user and skips repeated requests after close and reopen', async () => {
+  const target = { ...savedUser, id: '00000000-0000-4000-8000-000000000001' };
+  const other = { ...target, id: '00000000-0000-4000-8000-000000000002', firstName: 'Other' };
+  notifications = [target, target, other].map((user, index) => ({ id: String(index), tenantId: 't', userId: 'admin', type: 'user_created',
+    title: 'User event', entityType: 'User', entityId: user.id, isRead: false, createdAt: '2026-01-01T00:00:00Z' }));
+  mocks.list.mockResolvedValue({ data: [target, other], meta: { hasMore: false } });
+  render(<UsersSubTab />);
+  await screen.findAllByRole('status', { name: 'Unread User notifications' });
+  fireEvent.click(screen.getByRole('button', { name: 'View Ana Sales' }));
+  await screen.findByRole('dialog', { name: 'User Details' });
+  await waitFor(() => expect(mocks.markAllRead).toHaveBeenCalledExactlyOnceWith(undefined, { entityType: 'User', entityId: target.id }));
+  await waitFor(() => expect(screen.getAllByRole('status', { name: 'Unread User notifications' })).toHaveLength(1));
+  expect(notifications.map(row => row.isRead)).toEqual([true, true, false]);
+  fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'View Ana Sales' }));
+  await screen.findByRole('dialog', { name: 'User Details' });
+  expect(mocks.markAllRead).toHaveBeenCalledTimes(1);
 });
 
 it('shows unlock only for permanent locks, including inactive accounts', async () => {

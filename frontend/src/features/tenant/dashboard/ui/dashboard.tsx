@@ -225,8 +225,8 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
         </div>
       </div>
       {presentation === 'reporting' && custom && <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
-        <label className="text-xs">Start date<input aria-label="Start date" type="date" value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} className="block rounded border bg-transparent p-2 mt-1" /></label>
-        <label className="text-xs">End date<input aria-label="End date" type="date" value={draft.end} onChange={event => setDraft({ ...draft, end: event.target.value })} className="block rounded border bg-transparent p-2 mt-1" /></label>
+        <label className="text-xs">Start date<Input aria-label="Start date" type="date" value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} className="block rounded border p-2 mt-1" /></label>
+        <label className="text-xs">End date<Input aria-label="End date" type="date" value={draft.end} onChange={event => setDraft({ ...draft, end: event.target.value })} className="block rounded border p-2 mt-1" /></label>
         <button className={button} onClick={applyCustom}>Apply dates</button><button className={button} onClick={() => setCustom(false)}>Cancel</button>
       </div>}
       {error && <div role="alert" className="text-sm text-destructive border border-red-200 rounded-lg p-3">{error} <button onClick={handleRefresh} disabled={loading} className="underline">Retry</button></div>}

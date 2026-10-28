@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { CLOSED_WON_CONFIRMATION_TYPES, ClosedWonConfirmationSchema, type ClosedWonConfirmation } from '@leadcrm/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
 import { Button } from '@/shared/components/ui/button';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 export function ClosedWonDialog({ onConfirm, onCancel }: { onConfirm: (value: ClosedWonConfirmation) => void; onCancel: () => void }) {
   const [type, setType] = useState<ClosedWonConfirmation['type'] | ''>('');
@@ -18,8 +20,8 @@ export function ClosedWonDialog({ onConfirm, onCancel }: { onConfirm: (value: Cl
             <option value="">Select confirmation</option>{CLOSED_WON_CONFIRMATION_TYPES.map(value => <option key={value}>{value}</option>)}
           </select>
         </label>
-        <label className="block text-sm">Closed Deal Date<input required type="date" max={today} value={date} onChange={event => setDate(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded border bg-background px-2" /></label>
-        <label className="block text-sm">{type === 'Other' ? 'Explanation (required)' : 'Note / reference (optional)'}<textarea required={type === 'Other'} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} className="mt-1 min-h-24 w-full rounded border bg-background p-2" /></label>
+        <label className="block text-sm">Closed Deal Date<Input required type="date" max={today} value={date} onChange={event => setDate(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded border px-2" /></label>
+        <label className="block text-sm">{type === 'Other' ? 'Explanation (required)' : 'Note / reference (optional)'}<Textarea placeholder="Add confirmation details..." required={type === 'Other'} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} className="mt-1 min-h-24 w-full rounded border p-2" /></label>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit">Confirm Closed Deal</Button></div>
       </form>

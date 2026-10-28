@@ -132,7 +132,7 @@ function normalizeSavedWorkflowAssignment(action) {
 }
 exports.WorkflowDraftSchema = zod_1.z.object({
     name: zod_1.z.string().regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.').trim().min(1, 'Workflow name is required.').max(255),
-    description: zod_1.z.string().max(2000).transform(value => value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').trim()).nullable().optional(),
+    description: zod_1.z.string().max(2000).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Control characters are not allowed.').transform(value => value.trim()).nullable().optional(),
     trigger: zod_1.z.string().min(1, 'Choose a trigger.'),
     conditions: exports.WorkflowConditionSchema.nullable().optional(),
     actions: zod_1.z.array(exports.WorkflowActionSchema).max(20),

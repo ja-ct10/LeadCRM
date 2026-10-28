@@ -2,6 +2,7 @@
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import { useAuth } from '@/store/AuthContext';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Check } from 'lucide-react';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
@@ -18,6 +19,7 @@ import { RecordSection } from '@/shared/components/crm/record-section';
 import { RowActionsMenu, type RowActionItem } from '@/shared/components/data-grid/row-actions-menu';
 import { UserAvatar, administrationAvatarUrl } from '@/shared/components/user-avatar';
 import { CheckboxDropdownSelect } from '@/shared/components/ui/checkbox-dropdown-select';
+import { Input } from '@/shared/components/ui/input';
 
 type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string };
 type DraftErrors = Partial<Record<keyof Draft | 'groupIds', string>>;
@@ -31,6 +33,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
   onSaved: (user: User) => void; onClose: () => void;
 }) {
   const { userCan, user: actor } = useAuth();
+  useReadRecordNotifications('User', user?.id, !!user && user.tenantId === actor?.tenantId && userCan('users', 'canView'));
   const canManageGroups = canEdit && actor?.role === 'Client Admin' && userCan('groups', 'canEdit');
   const [groupOptions, setGroupOptions] = useState<TenantGroup[]>([]);
   const [groupIds, setGroupIds] = useState<string[]>([]);
@@ -193,7 +196,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
     const props = { id, placeholder: placeholders[key], value: draft[key], disabled: busy || !canEdit || (key === 'email' && !creating), required,
       'aria-invalid': !!error, 'aria-describedby': error ? `${id}-error` : undefined,
       onBlur: () => { setTouched(prev => ({ ...prev, [key]: true })); setErrors(prev => ({ ...prev, [key]: validation(draft)[key] })); if (key === 'email') emailCheck.retry(); },
-      className: `w-full min-w-0 rounded-xl border px-3 py-2.5 text-sm bg-white dark:bg-slate-800 ${error ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`,
+      className: `w-full min-w-0 rounded-xl border px-3 py-2.5 text-sm ${error ? 'border-red-500' : ''}`,
     };
     return <div key={key} className="min-w-0 space-y-1.5">
       <label htmlFor={id} className="block text-xs font-semibold text-slate-700 dark:text-slate-300">{labels[key]}{required && <span className="text-red-500 ml-1" aria-hidden="true">*</span>}</label>
@@ -201,9 +204,9 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
         : key === 'role' ? <select {...props} disabled={busy || !canAssign} onChange={event => change(key, event.target.value, true)}>
           <option value="">Select role</option>{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}
         </select> : key === 'email' ? <div className="relative">
-          <input {...props} className={props.className + ' pr-10'} type="email" autoCapitalize="none" autoCorrect="off" maxLength={254} onChange={event => change(key, event.target.value)} />
+          <Input {...props} className={props.className + ' pr-10'} type="email" autoCapitalize="none" autoCorrect="off" maxLength={254} onChange={event => change(key, event.target.value)} />
           {emailCheck.available && !error && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
-        </div> : <input {...props} type="text" maxLength={100} onChange={event => change(key, event.target.value)} />}
+        </div> : <Input {...props} type="text" maxLength={100} onChange={event => change(key, event.target.value)} />}
       {key !== 'phone' && error && <p id={`${id}-error`} className="text-xs text-red-500" role="alert">{error}</p>}
     </div>;
   };

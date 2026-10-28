@@ -20,6 +20,7 @@
 import React from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/shared/components/ui/input';
 
 export interface DataGridQuickFilterProps {
   /** Current search value */
@@ -47,18 +48,18 @@ export function DataGridQuickFilter({
         size={14}
         className="absolute left-3 text-slate-400 dark:text-slate-500 pointer-events-none"
       />
-      <input
+      <Input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
           'h-9 w-full max-w-[280px] pl-9 pr-8 rounded-lg border text-sm',
-          'border-gray-200 dark:border-white/[0.08]',
-          'bg-white dark:bg-white/[0.02]',
-          'text-slate-900 dark:text-white',
-          'placeholder:text-slate-400 dark:placeholder:text-slate-500',
-          'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
+          '',
+          '',
+          '',
+          '',
+          '',
           'transition-colors',
         )}
         aria-label="Quick filter search"

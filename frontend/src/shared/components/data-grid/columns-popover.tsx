@@ -13,6 +13,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Columns3, Search, Lock, X, Check } from 'lucide-react';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
+import { Input } from '@/shared/components/ui/input';
 
 export interface ColumnsPopoverProps {
   registry: ColumnDefinition[];
@@ -165,12 +166,12 @@ export function ColumnsPopover({
                 size={12}
                 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8899a6] pointer-events-none"
               />
-              <input
+              <Input
                 type="text"
                 placeholder="Search columns..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-7 pl-7 pr-3 text-[12px] rounded-md border border-[#E4E9F0] dark:border-slate-600 bg-[#F6F8FB] dark:bg-slate-900 text-[#0F172A] dark:text-slate-200 placeholder:text-[#8899a6] focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                className="w-full h-7 pl-7 pr-3 text-[12px] rounded-md border"
                 autoFocus
               />
             </div>

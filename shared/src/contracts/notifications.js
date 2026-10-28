@@ -9,7 +9,7 @@ const zod_1 = require("zod");
 function assignmentName(value) {
     if (typeof value !== 'string')
         return undefined;
-    const name = value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const name = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
     return name && !['undefined', 'null'].includes(name.toLowerCase()) ? name : undefined;
 }
 function assignmentUserName(user) {
@@ -32,7 +32,7 @@ exports.DeleteNotificationsSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(500).transform(ids => [...new Set(ids)]),
 }).strict();
 exports.NotificationRecordTargetSchema = zod_1.z.object({
-    entityType: zod_1.z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User']),
+    entityType: zod_1.z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User', 'RoleDefinition']),
     entityId: zod_1.z.string().uuid(),
 }).strict();
 exports.MarkNotificationsReadSchema = zod_1.z.object({

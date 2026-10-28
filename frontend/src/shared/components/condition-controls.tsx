@@ -1,5 +1,6 @@
 'use client';
 import type { InputHTMLAttributes, SelectHTMLAttributes } from 'react';
+import { Input } from '@/shared/components/ui/input';
 
 type ConditionSelectProps = Pick<SelectHTMLAttributes<HTMLSelectElement>, 'aria-required' | 'aria-invalid' | 'aria-describedby'>;
 
@@ -11,5 +12,5 @@ export function ConditionOperatorSelect({ operators, value, onChange, className,
   return <select {...ariaProps} id={id} disabled={disabled} aria-label={label} className={className} value={value} onChange={event => onChange(event.target.value)}>{!value && <option value="">Choose an operator</option>}{value && !operators.some(operator => operator.key === value) && <option value={value}>Unavailable operator — repair required</option>}{operators.map(operator => <option key={operator.key} value={operator.key}>{operator.label}</option>)}</select>;
 }
 export function ConditionScalarInput({ value, onValueChange, type = 'text', ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & { value: unknown; onValueChange: (value: string | number) => void }) {
-  return <input {...props} type={type} step={type === 'number' ? 'any' : undefined} value={String(value ?? '')} onChange={event => onValueChange(type === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value)} />;
+  return <Input placeholder={type === 'text' ? 'Enter a value...' : undefined} {...props} type={type} step={type === 'number' ? 'any' : undefined} value={String(value ?? '')} onChange={event => onValueChange(type === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value)} />;
 }

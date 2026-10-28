@@ -4,8 +4,8 @@ import { notificationsApi } from '@/shared/services/notifications.api';
 import { toast } from '@/shared/utils/toast';
 
 export function opensNotificationRecord(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): boolean {
-  // Team Management opens the directory and keeps its existing read-on-click behavior.
-  return notification.entityType !== 'User'
+  // Settings notifications open their directories and retain read-on-click behavior.
+  return !['User', 'RoleDefinition'].includes(notification.entityType ?? '')
     && NotificationRecordTargetSchema.safeParse({ entityType: notification.entityType, entityId: notification.entityId }).success;
 }
 

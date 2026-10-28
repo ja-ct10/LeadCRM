@@ -26,21 +26,3 @@ export async function restoreDeal(dealId: string): Promise<Deal> {
     throw error;
   }
 }
-
-/**
- * Duplicate an existing deal.
- * POST /api/v1/crm/deals/:id/duplicate
- */
-export async function duplicateDeal(dealId: string): Promise<Deal> {
-  try {
-    const response = await apiClient.post<DealActionResponse>(
-      `/crm/deals/${dealId}/duplicate`,
-      {}
-    );
-    toast.success('Deal duplicated successfully');
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-    throw error;
-  }
-}
