@@ -101,14 +101,10 @@ try {
   const pdf = await context.request.get(base + `/api/proxy/marketing/forms/${form.id}/source-links.pdf`);
   if (!pdf.ok()) throw Error('PDF download failed: ' + pdf.status());
   writeFileSync(resolve(output, 'leadcrm-source-links-local-preview.pdf'), await pdf.body());
-  await page.goto(base + '/inbox/business-email');
-  await page.getByRole('heading', { name: 'Business email inquiries' }).waitFor();
-  await page.screenshot({ path: resolve(output, '02-business-email-intake.png'), fullPage: true });
   await page.goto(base + '/crm/leads/' + lead.id);
   await page.getByRole('tab', { name: /Details/ }).click();
-  await page.getByRole('heading', { name: 'Source attribution' }).waitFor();
-  await page.getByRole('region', { name: 'Source attribution' }).scrollIntoViewIfNeeded();
-  await page.getByRole('region', { name: 'Source attribution' }).screenshot({ path: resolve(output, '03-lead-source-evidence.png'), animations: 'disabled' });
+  if (await page.getByRole('heading', { name: 'Source attribution' }).count()) throw Error('Removed attribution section is visible');
+  await page.screenshot({ path: resolve(output, '03-lead-details.png'), fullPage: true });
   }
   if (!process.argv.includes('--embed-only') && !process.argv.includes('--deal-only')) {
   await page.goto(base + '/crm/leads');

@@ -20,7 +20,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put, post: mocks.post, upload: mocks.upload } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: mocks.authenticated ? { id: mocks.userId, tenantId: 'tenant', role: mocks.role } : undefined }) }));
-vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], refreshDeals: vi.fn().mockResolvedValue(undefined), moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
 vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ links }: { links: object }) => <div data-testid="related-tasks">{JSON.stringify(links)}</div> }));
 vi.mock('@/features/tenant/crm/leads/ui/lead-form', () => ({ LeadFormSheet: () => null }));
@@ -470,7 +470,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   const headerButtons = Array.from(header.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent?.trim());
   expect(headerButtons.filter(label => label === 'Record actions')).toHaveLength(1);
   if (module === 'leads' || module === 'contacts') expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf('Warm'));
-  if (module === 'deals') expect(await within(header).findByRole('button', { name: 'Customer Status' })).toHaveProperty('textContent', 'Warm');
+  if (module === 'deals') expect(await within(header).findByRole('button', { name: 'Deal Status' })).toHaveProperty('textContent', 'Cold');
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
   if (module !== 'deals') {
@@ -600,28 +600,29 @@ it('cancels inline Lead edits without submitting or changing the loaded value', 
 });
 
 
-it('Deal header edits the linked customer while Details retains automatic engagement and pipeline stage', async () => {
+it('Deal header uses its persisted status and Details keeps the stage without duplicate engagement', async () => {
   render(<CrmRecordView module="deals" id="one" />);
   const heading = await screen.findByRole('heading', { name: records.deals.title });
   const header = heading.closest('header')!;
-  await within(header).findByRole('button', { name: 'Customer Status' });
-  expect(within(header).getByText('Warm')).toBeTruthy();
-  expect(within(header).queryByRole('button', { name: 'Cold' })).toBeNull();
+  await within(header).findByRole('button', { name: 'Deal Status' });
+  expect(within(header).getByText('Cold')).toBeTruthy();
+  expect(within(header).queryByText('Warm')).toBeNull();
   expect(within(header).queryByRole('button', { name: 'Lead' })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(screen.getByText('Deal Engagement')).toBeTruthy();
+  expect(screen.queryByText('Deal Engagement')).toBeNull();
   expect(screen.getByText('Cold')).toBeTruthy();
   expect(screen.getByText('Stage')).toBeTruthy();
   expect(screen.getByText('Lead')).toBeTruthy();
   expect(mocks.move).not.toHaveBeenCalled();
 });
 
-it('shows unavailable customer status without falling back to Deal engagement or the pipeline stage', async () => {
+it('keeps the Deal status available without reading the customer status', async () => {
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/lead-one' ? Promise.reject(Object.assign(new Error('Unavailable'), { status: 404 })) : original(path));
   render(<CrmRecordView module="deals" id="one" />);
   const heading = await screen.findByRole('heading', { name: records.deals.title });
-  expect(within(heading.closest('header')!).getByText('Customer status unavailable')).toBeTruthy();
+  expect(within(heading.closest('header')!).getByRole('button', { name: 'Deal Status' }).textContent).toBe('Cold');
+  expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
   expect(mocks.move).not.toHaveBeenCalled();
 });
 
@@ -639,7 +640,7 @@ it.each(['leads', 'contacts'] as const)('shows all six %s statuses and respects 
   expect(mocks.put).not.toHaveBeenCalled();
 });
 
-it('edits the primary Contact from Deal Details without writing Deal engagement or pipeline stage', async () => {
+it('edits only the selected Deal even when its primary participant is a Contact', async () => {
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
     contactId: 'contact-one', contactDeals: [{ contactId: 'contact-one', contact: { id: 'contact-one' } }] } }
@@ -647,31 +648,29 @@ it('edits the primary Contact from Deal Details without writing Deal engagement 
   mocks.put.mockResolvedValueOnce({ data: { ...records.contacts, id: 'contact-one', tenantId: 'tenant', status: 'Cold' } });
   render(<CrmRecordView module="deals" id="one" />);
   await screen.findByRole('heading', { name: records.deals.title });
-  fireEvent.click(await screen.findByRole('button', { name: 'Customer Status' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Deal Status' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Cold' }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/crm/contacts/contact-one', { status: 'Cold' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Customer Status' }).textContent).toBe('Cold'));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/crm/deals/one', { engagementStatus: 'Cold' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Deal Status' }).textContent).toBe('Cold'));
   expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
   expect(mocks.move).not.toHaveBeenCalled();
 });
 
-it('does not fall back to an accessible Lead when the primary Contact is unavailable', async () => {
+it('does not read another customer to display the Deal status when a participant is unavailable', async () => {
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
     contactId: 'hidden-contact', contactDeals: [{ contactId: 'hidden-contact', contact: null }] } }
     : path === '/crm/contacts/hidden-contact' ? Promise.reject(Object.assign(new Error('Not found'), { status: 404 })) : original(path));
   render(<CrmRecordView module="deals" id="one" />);
-  await screen.findByText('Customer status unavailable');
-  expect(screen.queryByRole('button', { name: 'Customer Status' })).toBeNull();
+  expect((await screen.findByRole('button', { name: 'Deal Status' })).textContent).toBe('Cold');
   expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
   expect(mocks.put).not.toHaveBeenCalled();
 });
 
-it('requires customer edit permission separately from Deals edit permission', async () => {
+it('uses Deals edit permission independently of customer edit permission', async () => {
   mocks.permissions = ['deals.view', 'deals.edit', 'leads.view'];
   render(<CrmRecordView module="deals" id="one" />);
-  await screen.findByText('Warm');
-  expect(screen.queryByRole('button', { name: 'Customer Status' })).toBeNull();
+  expect((await screen.findByRole('button', { name: 'Deal Status' })).textContent).toBe('Cold');
   expect(mocks.put).not.toHaveBeenCalled();
 });
 
@@ -731,7 +730,7 @@ it('Deal header uses Messages between actions and status and the shared Activity
   const buttons = Array.from(screen.getByRole('heading', { name: records.deals.title }).closest('header')!.querySelectorAll('button'));
   const names = buttons.map(b => b.getAttribute('aria-label') || b.textContent);
   expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
-  const badge = await within(screen.getByRole('heading', { name: records.deals.title }).closest('header')!).findByRole('button', { name: 'Customer Status' });
+  const badge = await within(screen.getByRole('heading', { name: records.deals.title }).closest('header')!).findByRole('button', { name: 'Deal Status' });
   expect(buttons[names.indexOf('Open messages')].compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(badge.compareDocumentPosition(buttons[names.indexOf('Close record')]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry', 'one'));

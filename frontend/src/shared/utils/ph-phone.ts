@@ -20,9 +20,7 @@ export function normalizePhInput(raw: string): string {
   let digits = raw.replace(/\D/g, '');
 
   // Handle +639... (after stripping + becomes 639...)
-  if (digits.startsWith('639') && digits.length >= 12) {
-    digits = digits.slice(2); // remove '63'
-  } else if (digits.startsWith('63') && digits.length >= 11) {
+  if (digits.startsWith('63')) {
     digits = digits.slice(2); // remove '63'
   }
 

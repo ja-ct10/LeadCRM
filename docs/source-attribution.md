@@ -43,7 +43,7 @@ email OAuth. The verified published form is
 Raw source/medium remain available even when they do not match a predefined
 category. Paid Social requires an explicit campaign medium; a Facebook referrer
 or `fbclid` alone cannot establish paid advertising. Plain Website captures with
-no acquisition evidence show Direct / Unattributed in the attribution detail.
+no acquisition evidence retain Direct / Unattributed in the stored attribution.
 Returning inquiries retain the original first touch and snapshot the new inquiry's
 attribution on its Deals. Direct returns do not erase a known qualifying source.
 
@@ -54,7 +54,9 @@ Business email is a separate admin-managed, read-only Gmail connection for
 In Google Cloud, enable Gmail API, configure OAuth and register the exact backend
 `/api/v1/integrations/business-email/callback` URI. Set `BUSINESS_EMAIL_REDIRECT_URI`
 to that URI; the existing Gmail OAuth client ID/secret and encryption key are reused.
-The mailbox owner must approve Google consent from Inbox -> Business email inquiries.
+Existing business-mailbox connections and their authorized API remain supported.
+The Business Email Inquiries Inbox page and its navigation have been retired;
+the application no longer presents that connection/review UI.
 
 For an invite-only demo, add the owner as a Google OAuth test user. Testing-mode
 Gmail refresh tokens can expire after seven days; verify the connection shortly
@@ -62,11 +64,11 @@ before the demo and reconnect when necessary. Do not purchase verification,
 hosting, advertising, subscriptions or any other service for this work.
 
 New messages after connection are polled in bounded pages every 30 seconds under
-normal load. Check for inquiries also performs a manual sync. Spam, trash, sent,
+normal load. The existing API also supports a manual sync. Spam, trash, sent,
 automated/list messages and internal staff senders are excluded. A provider outage
-or expired authorization must show a sync error; no successful capture is fabricated.
-Messages become review items, not automatic purchase-intent claims. The admin can
-dismiss a message or complete the existing Lead form to create a Direct Email Lead.
+or expired authorization is recorded as a sync error; no successful capture is fabricated.
+Messages remain review items rather than automatic purchase-intent claims. Existing
+authorized API consumers can dismiss or review them to create a Direct Email Lead.
 Message receipts and reviewed actions are idempotent. Existing people are reused
 where safe; ambiguous, archived or Contact identities require review.
 
@@ -84,6 +86,9 @@ section. The category control filters available options; changing it never clear
 selected products. The repeated read-only category summary is removed from these
 forms. Configured labels, visibility, values and historical product identities remain
 unchanged. Other selector consumers retain the default stacked presentation.
+
+Lead, Contact and Deal details omit the built-in Source Attribution section.
+Ordinary Source fields and persisted acquisition evidence remain available.
 
 ## Interfaces
 

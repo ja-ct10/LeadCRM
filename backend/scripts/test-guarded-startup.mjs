@@ -38,6 +38,7 @@ try {
   assert.match(pg.executeSql(name, `SELECT title,"currentStageHistoryId" IS NOT NULL FROM "Deal" WHERE id='deal';`), /Preserved deal\s*\| t/);
   for (const migration of deferred) assert.match(pg.executeSql(name, `SELECT count(*) FROM "_prisma_migrations" WHERE migration_name='${migration}';`), /\b0\b/);
   assert.match(pg.executeSql(name, `SELECT column_name FROM information_schema.columns WHERE table_name='Deal' AND column_name='leadId';`), /leadId/);
+  assert.match(pg.executeSql(name, `SELECT column_name FROM information_schema.columns WHERE table_name='Deal' AND column_name='manualStatusContext';`), /manualStatusContext/);
   assert.match(pg.executeSql(name, `SELECT column_name FROM information_schema.columns WHERE table_name='Account' AND column_name='assignedUserId';`), /assignedUserId/);
   assert.match(pg.executeSql(name, `SELECT retired_values->>'assignedUserId',retired_values->'productInterests',retired_values->'activeProducts' FROM crm_history.account_retired_values WHERE account_id='startup-account';`), /actor\s*\| \["Unresolved interest"\]\s*\| \["Historical purchase"\]/);
   checks.push('Real db:deploy applies the reviewed pending migration, preserves CRM/history and defers retirement');

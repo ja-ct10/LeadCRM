@@ -11,10 +11,10 @@ import {
   TooltipProvider,
 } from '@/shared/components/ui/tooltip';
 import type { DealCardData } from './deal-card.utils';
+import { CrmStatusBadge } from './crm-status';
 import {
   normalizePriority,
   getPriorityClasses,
-  getStageClasses,
   formatDealValue,
   formatCloseDate,
 } from './deal-card.utils';
@@ -41,20 +41,6 @@ function PriorityBadge({ priority }: { priority?: string }): React.ReactElement 
       )}
     >
       {level}
-    </span>
-  );
-}
-
-function StageBadge({ name, isWon, isLost }: { name?: string; isWon?: boolean; isLost?: boolean }): React.ReactElement | null {
-  if (!name) return null;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
-        getStageClasses(isWon, isLost)
-      )}
-    >
-      {name}
     </span>
   );
 }
@@ -185,7 +171,8 @@ export function DealCard({
             {valueDisplay}
           </span>
         )}
-        <StageBadge name={deal.stageName} isWon={deal.isWon} isLost={deal.isLost} />
+        <CrmStatusBadge status={deal.engagementStatus} />
+        {deal.stageName && <span className="text-[11px] text-muted-foreground">Stage: {deal.stageName}</span>}
         {closeDateDisplay !== '—' && (
           <span className="inline-flex items-center gap-1">
             <Calendar className="h-3 w-3" />

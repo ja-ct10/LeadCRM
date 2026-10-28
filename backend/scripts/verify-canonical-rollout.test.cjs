@@ -63,9 +63,10 @@ test('the complete release history deploys reviewed transitions while guarded co
   const relationshipTablesRetirement = '20261226000000_retire_unused_relationship_tables';
   const accountColumnsRetirement = '20261227000000_retire_account_notes_and_tags';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, '20261228000000_role_based_visibility');
+  assert.equal(plan.through, '20261229000000_source_attribution');
   assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement, relationshipTablesRetirement, accountColumnsRetirement]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
+  assert.ok(selected.includes('20261229000000_deal_manual_status_checkpoint'));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
     '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions', '20261115000000_workflow_assignment_history',

@@ -15,7 +15,7 @@ export async function audienceCompanies(req: Request, res: Response, next: NextF
 }
 
 export async function audienceFields(req: Request, res: Response, next: NextFunction) {
-  try { res.json({ success: true, data: await service.audienceFields(req.user!.tenantId, req.query.source) }); } catch (error) { next(error); }
+  try { res.json({ success: true, data: await service.audienceFieldsWithOptions(req.user!.tenantId, req.query.source) }); } catch (error) { next(error); }
 }
 export async function campaignVariableFields(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.campaignVariableFields(req.user!.tenantId) }); } catch (error) { next(error); }

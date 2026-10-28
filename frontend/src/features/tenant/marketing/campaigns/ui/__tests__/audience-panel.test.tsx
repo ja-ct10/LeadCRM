@@ -2,7 +2,8 @@ import React from 'react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { campaignFields } from '@leadcrm/shared';
-const api = vi.hoisted(() => ({ fields: vi.fn(), preview: vi.fn(), create: vi.fn() }));
+import { clearPageCache } from '@/shared/cache/page-cache';
+const api = vi.hoisted(() => ({ fields: vi.fn(), preview: vi.fn(), create: vi.fn(), update: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'audience-user', tenantId: 'audience-tenant', role: 'Client Admin' }, tenant: { id: 'audience-tenant' }, isLoading: false }) }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: api }));
 vi.mock('@/shared/components/side-sheet', () => ({ SideSheet: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -11,8 +12,30 @@ vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <b
 import { AudiencePanel } from '../audience-panel';
 import { campaignSampleValues } from '../campaign-variable-picker';
 const preview = { matched: 1, eligible: 1, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [{ id: 'person', name: 'Saved recipient', recordType: 'Lead', email: 'one@example.test', companyName: '', phone: null }], meta: { page: 1, limit: 25, total: 1, hasMore: false } };
-beforeEach(() => { vi.clearAllMocks(); api.fields.mockImplementation(async source => ({ data: campaignFields(source) })); api.preview.mockResolvedValue({ data: preview }); });
+beforeEach(() => { clearPageCache(); vi.clearAllMocks(); api.fields.mockImplementation(async source => ({ data: campaignFields(source) })); api.preview.mockResolvedValue({ data: preview }); });
 afterEach(cleanup);
+it.each([['phone', '+639123456789'], ['email', 'one@example.test']])('selects a canonical %s value from CRM options when creating an audience', async (field, value) => {
+  api.fields.mockImplementation(async source => ({ data: campaignFields(source).map(entry => entry.technicalKey === field ? { ...entry, options: [value] } : entry) }));
+  api.create.mockResolvedValue({ data: { id: 'saved' } });
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Audience Name'), { target: { value: 'Selected customers' } });
+  fireEvent.click(screen.getByText('+ Add Condition'));
+  fireEvent.change(screen.getByLabelText('Condition 1 field'), { target: { value: field } });
+  await screen.findByRole('option', { name: value });
+  const picker = screen.getByRole('combobox', { name: 'Condition 1 value' });
+  fireEvent.change(picker, { target: { value } });
+  fireEvent.click(screen.getByText('Create Audience'));
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ conditions: [{ field, operator: 'equals', value }] })));
+});
+it('preserves an unavailable saved email scalar and its operator while editing', async () => {
+  const value = 'saved@example.test';
+  api.fields.mockResolvedValue({ data: campaignFields('CONTACTS').map(entry => entry.technicalKey === 'email' ? { ...entry, options: ['current@example.test'] } : entry) });
+  api.update.mockResolvedValue({ data: { id: 'saved' } });
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} initialAudience={{ id: 'saved', name: 'Saved customers', source: 'CONTACTS', matchMode: 'AND', conditions: [{ field: 'email', operator: 'contains', value }] }} />);
+  await screen.findByRole('option', { name: `${value} (saved value unavailable)` });
+  fireEvent.click(screen.getByText('Save Audience'));
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith('saved', expect.objectContaining({ conditions: [{ field: 'email', operator: 'contains', value }] })));
+});
 it('preserves a literal Unicode audience name when submitting', async () => {
   const name = `ñ é 中文 日本語 한글 مرحبا 😊 & ' " < > ∑ ₱ e\u0301`;
   api.create.mockResolvedValue({ data: { id: 'saved', name } });

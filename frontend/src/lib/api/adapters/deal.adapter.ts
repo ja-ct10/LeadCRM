@@ -111,6 +111,8 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   // Stage changes MUST go through moveDealStage (PATCH /deals/:id/stage).
   // Pipeline changes use the atomic PATCH /deals/:id/pipeline action.
   if (data.title !== undefined) updateData.title = data.title;
+  if (data.engagementStatus !== undefined) updateData.engagementStatus = data.engagementStatus;
+  if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
   if (data.value !== undefined) updateData.value = data.value;
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);
   if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate) ?? null;

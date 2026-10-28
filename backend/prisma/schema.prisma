@@ -645,6 +645,7 @@ model Deal {
   ownerGroupId String? @ignore
   engagementStatus String @default("Inquiry")
   engagementEvaluatedAt DateTime?
+  manualStatusContext Json?
   customFieldValues CustomFieldValue[]
   productsNormalized Boolean @default(false)
   productInterestOther String?

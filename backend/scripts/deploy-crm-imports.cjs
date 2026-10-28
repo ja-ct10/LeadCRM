@@ -173,6 +173,8 @@ function deploymentPlan(records, localNames) {
     // Removes obsolete CRM Group references without changing stored values or employee roles.
     '20261227000000_retire_crm_group_ownership',
     '20261228000000_role_based_visibility',
+    // Nullable Deal checkpoint only; preserves manual selections during evidence replay.
+    '20261229000000_deal_manual_status_checkpoint',
     // Additive source metadata and tenant-scoped intake; no deferred relationships are referenced.
     '20261229000000_source_attribution',
   ];

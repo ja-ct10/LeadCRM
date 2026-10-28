@@ -19,6 +19,8 @@ import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges, customFieldChangeTracker } from '../record-updates';
 import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
+import { manualStatusCheckpoint } from '../status-checkpoint';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 
 /**
  * Maps known Prisma constraint/infrastructure errors to appropriate HTTP errors.
@@ -104,7 +106,8 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   const before = await repo.findDealById(id, tenantId);
   if (!before) throw new NotFoundError('Deal');
   if (dto.assignedUserId) await validateSalesOwner(salesContext.getStore() ?? prisma, tenantId, dto.assignedUserId, ['deals']);
-  const { primaryAssociation, ...updates } = dto;
+  const { primaryAssociation, engagementStatus, lostReason, ...updates } = dto;
+  if (lostReason !== undefined && engagementStatus !== 'Cancelled') throw new ValidationError('A cancellation reason requires Cancelled status.');
   if (primaryAssociation) {
     if (dto.leadIds !== undefined || dto.contactIds !== undefined) throw new ValidationError('Change the primary association separately from additional relationships.');
     await readDealAssociation(salesContext.getStore() ?? prisma, tenantId, primaryAssociation);
@@ -121,6 +124,24 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
     mapRepositoryError(error, 'updateDeal');
   }
   if (!deal) throw new NotFoundError('Deal');
+
+  if (engagementStatus !== undefined) {
+    const tx = salesContext.getStore()!;
+    await assertCrmRecordMutation(tx, 'deals', id);
+    const current = await tx.deal.findFirstOrThrow({ where: { tenantId, id }, include: { stage: true } });
+    if (current.stage.isWon && engagementStatus !== 'Closed Deal') throw new ValidationError('A confirmed sale cannot be reopened. Create a new Deal.');
+    if (current.stage.isLost && !['Inquiry', 'Cancelled'].includes(engagementStatus)) throw new ValidationError('Reopen this Deal to Inquiry first.');
+    const stageName = { Inquiry: 'Lead', Warm: 'Contacted', Hot: 'Qualified' }[engagementStatus as 'Inquiry' | 'Warm' | 'Hot'];
+    if (engagementStatus !== 'Cold') {
+      const stages = await tx.stage.findMany({ where: { tenantId, pipelineId: current.pipelineId,
+        ...(engagementStatus === 'Cancelled' ? { isLost: true, isWon: false } : engagementStatus === 'Closed Deal' ? { isWon: true, isLost: false } : { name: { equals: stageName, mode: 'insensitive' }, isWon: false, isLost: false }) }, take: 2 });
+      if (stages.length !== 1) throw new ValidationError('Configure one matching status stage in this Deal’s pipeline.');
+      await moveDealStage(id, tenantId, userId, { stageId: stages[0].id, lostReason });
+    }
+    await tx.deal.update({ where: { tenantId, id }, data: { engagementStatus, manualStatusContext: manualStatusCheckpoint(engagementStatus), engagementEvaluatedAt: new Date() } });
+    deal = await repo.findDealById(id, tenantId);
+    if (!deal) throw new NotFoundError('Deal');
+  }
 
   const { before: changedBefore, after: changedAfter } = buildChangeset(
     before as unknown as Record<string, unknown>,
@@ -286,11 +307,11 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
   // Destructure to exclude fields that shouldn't be copied
   const {
     id: _id, createdAt: _c, updatedAt: _u, closedAt: _cl, lostReason: _lr,
-    currentStageHistoryId: _entry,
+    currentStageHistoryId: _entry, manualStatusContext: _manualStatus,
     isArchived: _a, deletedAt: _d,
     // Exclude relation fields that Prisma won't accept in create
     stage: _stage, pipeline: _pipeline, organization: _org, assignedUser: _au,
-    owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh, productInterestRecord: _product,
+    owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh, productInterestRecord: _product, productInterestRecords: _productRecords,
     lead: _lead, contact: _contact, leadId: _leadId, contactId: _contactId,
     ...copyData
   } = source as Record<string, unknown>;
@@ -309,7 +330,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
           value: Number(product.dealValue), currency: 'PHP',
           automationKey: null,
           hasEverBeenWon: false,
-          engagementStatus: 'Inquiry', engagementEvaluatedAt: null,
+          engagementStatus: 'Inquiry', engagementEvaluatedAt: null, manualStatusContext: Prisma.DbNull,
           wonHistoryVerified: true,
           title: `${source.title} (Copy)`,
           tenantId,

@@ -1,6 +1,5 @@
 'use client';
-import { SourceAttributionPanel } from '@/features/tenant/crm/leads/ui/source-attribution-panel';
-import { CrmStatusBadge, CustomerStatusMenu } from './crm-status';
+import { CustomerStatusMenu } from './crm-status';
 import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
@@ -97,8 +96,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const canReadContacts = useHasPermission('contacts.view');
   const canReadLeads = useHasPermission('leads.view');
   const canReadAccounts = useHasPermission('accounts.view');
-  const canEditContacts = useHasPermission('contacts.edit');
-  const canEditLeads = useHasPermission('leads.edit');
   const [tab, setTab] = useState<string>(focusClosing ? 'details' : initialTab);
   const [closingAttention, setClosingAttention] = useState(focusClosing);
   const [detailsVisited, setDetailsVisited] = useState(initialTab === 'details' || focusClosing);
@@ -119,25 +116,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
-  const primaryContact = (record?.contactDeals as RecordData[] | undefined)?.[0];
-  const primaryLead = (record?.leadDeals as RecordData[] | undefined)?.[0];
-  const primaryContactId = text(record?.contactId) || text(primaryContact?.contactId) || text(object(primaryContact?.contact)?.id);
-  const primaryLeadId = text(record?.leadId) || text(primaryLead?.leadId) || text(object(primaryLead?.lead)?.id);
-  const customerModule = primaryContactId ? 'contacts' : 'leads';
-  const customerId = primaryContactId || primaryLeadId;
-  const customerAccess = useCrmRecordAccess(customerModule);
-  const canReadCustomer = customerModule === 'contacts' ? canReadContacts : canReadLeads;
-  const customerQuery = useCachedPage<RecordData>({ module: customerModule, params: { recordId: customerId },
-    disabled: USE_MOCK_DATA || module !== 'deals' || !customerId || !canReadCustomer,
-    revalidateOnInvalidation: true,
-    fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { signal })).data });
-  const mockCustomer = USE_MOCK_DATA ? data.contacts.find(item => item.id === customerId && item.tenantId === tenant?.id) as unknown as RecordData | undefined : undefined;
-  const customerRecord = module === 'deals'
-    ? canReadCustomer && USE_MOCK_DATA ? mockCustomer : canReadCustomer && ![401, 403, 404].includes(customerQuery.errorStatus ?? 0) && customerQuery.data?.id === customerId ? customerQuery.data : undefined
-    : record;
-  const canEditCustomer = module === 'deals'
-    ? !!customerRecord && (customerModule === 'contacts' ? canEditContacts : canEditLeads) && customerAccess.canMutate(customerRecord) && !(customerModule === 'leads' && customerRecord.convertedAt)
-    : hasEditPermission && recordAccess.canMutate(record) && !(module === 'leads' && record?.convertedAt);
+  const customerRecord = record;
+  const canEditCustomer = hasEditPermission && recordAccess.canMutate(record) && !(module === 'leads' && record?.convertedAt);
   useReadRecordNotifications(labels[module], id,
     !USE_MOCK_DATA && !!record && !recordQuery.isInitialLoad && !recordQuery.isRefreshing && !recordQuery.error);
   const canEdit = hasEditPermission && recordAccess.canMutate(record);
@@ -228,25 +208,21 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload);
         // A committed Workflow can already have advanced this Deal while its
         // original edit response was in flight. Reconcile through the guarded read.
-        if (module === 'deals') await recordQuery.refetchSilently();
+        if (module === 'deals') { await recordQuery.refetchSilently(); await data.refreshDeals(); }
         else if (response.data) recordQuery.setData(response.data);
       }
       toast.success(`${label} updated`);
-    } catch (error) { showCrmMutationError(error, `Failed to update ${label.toLowerCase()}`); }
+      return true;
+    } catch (error) { showCrmMutationError(error, `Failed to update ${label.toLowerCase()}`); return false; }
     finally { setSaving(false); }
   };
 
   const saveCustomerStatus = async (status: string) => {
     if (saving || !canEditCustomer) return;
     if (module !== 'deals') { await save({ status, ...(record?.updatedAt ? { expectedUpdatedAt: record.updatedAt } : {}) }); return; }
-    setSaving(true);
-    try {
-      const response = await apiClient.put<{ data: RecordData }>(`/crm/${customerModule}/${encodeURIComponent(customerId)}`, { status, ...(customerRecord?.updatedAt ? { expectedUpdatedAt: customerRecord.updatedAt } : {}) });
-      customerQuery.setData(response.data);
-      await recordQuery.refetchSilently();
-      toast.success('Customer status updated.');
-    } catch (error) { showCrmMutationError(error, 'Unable to update customer status'); }
-    finally { setSaving(false); }
+    if (status === 'Cancelled') { setLostReason(''); setLostStage('__status__'); return; }
+    if (status === 'Closed Deal') { setTab('details'); setDetailsVisited(true); setClosingAttention(true); }
+    await save({ engagementStatus: status });
   };
 
   const saveField = async (apiField: string, value: string | string[]): Promise<void> => {
@@ -321,12 +297,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
   const statusLabel = status === status.toUpperCase() ? status.charAt(0) + status.slice(1).toLowerCase() : status;
   const dealStages = data.pipelines.find(p => p.id === record.pipelineId)?.stages ?? [];
-  const changeStage = async (stageId: string, reason?: string) => {
-    setSaving(true);
-    try { await data.moveDealStage(id, stageId, undefined, reason); setLostStage(undefined); }
-    catch (error) { showCrmMutationError(error, 'Unable to move Deal'); }
-    finally { setSaving(false); }
-  };
   const statusManaged = !!record.statusManagedByDeals;
   const statuses = statusManaged ? record.manualCancellation ? ['Inquiry'] : ['Cancelled'] : [...CRM_STATUSES];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
@@ -462,8 +432,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               </span></TooltipTrigger>
               <TooltipContent>{personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
             </Tooltip></TooltipProvider>}
-            {module !== 'accounts' && <CustomerStatusMenu status={text(customerRecord?.status)} managed={!!customerRecord?.statusManagedByDeals} manuallyCancelled={!!customerRecord?.manualCancellation}
-              restrictions={customerRecord?.statusEditRestrictions as Record<string, string> | undefined} options={Array.isArray(customerRecord?.statusEditOptions) ? customerRecord.statusEditOptions as string[] : undefined} canEdit={canEditCustomer} busy={saving} label={module === 'deals' ? 'Customer Status' : undefined} onChange={saveCustomerStatus} />}
+            {module !== 'accounts' && <CustomerStatusMenu status={text(module === 'deals' ? record.engagementStatus : customerRecord?.status)} managed={!!customerRecord?.statusManagedByDeals} manuallyCancelled={!!customerRecord?.manualCancellation}
+              restrictions={customerRecord?.statusEditRestrictions as Record<string, string> | undefined} options={Array.isArray(customerRecord?.statusEditOptions) ? customerRecord.statusEditOptions as string[] : module === 'deals' ? object(record.stage)?.isWon ? ['Closed Deal'] : object(record.stage)?.isLost ? ['Inquiry', 'Cancelled'] : [...CRM_STATUSES] : undefined} canEdit={canEditCustomer} busy={saving} label={module === 'deals' ? 'Deal Status' : undefined} entityLabel={module === 'deals' ? 'Deal' : 'customer'} onChange={saveCustomerStatus} />}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </>}
         />
@@ -497,9 +467,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} allowCreate={module === "deals" && recordAccess.canMutate(record)} readOnly={module !== "deals" && user?.role !== 'Client Admin'} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
-            {module !== 'accounts' && <SourceAttributionPanel attribution={record.attribution as import('@leadcrm/shared').SourceAttribution | null | undefined} sourceDetail={text(record.sourceDetail)} />}
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
-            {module === 'deals' && <InlineEditRows canEdit={false} onSave={saveField} rows={[{ label: 'Deal Engagement', value: record.engagementStatus, alwaysVisible: true, renderValue: () => <CrmStatusBadge status={text(record.engagementStatus)} /> }]} />}
             {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}
             {detailGroups.map(({ group, fields, relationships: hasRelationships }) => <RecordSection key={group.id} title={group.label}>
               {hasRelationships && !isPerson && relationshipContent}
@@ -560,7 +528,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
     <Dialog open={Boolean(lostStage)} onOpenChange={open => { if (!open && !saving) setLostStage(undefined); }}>
       <DialogContent showClose={false} aria-label="Cancel Deal" className="max-w-sm">
-        <form className="space-y-3" onSubmit={e => { e.preventDefault(); if (lostStage && !saving) void changeStage(lostStage, lostReason); }}>
+        <form className="space-y-3" onSubmit={e => { e.preventDefault(); if (lostStage && !saving) void save({ engagementStatus: 'Cancelled', lostReason }).then(saved => { if (saved) setLostStage(undefined); }); }}>
           <label className="block text-sm">Reason for Cancellation<Textarea placeholder="Explain why this deal was cancelled..." required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border p-2" /></label>
           <div className="flex flex-wrap gap-2"><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setLostStage(undefined)}>Cancel</Button></div>
         </form>

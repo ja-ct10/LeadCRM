@@ -204,7 +204,7 @@ export async function updateContact(
       await assertExternalCustomerPhone(tx, tenantId, dto.phone !== undefined ? dto.phone : current.phone);
       if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Lead changed. Reload its current status before saving.');
       await assertCustomerStatusEdit(tx, tenantId, { leadId: id }, current, dto.status);
-      const preparedStatus = await prepareCustomerStatus(tx, tenantId, { leadId: id }, dto.status !== current.status || authorizedWorkflowScope(tenantId) ? dto.status : undefined);
+      const preparedStatus = await prepareCustomerStatus(tx, tenantId, { leadId: id }, dto.status);
       if (preparedStatus) { data.manualStatusContext = preparedStatus.checkpoint; data.status = preparedStatus.status; }
       if (dto.status !== undefined && (dto.status !== current.status || Object.keys(dto).filter(key => key !== 'expectedUpdatedAt').length === 1)) data.manualCancellation = dto.status === 'Cancelled';
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');

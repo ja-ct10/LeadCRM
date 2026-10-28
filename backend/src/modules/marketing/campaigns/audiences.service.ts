@@ -48,6 +48,23 @@ export async function audienceFields(tenantId: string, sourceInput: unknown, db:
   const layout = FieldLayoutSchema.safeParse(preference?.value);
   return campaignFields(source, definitions, layout.success ? layout.data : undefined);
 }
+
+/** Picker values use the same CRM source and record scope as audience evaluation. */
+export async function audienceFieldsWithOptions(tenantId: string, sourceInput: unknown) {
+  const source = AudienceSourceSchema.parse(sourceInput);
+  const module = source === 'LEADS' ? 'leads' : 'contacts';
+  const fields = await audienceFields(tenantId, source);
+  const where = { ...await recipientWhere(tenantId), isArchived: false, deletedAt: null,
+    ...(source === 'LEADS' ? { convertedAt: null } : {}), AND: [await crmReadWhere(prisma, tenantId, module)] };
+  const actor = crmActor.getStore();
+  const load = () => source === 'LEADS'
+    ? prisma.lead.findMany({ where: { ...where, status: { notIn: ['Cancelled', 'Archived', 'Converted'], mode: 'insensitive' } }, select: { phone: true, email: true }, distinct: ['phone', 'email'] })
+    : prisma.contact.findMany({ where: { ...where, status: { not: 'CANCELLED' } }, select: { phone: true, email: true }, distinct: ['phone', 'email'] });
+  const rows = actor ? await crmActor.run({ ...actor, readRecords: true, readPolicy: undefined }, async () => await load()) : await load();
+  return fields.map(field => field.kind === 'System' && ['phone', 'email'].includes(field.technicalKey)
+    ? { ...field, options: [...new Set(rows.map(row => row[field.technicalKey as 'phone' | 'email']).filter((value): value is string => !!value?.trim()))].sort((a, b) => a.localeCompare(b)) }
+    : field);
+}
 export async function campaignVariableFields(tenantId: string, db: Prisma.TransactionClient = prisma) {
   campaignScope(tenantId);
   const [definitions, preferences] = await Promise.all([

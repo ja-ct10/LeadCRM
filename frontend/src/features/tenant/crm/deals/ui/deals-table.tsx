@@ -1,4 +1,5 @@
 'use client';
+import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
 
 import React, { useState } from 'react';
 import { Briefcase, ChevronDown } from 'lucide-react';
@@ -89,6 +90,7 @@ export default function DealsTable({
 
                 {/* 4. Stage Column — inline change control (UX-5) */}
                 <td className="py-3 pr-4 whitespace-nowrap">
+                  <CrmStatusBadge status={deal.engagementStatus} />
                   {onStageChange && pipelineStagesMap && pipelineStagesMap[deal.pipelineId] ? (
                     <div className="relative inline-block">
                       <button

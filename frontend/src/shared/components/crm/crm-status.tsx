@@ -28,12 +28,13 @@ export function CrmStatusBadge({ status }: { status?: string | null }) {
 }
 
 /** Show all statuses while preserving automatic classification and existing transitions. */
-export function CustomerStatusMenu({ status, canEdit, busy = false, label, onChange, options, restrictions }: {
+export function CustomerStatusMenu({ status, canEdit, busy = false, label, onChange, options, restrictions, entityLabel = 'customer' }: {
   status?: string; managed?: boolean; manuallyCancelled?: boolean; canEdit: boolean; busy?: boolean;
   label?: string; onChange: (status: CrmStatus) => Promise<void>;
   options?: readonly string[]; restrictions?: Record<string, string>;
+  entityLabel?: 'customer' | 'Deal';
 }) {
-  if (!status) return <span className="text-xs text-muted-foreground">Customer status unavailable</span>;
+  if (!status) return <span className="text-xs text-muted-foreground">{entityLabel === 'Deal' ? 'Deal' : 'Customer'} status unavailable</span>;
   const current = normalizeCrmStatus(status);
   if (!canEdit) return <span aria-label={label}><CrmStatusBadge status={current} /></span>;
   return <DropdownMenu><DropdownMenuTrigger asChild>
@@ -41,12 +42,12 @@ export function CustomerStatusMenu({ status, canEdit, busy = false, label, onCha
       <span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{current}</span><ChevronDown size={12} className="shrink-0" />
     </Button>
   </DropdownMenuTrigger><DropdownMenuContent>
-    <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">{current === 'Cancelled' ? 'Reopen this customer before changing engagement.' : 'Manual engagement changes retain existing sales and automation rules. Closed Deal requires a confirmed sale.'}</p>
+    <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">{current === 'Cancelled' ? `Reopen this ${entityLabel} before changing engagement.` : 'Manual engagement changes retain existing sales and automation rules. Closed Deal requires a confirmed sale.'}</p>
     {CRM_STATUSES.map(option => {
       const allowed = options ? options.includes(option) : current === 'Cancelled' ? option === 'Inquiry' : current === 'Closed Deal' ? option === 'Closed Deal' || option === 'Cancelled' : option !== 'Closed Deal';
       return <DropdownMenuItem key={option} disabled={!allowed} title={!allowed ? restrictions?.[option] ?? (current === 'Cancelled' ? 'Reopen to Inquiry before changing engagement.' : current === 'Closed Deal' ? 'Use the governed Deal actions to change a confirmed sale outcome.' : 'Confirm a related Deal as Closed Deal first.') : undefined} onSelect={() => void onChange(option)}>
         <span aria-hidden="true" className={`mr-2 h-2 w-2 rounded-full ${getCRMStatusStripColor(option)}`} />
-        {option}{current === 'Cancelled' && option === 'Inquiry' ? ' · Reopen customer' : ''}
+        {option}{current === 'Cancelled' && option === 'Inquiry' ? ` · Reopen ${entityLabel}` : ''}
       </DropdownMenuItem>;
     })}
   </DropdownMenuContent></DropdownMenu>;

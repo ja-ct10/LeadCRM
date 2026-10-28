@@ -175,7 +175,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     let status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (dto.expectedUpdatedAt && current.updatedAt.toISOString() !== dto.expectedUpdatedAt) throw new ConflictError('This Contact changed. Reload its current status before saving.');
     await assertCustomerStatusEdit(tx, tenantId, { contactId: id }, current, status);
-    const preparedStatus = await prepareCustomerStatus(tx, tenantId, { contactId: id }, status !== normalizeCrmStatus(current.status) || authorizedWorkflowScope(tenantId) ? status : undefined);
+    const preparedStatus = await prepareCustomerStatus(tx, tenantId, { contactId: id }, status);
     if (preparedStatus) status = preparedStatus.status;
     if (status === 'Closed Deal') {
       if (normalizeCrmStatus(current.status) !== status) await assertClosedStatus(tx, tenantId, { contactId: id });

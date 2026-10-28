@@ -7,6 +7,7 @@ import { GripVertical, User, Calendar, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/shared/utils/currency';
 import type { Deal, User as UserType } from '@/store/types';
+import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
 
 interface PipelineDealCardProps {
   deal: Deal;
@@ -85,6 +86,7 @@ export function PipelineDealCard({ deal, assignedUser, canDrag, onClick }: Pipel
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 mt-3">
+        <CrmStatusBadge status={deal.engagementStatus} />
         {deal.value > 0 && (
           <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 border border-green-200 dark:border-green-500/20 px-2 py-0.5 rounded text-xs font-semibold shrink-0">
             {formatCurrency(deal.value)}

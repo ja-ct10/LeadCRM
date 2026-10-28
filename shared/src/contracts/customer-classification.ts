@@ -55,7 +55,7 @@ export function classifyDealEngagement(events: DealEngagementEvent[], now = new 
     age(+event.at);
     if (event.type === 'qualified') { qualified = true; status = 'Hot'; baseline = +event.at; }
     else if (event.type === 'reply') { status = qualified ? 'Hot' : 'Warm'; baseline = +event.at; }
-    else if (baseline === undefined) { status = 'Warm'; baseline = +event.at; }
+    else if (baseline === undefined) { status = 'Inquiry'; baseline = +event.at; }
   }
   age(+now);
   return status;
