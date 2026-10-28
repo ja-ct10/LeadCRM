@@ -718,7 +718,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const { encryptToken } = await import('../../../core/encryption/crypto.service');
     const sender = randomUUID() + '@example.test';
     const connection = await prisma.businessEmailConnection.upsert({ where: { tenantId }, create: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: encryptToken('private-provider-token'), refreshToken: encryptToken('private-refresh-token'), tokenExpiresAt: new Date(Date.now()+3600000) }, update: {} });
-    const inquiry = await prisma.businessEmailInquiry.create({ data: { tenantId, connectionId: connection.id, providerMessageId: randomUUID(), sender, subject: 'Private inquiry', snippet: 'Private pricing request', receivedAt: new Date() } });
+    const inquiry = await prisma.businessEmailInquiry.create({ data: { tenantId, connectionId: connection.id, providerMessageId: randomUUID(), sender, senderName: 'Private Prospect', subject: 'Private inquiry', snippet: 'Private pricing request', receivedAt: new Date() } });
     const outsider = await prisma.user.create({ data: { tenantId: otherTenant, email: randomUUID()+'@camxian.com', firstName: 'Other', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     const foreignToken = (await issueAuthSession(outsider)).token;
     for (const endpoint of ['/status', '/inquiries']) {

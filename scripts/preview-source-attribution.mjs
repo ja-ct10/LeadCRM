@@ -25,7 +25,9 @@ try {
   const { submitPublicForm } = require('../backend/dist/backend/src/modules/marketing/forms/public-forms.service.js');
   const { salesTransaction, salesPipeline } = require('../backend/dist/backend/src/modules/crm/leads/lead-automation.service.js');
   const tenant = await prisma.tenant.create({ data: { name: 'LeadCRM Source Demo', slug: randomUUID(), status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
-  const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Demo', lastName: 'Admin', email: 'source.demo@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
+  const previewPassword = process.argv.includes('--serve') ? 'Preview-' + randomUUID() + '7!' : undefined;
+  const previewPasswordHash = previewPassword ? await require('bcryptjs').hash(previewPassword, 10) : undefined;
+  const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Demo', lastName: 'Admin', email: 'source.demo@camxian.com', passwordHash: previewPasswordHash, passwordChangedAt: previewPassword ? new Date() : undefined, role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
   await tenantContext.run({ tenantId: tenant.id }, () => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Surveillance System', category: 'Security', dealValue: 15000, active: true } });
   const scoped = work => tenantContext.run({ tenantId: tenant.id }, work);
@@ -50,6 +52,31 @@ try {
   page.on('dialog', dialog => dialog.accept());
   page.setDefaultTimeout(60000); page.setDefaultNavigationTimeout(600000);
   page.on('pageerror', e => errors.push(e.message));
+  const verifyProductPanel = async (name, hasStatus) => {
+    const dialog = page.getByRole('dialog').last();
+    const category = dialog.getByRole('combobox', { name: 'Product category filter' });
+    const picker = dialog.getByRole('button', { name: /^Product Interests?$/ });
+    await category.waitFor({ state: 'visible' }); await picker.waitFor({ state: 'visible' });
+    if (await dialog.getByText('Product Category', { exact: true }).count() !== 1) throw Error(name+': repeated category label');
+    await category.scrollIntoViewIfNeeded();
+    const c=await category.boundingBox(), p=await picker.boundingBox();
+    if (!c || !p || Math.abs(c.y-p.y)>4 || c.x>=p.x) throw Error(name+': desktop product controls are not aligned');
+    if (hasStatus) { const status=await dialog.getByLabel('Status', { exact: true }).boundingBox(); if (!status || status.y>=c.y || status.width<c.width*1.8) throw Error(name+': Status must occupy its own row'); }
+    await category.selectOption('Security'); await picker.click();
+    const checkbox=page.getByRole('checkbox', { name: product.name, exact: true });
+    await checkbox.check(); await page.keyboard.press('Escape');
+    await category.selectOption(''); await picker.focus(); await page.keyboard.press('Enter');
+    if (!(await checkbox.isChecked())) throw Error(name+': category change lost the selection');
+    await page.screenshot({ path: resolve(output, name+'-desktop.png'), fullPage: true });
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await picker.scrollIntoViewIfNeeded();
+    const mc=await category.boundingBox(), mp=await picker.boundingBox();
+    if (!mc || !mp || mc.y>=mp.y || mc.x<0 || mp.x+mp.width>391) throw Error(name+': mobile product controls do not stack within the panel');
+    await page.screenshot({ path: resolve(output, name+'-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1500 });
+    console.log('Verified paired desktop/mobile controls, keyboard opening, retained selections:', name);
+  };
   if (!process.argv.includes('--remaining-only')) {
   await page.goto(base + '/settings?tab=forms');
   await page.getByText(form.name, { exact: true }).first().click();
@@ -73,10 +100,21 @@ try {
   await page.goto(base + '/crm/leads');
   await page.getByRole('button', { name: /Add Lead|Create Lead|New Lead/ }).first().click();
   await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
+  await verifyProductPanel('06-lead-panel', true);
   await page.getByRole('combobox', { name: 'Lead Source', exact: true }).selectOption('Others');
   await page.getByLabel('Source detail', { exact: true }).fill('SMS');
   await page.getByLabel('Source detail', { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(output, '04-manual-call-sms.png'), fullPage: true });
+  }
+  if (!process.argv.includes('--embed-only')) {
+    await page.goto(base + '/crm/contacts');
+    await page.getByRole('button', { name: /Create Contact|Add Contact|New Contact/ }).first().click();
+    await verifyProductPanel('07-contact-panel', true);
+    await page.goto(base + '/crm/deals');
+    await page.getByRole('button', { name: /Create Deal|Add Deal|New Deal/ }).first().click();
+    const createNew=page.getByRole('menuitem', { name: 'Create New', exact: true });
+    if (await createNew.isVisible()) await createNew.click();
+    await verifyProductPanel('08-deal-panel', false);
   }
   await page.goto(base + '/forms/' + form.publicId + '?utm_source=flyer&utm_medium=direct_mail&utm_campaign=source_demo');
   await page.getByRole('heading', { name: form.name }).waitFor();
@@ -93,9 +131,19 @@ try {
   await embedded.getByText('Thank you!', { exact: true }).waitFor();
   const embeddedLead = await prisma.lead.findFirstOrThrow({ where: { tenantId: tenant.id, email: 'embed.prospect@example.test' } });
   if (embeddedLead.source !== 'Google Ads') throw Error('Embedded website attribution was not preserved across navigation.');
-  writeFileSync(resolve(output, 'verification.json'), JSON.stringify({ screenshots: 5, formId: form.id, publicId: form.publicId, leadId: lead.id, localOnly: true, pageErrors: errors }, null, 2));
+  writeFileSync(resolve(output, 'verification.json'), JSON.stringify({ screenshots: 11, formId: form.id, publicId: form.publicId, leadId: lead.id, localOnly: true, pageErrors: errors }, null, 2));
   if (errors.length) throw Error('Browser errors: ' + errors.join('; '));
   console.log('Screenshots saved:', output);
+  if (process.argv.includes('--serve')) {
+    writeFileSync(resolve(output, 'LOGIN.txt'), 'Disposable updated preview: '+base+'/login\nEmail: '+admin.email+'\nPassword: '+previewPassword+'\n', { mode: 0o600 });
+    console.log('Updated disposable preview is running at '+base+'. Local login details: '+resolve(output,'LOGIN.txt'));
+    await browser.close(); browser=undefined;
+    await new Promise(done => {
+      const finish = () => { process.stdin.pause(); done(); };
+      process.once('SIGINT', finish); process.once('SIGTERM', finish);
+      process.stdin.setEncoding('utf8'); process.stdin.on('data', value => { if (value.trim()==='stop') finish(); }); process.stdin.resume();
+    });
+  }
 } catch (error) {
   await activePage?.screenshot({ path: resolve(output, 'browser-failure.png'), fullPage: true }).catch(() => {});
   throw error;
