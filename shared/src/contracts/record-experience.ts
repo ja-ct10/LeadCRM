@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled'] as const;
-export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'] as const;
+export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Direct Email', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'] as const;
 export const LeadSourceSchema = z.enum(LEAD_SOURCES);
 export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
 

@@ -16,6 +16,7 @@ const fields = {
   companyName: cleanText(2000).optional(),
   status: LeadStatusSchema,
   source: OptionalLeadSourceSchema.optional(),
+  sourceDetail: cleanText(200).optional(),
   accountId: z.string().uuid().nullable().optional(),
   newAccount: NewAccountSchema.optional(),
   assignedUserId: z.string().uuid().nullable().optional(),

@@ -8,6 +8,7 @@ export function toFrontendLead(lead: LeadRead): Lead {
     contactPerson: formatLeadName(lead), email: lead.email ?? undefined, phone: lead.phone ?? undefined,
     companyName: lead.companyName ?? undefined, address: lead.address ?? undefined, source: lead.source ?? undefined,
     leadSource: lead.source ?? undefined, accountId: lead.accountId ?? undefined, organizationId: lead.accountId ?? undefined,
+    sourceDetail: lead.sourceDetail, attribution: lead.attribution,
     assignedUserId: lead.assignedUserId ?? undefined, assignedUser: lead.assignedUser ?? undefined,
     account: lead.account ?? undefined,
     productInterestIds: lead.productInterestIds ?? [], productInterests: lead.productInterest ?? [], productInterest: lead.productInterest ?? [],

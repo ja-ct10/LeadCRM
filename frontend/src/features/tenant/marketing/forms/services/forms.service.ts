@@ -19,5 +19,6 @@ export function getShareLink(publicId: string): string {
   return origin.replace(/\/$/, '') + '/forms/' + encodeURIComponent(publicId);
 }
 export function getEmbedCode(publicId: string): string {
-  return '<iframe title="Contact form" src="' + getShareLink(publicId).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" style="width:100%;height:900px;border:0" loading="lazy"></iframe>';
+  const link = getShareLink(publicId), origin = new URL(link).origin;
+  return '<script src="' + origin + '/leadcrm-forms.js" defer></script>\n<iframe data-leadcrm-form title="Contact form" src="' + link.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" style="width:100%;height:900px;border:0" loading="lazy"></iframe>';
 }

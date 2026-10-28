@@ -16,7 +16,7 @@ vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [
   { id: 'limited', firstName: 'Contact', lastName: 'Only', role: 'Sales', status: 'ACTIVE', assignableAgent: true, assignableModules: ['contacts'] },
 ] }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false }) }));
-vi.mock('@/shared/components/crm/product-interest-select', () => ({ ProductInterestSelect: ({ values, onChange }: any) => <select aria-label="Product Interest" value={values[0] ?? ''} onChange={event => onChange([event.target.value])}><option value="">Select product</option><option value="CCTV">CCTV</option></select> }));
+vi.mock('@/shared/components/crm/product-interest-select', () => ({ ProductInterestField: ({ children }: any) => <div>{children}</div>, ProductInterestSelect: ({ values, onChange }: any) => <select aria-label="Product Interest" value={values[0] ?? ''} onChange={event => onChange([event.target.value])}><option value="">Select product</option><option value="CCTV">CCTV</option></select> }));
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {} }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ value, onChange }: any) => <select aria-label="Account" value={value ?? ''} onChange={event => onChange(event.target.value)}><option value="">No account</option><option value="account-1">Acme</option></select> }));
 vi.mock('@/shared/components/crm/record-custom-fields', () => ({

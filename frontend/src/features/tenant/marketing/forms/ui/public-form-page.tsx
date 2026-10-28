@@ -1,13 +1,16 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { EMAIL_AVAILABILITY_MESSAGES, FORM_TRACKING_KEYS, publicSubmissionContent, validateFormValues, type PublicFormDefinition } from '@leadcrm/shared';
+import { EMAIL_AVAILABILITY_MESSAGES, FORM_TRACKING_KEYS, publicSubmissionContent, validateFormValues, AttributionContextSchema, type AttributionContext, type PublicFormDefinition } from '@leadcrm/shared';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
+import { captureFormSource, rememberFormSource } from '../services/source-tracking';
 import { FormInput } from './form-input';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 const textTypes = new Set(['single-line', 'multi-line', 'email', 'contact-email', 'phone', 'contact-phone', 'url', 'company-website', 'contact-name', 'company-name']);
 export default function PublicFormPage({ publicId }: { publicId: string }) {
   const receipt = useRef<{ content: string; requestId: string } | undefined>(undefined);
   const submitting = useRef(false);
+  const source = useRef<AttributionContext | undefined>(undefined);
+  const [remember, setRemember] = useState(false);
   const [form, setForm] = useState<PublicFormDefinition | null>(null), [loading, setLoading] = useState(true);
   const [error, setError] = useState(''), [errors, setErrors] = useState<Record<string, string>>({});
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({}), [website, setWebsite] = useState('');
@@ -25,12 +28,27 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
   const emailCheck = useEmailAvailability(emailValue, 'leads', Boolean(form && emailField && emailValue.trim() && !validated.errors[emailField.id]), form ? { publicId, version: form.version } : undefined);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(''); setForm(null);
-    setValues({}); setErrors({}); setTouched({}); setAttempted(false); setDone(false); setWebsite(''); receipt.current = undefined;
+    source.current = undefined; setRemember(false); setValues({}); setErrors({}); setTouched({}); setAttempted(false); setDone(false); setWebsite(''); receipt.current = undefined;
     fetch('/api/proxy/public/forms/' + encodeURIComponent(publicId), { signal: controller.signal, cache: 'no-store' }).then(async r => {
-      const body = await r.json(); if (!r.ok) throw new Error(r.status === 404 ? 'This form is unavailable.' : 'Unable to load this form. Please retry.'); if (!controller.signal.aborted) setForm(body.data);
+      const body = await r.json(); if (!r.ok) throw new Error(r.status === 404 ? 'This form is unavailable.' : 'Unable to load this form. Please retry.');
+      if (controller.signal.aborted) return;
+      if (body.data.trackUrlParams) { source.current ??= captureFormSource(publicId); setRemember(source.current.storage === 'remembered'); }
+      else source.current = undefined;
+      setForm(body.data);
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [publicId, retry]);
+  useEffect(() => {
+    if (!form?.trackUrlParams || window.parent === window) return;
+    const receive = (event: MessageEvent) => {
+      if (event.source !== window.parent || !form.allowedEmbedOrigins?.includes(event.origin) || event.data?.type !== 'leadcrm:source') return;
+      const parsed = AttributionContextSchema.safeParse(event.data.context);
+      if (parsed.success && !submitting.current && !receipt.current) source.current = parsed.data;
+    };
+    window.addEventListener('message', receive);
+    for (const origin of form.allowedEmbedOrigins ?? []) window.parent.postMessage({ type: 'leadcrm:ready' }, origin);
+    return () => window.removeEventListener('message', receive);
+  }, [form]);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); if (!form || submitting.current) return;
     const checked = validateFormValues(form.fields, values); setErrors(checked.errors); setError(''); setAttempted(true);
@@ -40,11 +58,12 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
     }
     setBusy(true); submitting.current = true;
     try {
-      const query = new URLSearchParams(window.location.search), tracking: Record<string, string> = {};
-      if (form.trackUrlParams) for (const key of FORM_TRACKING_KEYS) { const v = query.get(key); if (v) tracking[key] = v.slice(0, 200); }
-      const content = publicId + publicSubmissionContent(form.version, checked.values, tracking);
+      const tracking: Record<string, string> = {};
+      const attribution = form.trackUrlParams ? source.current : undefined;
+      if (attribution) for (const key of FORM_TRACKING_KEYS) { const v = attribution.last.params[key]; if (v) tracking[key] = v; }
+      const content = publicId + publicSubmissionContent(form.version, checked.values, tracking, attribution);
       if (receipt.current?.content !== content) receipt.current = { content, requestId: crypto.randomUUID() };
-      const r = await fetch('/api/proxy/public/forms/' + encodeURIComponent(publicId) + '/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: receipt.current.requestId, version: form.version, values, tracking, website }) });
+      const r = await fetch('/api/proxy/public/forms/' + encodeURIComponent(publicId) + '/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: receipt.current.requestId, version: form.version, values, tracking, attribution, website }) });
       const body = await r.json();
       if (!isCurrentForm()) return;
       if (!r.ok) {
@@ -82,6 +101,7 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
           }} onBlur={textTypes.has(f.type) ? () => { setTouched(old => ({ ...old, [f.id]: true })); if (f.id === emailField?.id) emailCheck.retry(); } : undefined}
             error={(f.id === emailField?.id ? emailCheck.error : undefined) || (textTypes.has(f.type) && (touched[f.id] || attempted) ? validated.errors[f.id] : undefined) || errors[f.id]} design={form.design} /></div>)}</div>
           <div className="hidden" aria-hidden="true"><label>Leave empty<input tabIndex={-1} autoComplete="off" value={website} onChange={e => setWebsite(e.target.value)} /></label></div>
+          {form.trackUrlParams && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={remember} onChange={e => { setRemember(e.target.checked); if (source.current) source.current = rememberFormSource(publicId, source.current, e.target.checked); }} />Remember how I found this form on this browser for up to 30 days.</label>}
           <button type="submit" disabled={busy || emailCheck.blocked} className="w-full rounded-md border py-3 font-semibold disabled:opacity-50" style={{ backgroundColor: form.design.buttonBg || '#2563eb', borderColor: form.design.buttonBorder || '#2563eb', color: form.design.buttonText || '#fff' }}>{busy ? 'Submitting…' : 'Submit'}</button>
         </form>}
       </>}

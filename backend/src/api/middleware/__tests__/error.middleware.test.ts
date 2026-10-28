@@ -47,3 +47,14 @@ describe('validation errors across module formats', () => {
     expect(response.json).toHaveBeenCalledWith({ success: false, error: 'An unexpected error occurred. Please try again.' });
   });
 });
+
+it.each(['/api/v1/integrations/business-email/sync', '/api/v1/integrations/gmail/drafts', '/api/v1/public/forms/id/submissions', '/api/v1/crm/leads'])('redacts production error messages and database details for %s', endpoint => {
+  const previous = process.env.NODE_ENV; process.env.NODE_ENV = 'production';
+  try {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const response = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    errorMiddleware(Object.assign(new Error('private-token-and-customer-email'), { meta: { detail: 'private-token-and-customer-email' } }), { path: endpoint, method: 'POST' } as Request, response as unknown as Response, vi.fn());
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private-token-and-customer-email');
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain('private-token-and-customer-email');
+  } finally { process.env.NODE_ENV = previous; }
+});

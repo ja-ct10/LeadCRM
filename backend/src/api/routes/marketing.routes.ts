@@ -77,6 +77,8 @@ router.patch( '/templates/:id/archive', authorize('campaigns.archive'), template
 router.get(   '/forms',                 authorize('forms.view'),   formController.getForms);
 router.get(   '/forms/field-catalog',   authorize('forms.view'),   formController.getLeadFormFieldCatalog);
 router.get('/forms/:id/submissions', authorize('forms.view_submissions'), formController.getSubmissions);
+router.get('/forms/:id/source-links', authorize('forms.view'), formController.sourceLinks);
+router.get('/forms/:id/source-links.pdf', authorize('forms.view'), formController.sourceLinks);
 router.post('/forms/:id/duplicate', authorize('forms.duplicate'), writeLimiter, formController.duplicateForm);
 router.get(   '/forms/:id',             authorize('forms.view'),   formController.getFormById);
 router.post(  '/forms',                 authorize('forms.create'), validate(CreateFormSchema), formController.createForm);

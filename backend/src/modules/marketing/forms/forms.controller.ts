@@ -1,5 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import * as service from './forms.service';
+import { formSourceLinks, sourceLinksPdf } from './source-links.service';
+import { z } from 'zod';
+
+export async function sourceLinks(req: Request, res: Response, next: NextFunction) {
+  try {
+    const campaign = z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/).default('leadcrm_demo').parse(req.query.campaign);
+    const manifest = await formSourceLinks(req.user!.tenantId, String(req.params.id), process.env.PUBLIC_FORM_ORIGIN || process.env.APP_URL || 'http://localhost:3000', campaign);
+    if (req.path.endsWith('.pdf')) {
+      res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', 'attachment; filename="leadcrm-source-links.pdf"');
+      const doc = sourceLinksPdf(manifest); doc.pipe(res); doc.end();
+    } else res.json(manifest);
+  } catch (e) { next(e); }
+}
 
 export async function duplicateForm(req: Request, res: Response, next: NextFunction) {
   try { res.status(201).json({ success: true, data: await service.duplicateForm(String(req.params.id), req.user!.tenantId, req.user!.userId) }); } catch (err) { next(err); }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AttributionContextSchema, type SourceAttribution } from './source-attribution';
 import { AdministrationPhoneSchema } from '../validation/administration-user.schema';
 import type { CrmFieldCatalogEntry } from './field-catalog';
 import type { ProductInterest } from './product-interests.contract';
@@ -27,6 +28,7 @@ export const FormDesignSchema = z.object({ generalBg: color, generalBorder: colo
 export const FormSettingsSchema = z.object({
   notificationEmail: text(254).transform(v => v.toLowerCase()).pipe(z.string().email().or(z.literal(''))).default(''),
   trackUrlParams: z.boolean().default(true),
+  allowedEmbedOrigins: z.array(z.string().url().refine(v => { const u = new URL(v); return /^https?:$/.test(u.protocol) && u.origin === v; }, 'Use an exact origin, such as https://example.com.')).max(20).default([]),
   utmParams: z.array(z.object({ key: z.enum(FORM_TRACKING_KEYS), mapTo: z.literal('') }).strict()).max(5).default([]),
 }).strict();
 export const FormDefinitionSchema = z.object({ name: text(200).pipe(z.string().min(1, 'Form name is required.')), fields: z.array(FormFieldSchema).max(100), design: FormDesignSchema, settings: FormSettingsSchema }).strict().superRefine((form, ctx) => {
@@ -53,13 +55,16 @@ export const PublicSubmissionSchema = z.object({
   version: z.number().int().positive(),
   values: z.record(z.string().max(80), z.union([z.string().max(10000), z.boolean(), z.array(z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
   tracking: z.record(z.enum(FORM_TRACKING_KEYS), text(200)).default({}),
+  attribution: AttributionContextSchema.optional(),
   website: z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
 /** Normalized request identity, shared by retrying clients and saved submission receipts. */
-export function publicSubmissionContent(version: number, values: Record<string, unknown>, tracking: Record<string, unknown>): string {
+export function publicSubmissionContent(version: number, values: Record<string, unknown>, tracking: Record<string, unknown>, attribution?: unknown): string {
+  const stable = (value: unknown): unknown => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable((value as Record<string, unknown>)[key])])) : value;
   const sorted = (value: Record<string, unknown>) => Object.fromEntries(Object.keys(value).sort().map(key =>
     [key, Array.isArray(value[key]) ? [...value[key] as unknown[]].sort() : value[key]]));
-  return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking) });
+  return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking), ...(attribution ? { attribution: stable(attribution) } : {}) });
 }
 export type FormField = z.infer<typeof FormFieldSchema>;
 export type FormFieldType = FormField['type'];
@@ -87,12 +92,13 @@ export function leadCatalogFormField(field: CrmFieldCatalogEntry): Omit<FormFiel
   return { label: field.label, type, required: field.required, ...(mapToField ? { mapToField } : { customFieldId: field.customFieldId }), ...(type === 'dropdown' ? { options: [...field.options ?? []] } : {}) };
 }
 export type FormProductCatalog = { categories: string[]; products: Pick<ProductInterest, 'id' | 'name' | 'category'>[] };
-export type PublicFormDefinition = Omit<FormDefinition, 'settings'> & { version: number; trackUrlParams: boolean; productCatalog?: FormProductCatalog };
+export type PublicFormDefinition = Omit<FormDefinition, 'settings'> & { version: number; trackUrlParams: boolean; allowedEmbedOrigins?: string[]; productCatalog?: FormProductCatalog };
 export interface FormSubmissionRecord {
   id: string; formId: string; leadId: string | null; contactId: string | null;
   submittedAt: string; publishedVersion: number; publishedConfig: Omit<FormDefinition, 'settings'>;
   values: Record<string, string | boolean | string[]>; tracking: Record<string, string>; notificationStatus: string;
   productLabels?: Record<string, string>;
+  attribution?: SourceAttribution;
 }
 
 /** Product selections were historically stored as arrays or comma-separated IDs. */

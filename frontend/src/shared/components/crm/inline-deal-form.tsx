@@ -11,7 +11,7 @@ import { Label } from '@/shared/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ProductInterestSelect } from './product-interest-select';
+import { ProductInterestField, ProductInterestSelect } from './product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@/shared/utils/toast';
@@ -207,11 +207,10 @@ export function InlineDealForm({
         )}
       </div>
 
-      <div data-crm-field-key="productInterestIds">
-        <label htmlFor={productFieldId} className={labelCls}>Product Interest</label>
+      <ProductInterestField fieldKey="productInterestIds" label="Product Interest" htmlFor={productFieldId}>
         <ProductInterestSelect single id={productFieldId} products={products} categories={categories} showUncategorized={false} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-      </div>
+      </ProductInterestField>
       <div data-crm-field-key="value">
         <label htmlFor={`${productFieldId}-value`} className={labelCls}>Value</label>
         <Input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />

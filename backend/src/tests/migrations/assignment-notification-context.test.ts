@@ -14,6 +14,7 @@ it('allows assignment context deployment while unrelated compatibility retiremen
   expect(plan.exclude).toContain('20261202000000_retire_account_address_columns');
   expect(plan.exclude).toContain('20261208000000_retire_account_fields');
   expect(plan.exclude).not.toContain('20261206000000_assignment_notification_context');
+  expect(plan.exclude).not.toContain('20261229000000_source_attribution');
 });
 
 it('updates only the producer function without changing notification, outbox, ledger or preference history', async () => {

@@ -7,7 +7,7 @@ exports.crmFileExtension = crmFileExtension;
 exports.crmFileValidationError = crmFileValidationError;
 const zod_1 = require("zod");
 exports.CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled'];
-exports.LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'];
+exports.LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Direct Email', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'];
 exports.LeadSourceSchema = zod_1.z.enum(exports.LEAD_SOURCES);
 exports.COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'];
 /** Keep assignment eligibility consistent between CRM controls and audience validation. */

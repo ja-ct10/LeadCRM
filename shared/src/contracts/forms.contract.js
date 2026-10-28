@@ -7,6 +7,7 @@ exports.getFormProductValues = getFormProductValues;
 exports.defaultContactForm = defaultContactForm;
 exports.validateFormValues = validateFormValues;
 const zod_1 = require("zod");
+const source_attribution_1 = require("./source-attribution");
 const administration_user_schema_1 = require("../validation/administration-user.schema");
 // Legacy seed labels for database fixtures only. Runtime forms resolve database IDs.
 exports.FORM_PRODUCT_INTERESTS = [
@@ -32,6 +33,7 @@ exports.FormDesignSchema = zod_1.z.object({ generalBg: color, generalBorder: col
 exports.FormSettingsSchema = zod_1.z.object({
     notificationEmail: text(254).transform(v => v.toLowerCase()).pipe(zod_1.z.string().email().or(zod_1.z.literal(''))).default(''),
     trackUrlParams: zod_1.z.boolean().default(true),
+    allowedEmbedOrigins: zod_1.z.array(zod_1.z.string().url().refine(v => { const u = new URL(v); return /^https?:$/.test(u.protocol) && u.origin === v; }, 'Use an exact origin, such as https://example.com.')).max(20).default([]),
     utmParams: zod_1.z.array(zod_1.z.object({ key: zod_1.z.enum(exports.FORM_TRACKING_KEYS), mapTo: zod_1.z.literal('') }).strict()).max(5).default([]),
 }).strict();
 exports.FormDefinitionSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.string().min(1, 'Form name is required.')), fields: zod_1.z.array(exports.FormFieldSchema).max(100), design: exports.FormDesignSchema, settings: exports.FormSettingsSchema }).strict().superRefine((form, ctx) => {
@@ -75,12 +77,15 @@ exports.PublicSubmissionSchema = zod_1.z.object({
     version: zod_1.z.number().int().positive(),
     values: zod_1.z.record(zod_1.z.string().max(80), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.boolean(), zod_1.z.array(zod_1.z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
     tracking: zod_1.z.record(zod_1.z.enum(exports.FORM_TRACKING_KEYS), text(200)).default({}),
+    attribution: source_attribution_1.AttributionContextSchema.optional(),
     website: zod_1.z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
 /** Normalized request identity, shared by retrying clients and saved submission receipts. */
-function publicSubmissionContent(version, values, tracking) {
+function publicSubmissionContent(version, values, tracking, attribution) {
+    const stable = (value) => value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
     const sorted = (value) => Object.fromEntries(Object.keys(value).sort().map(key => [key, Array.isArray(value[key]) ? [...value[key]].sort() : value[key]]));
-    return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking) });
+    return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking), ...(attribution ? { attribution: stable(attribution) } : {}) });
 }
 /** Adapt eligible canonical Lead definitions; labels never determine identity or input type. */
 function leadCatalogFormField(field) {

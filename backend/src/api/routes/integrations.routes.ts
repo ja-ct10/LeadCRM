@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { businessEmailRouter } from '../../integrations/gmail/business-email.routes';
 import { authMiddleware } from '../middleware/auth.middleware';
 import {
   authorize,
@@ -35,6 +36,7 @@ import { mailboxPermissions } from '../../integrations/gmail/mailbox-sync.servic
 import { mailboxEvents } from '../../integrations/gmail/mailbox-events';
 
 const router = Router();
+router.use('/business-email', businessEmailRouter);
 router.get('/gmail/callback', callback);
 router.use('/gmail', authMiddleware, workspaceReadyMiddleware, authorizeAny('leads.view', 'contacts.view'), async (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');

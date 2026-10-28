@@ -6,7 +6,7 @@ import { customerEmailAvailability } from '../../administration/users/user-email
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
-import { EMAIL_AVAILABILITY_MESSAGES, FormDefinitionSchema, FormFieldSchema, PublicSubmissionSchema, publicSubmissionContent, validateFormValues, withProductOptions } from '@leadcrm/shared';
+import { EMAIL_AVAILABILITY_MESSAGES, FormDefinitionSchema, FormFieldSchema, PublicSubmissionSchema, publicSubmissionContent, validateFormValues, withProductOptions, sourceAttribution } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -37,7 +37,7 @@ export async function getPublicForm(publicId: string): Promise<PublicFormDefinit
       categories: await productCategories(tx, form.tenantId, { readOnly: true }),
       products: products.map(({ id, name, category }) => ({ id, name, category })),
     } : undefined;
-    return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams, ...(productCatalog ? { productCatalog } : {}) };
+    return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams, allowedEmbedOrigins: config.settings.allowedEmbedOrigins, ...(productCatalog ? { productCatalog } : {}) };
   }));
 }
 
@@ -60,8 +60,8 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             const snapshot = previous.publishedConfig as { fields: unknown; trackUrlParams?: boolean };
             const checked = validateFormValues(FormFieldSchema.array().parse(snapshot.fields), input.values);
             const tracking = snapshot.trackUrlParams === false ? {} : input.tracking;
-            if (Object.keys(checked.errors).length || publicSubmissionContent(input.version, checked.values, tracking) !==
-              publicSubmissionContent(previous.publishedVersion, previous.values as Record<string, unknown>, previous.tracking as Record<string, unknown>)) {
+            if (Object.keys(checked.errors).length || publicSubmissionContent(input.version, checked.values, tracking, snapshot.trackUrlParams === false ? undefined : input.attribution) !==
+              publicSubmissionContent(previous.publishedVersion, previous.values as Record<string, unknown>, previous.tracking as Record<string, unknown>, previous.attributionInput ?? undefined)) {
               throw new ConflictError('This submission request was already used for different content.');
             }
             return { submission: previous, notificationEmail: '' };
@@ -79,6 +79,12 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           }
           const mapped: Record<string, string> = {};
           for (const field of config.fields) if (field.mapToField && typeof validated.values[field.id] === 'string') mapped[field.mapToField] = validated.values[field.id] as string;
+          const attribution = sourceAttribution(config.settings.trackUrlParams ? input.attribution ?? {
+            first: { params: input.tracking, observedAt: new Date().toISOString() },
+            last: { params: input.tracking, observedAt: new Date().toISOString() }, storage: 'session',
+          } : undefined);
+          const captureSource = attribution.last.method === 'unattributed' ? mapped.source || attribution.last.category : attribution.last.category;
+          const attributionJson = attribution as unknown as Prisma.InputJsonObject;
           const productField = config.fields.find(field => field.mapToField === 'productInterest');
           const productValue = productField ? validated.values[productField.id] : undefined;
           const selectedProducts = Array.isArray(productValue) ? productValue : typeof productValue === 'string' && productValue ? [productValue] : [];
@@ -153,10 +159,16 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
               email, phone, companyName: mapped.companyName || null, address: mapped.address || null,
-              productInterestIds: selectedProducts, source: mapped.source || 'Website' }, live.createdById, 'public-form');
+              productInterestIds: selectedProducts, source: captureSource, attribution: attributionJson }, live.createdById, 'public-form');
             leadId = created.id;
             newWebsiteLead = true;
           }
+          // Repeat inquiries keep the original first touch and record the latest qualifying touch.
+          const existingAttribution = (contact?.attribution ?? lead?.attribution) as unknown as import('@leadcrm/shared').SourceAttribution | null | undefined;
+          const aggregate = { ...attribution, first: existingAttribution?.first ?? attribution.first,
+            last: attribution.last.method === 'unattributed' && existingAttribution?.last ? existingAttribution.last : attribution.last } as unknown as Prisma.InputJsonObject;
+          if (contactId) await tx.contact.update({ where: { id: contactId, ...scope }, data: { attribution: aggregate } });
+          else if (leadId && !newWebsiteLead) await tx.lead.update({ where: { id: leadId, ...scope }, data: { attribution: aggregate } });
           const customFields = config.fields.filter(field => field.customFieldId);
           if (customFields.length && leadId && newWebsiteLead) {
             // Returning customers retain new answers only in the inquiry snapshot.
@@ -168,7 +180,9 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
             publishedConfig: { name: config.name, fields: config.fields, design: config.design, trackUrlParams: config.settings.trackUrlParams }, leadId, contactId, email, phone,
-            values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
+            values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, attribution: attributionJson,
+            ...(config.settings.trackUrlParams && input.attribution ? { attributionInput: input.attribution as unknown as Prisma.InputJsonObject } : {}),
+            notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
           // Only committed new captures through this published form qualify. Source
           // labels are editable CRM data and do not establish inbound provenance.
           if (newWebsiteLead && leadId) {
@@ -190,7 +204,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 title: `${customer.firstName} ${customer.lastName} – ${product.name}`.slice(0, 255),
                 pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
                 value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,
-                automationKey: `form:${submission.id}:${product.id}`, leadSource: 'Website', tags: [] } });
+                automationKey: `form:${submission.id}:${product.id}`, leadSource: captureSource, attribution: attributionJson, tags: [] } });
               if (contactId) await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
               else await tx.leadDeal.create({ data: { ...scope, leadId: leadId!, dealId: deal.id, addedById: live.createdById } });
               await tx.activity.create({ data: { ...scope, leadId, contactId, dealId: deal.id, createdById: live.createdById,

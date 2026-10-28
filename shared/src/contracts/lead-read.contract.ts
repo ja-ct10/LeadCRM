@@ -14,6 +14,8 @@ export type LeadRead = {
   companyName: string | null;
   address: string | null;
   source: string | null;
+  sourceDetail?: string | null;
+  attribution?: import('./source-attribution').SourceAttribution | null;
   accountId: string | null;
   assignedUserId: string | null;
   productInterestIds: string[];

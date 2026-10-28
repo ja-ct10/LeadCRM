@@ -19,7 +19,7 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 import type { FormField, FormRecord } from '../types/form.types';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
-import { getLeadFormFieldCatalog, getEmbedCode, getShareLink, publishForm, unpublishForm, updateForm } from '../services/forms.service';
+import { getLeadFormFieldCatalog, getShareLink, publishForm, unpublishForm, updateForm } from '../services/forms.service';
 import { FormCanvas } from './form-canvas';
 import { FieldPalette, isPaletteDrag, type PaletteField } from './field-palette';
 import { FormSettingsPanel } from './form-settings-panel';
@@ -157,7 +157,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
           <aside aria-label="Form tools" className={panelThemeClass + " hidden xl:flex w-64 shrink-0 flex-col border-l max-h-[var(--app-viewport-height)] overflow-y-auto overscroll-contain"}>{dockedTools && panelContent}</aside>
         </div>}
         {tab === 'Settings' && <div className="py-4 sm:p-6"><FormSettingsPanel settings={local.settings} onChange={settings => change({ settings })} /></div>}
-        {tab === 'Share' && <div className="py-4 sm:p-6 min-w-0"><FormSharePanel form={local} dirty={dirty} shareLink={getShareLink(local.publicId)} embedCode={getEmbedCode(local.publicId)} /></div>}
+        {tab === 'Share' && <div className="py-4 sm:p-6 min-w-0"><FormSharePanel form={local} dirty={dirty} shareLink={getShareLink(local.publicId)} /></div>}
       </fieldset>
       {tab === 'Builder' && <div className="xl:hidden sticky bottom-0 bg-card border-t border-border p-2"><button disabled={saving || !canEdit} onClick={() => setTools(true)} className="w-full rounded bg-primary text-white p-3 text-sm flex gap-2 justify-center"><Plus size={16} />Add fields or change design</button></div>}
       <Dialog open={tools} onOpenChange={setTools}><DialogContent aria-label="Form tools" className={panelThemeClass + " !fixed !bottom-0 !left-0 !right-0 !w-full !max-w-none !rounded-b-none !p-0 max-h-[85dvh] flex flex-col"} closeClassName={panelCloseClass}>
@@ -166,7 +166,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       </DialogContent></Dialog>
       <ConfirmActionDialog open={publication !== null} onOpenChange={open => { if (!open) setPublication(null); }}
         title={publication === 'publish' ? 'Publish form?' : 'Unpublish form?'}
-        description={publication === 'publish' ? 'The saved form will be available through its public link and embed.' : 'The public form will stop accepting submissions. Existing submissions and linked records will be kept.'}
+        description={publication === 'publish' ? 'The saved form will be available through its published source links.' : 'The public form will stop accepting submissions. Existing submissions and linked records will be kept.'}
         confirmLabel={publication === 'publish' ? 'Publish form' : 'Unpublish form'} isLoading={saving} confirmDisabled={!canPublish}
         onConfirm={async () => { if (publication === 'publish') { if (!await save(true, true)) return false; } else await unpublish(); setPublication(null); }} />
       <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}

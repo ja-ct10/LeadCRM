@@ -6,7 +6,10 @@ const { randomBytes } = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
-const directory = path.join(root, '.env.local-development');
+const sourceDemo = process.argv.includes('--source-demo');
+const directory = path.join(root, '.env.local-development', ...(sourceDemo ? ['source-demo'] : []));
+const databasePort = sourceDemo ? 55435 : 55434;
+const databaseName = sourceDemo ? 'leadcrm_source_demo' : 'leadcrm_local_development';
 const databaseDirectory = path.join(directory, 'postgres');
 const runtimeFile = path.join(directory, 'runtime.json');
 const stopFile = path.join(directory, 'stop.json');
@@ -72,11 +75,11 @@ async function main() {
   fs.mkdirSync(directory, { recursive: true });
   const settingsFile = path.join(directory, 'settings.json');
   settings = fs.existsSync(settingsFile) ? JSON.parse(fs.readFileSync(settingsFile, 'utf8')) : {
-    format: 'leadcrm-local-development-v1', port: 55434, database: 'leadcrm_local_development',
+    format: 'leadcrm-local-development-v1', port: databasePort, database: databaseName,
     databasePassword: randomBytes(24).toString('hex'), jwtSecret: randomBytes(32).toString('hex'), encryptionKey: randomBytes(32).toString('hex'),
-    email: 'local.admin@camxian.com', password: `Local-${randomBytes(10).toString('hex')}!`,
+    email: sourceDemo ? 'demo.admin@camxian.com' : 'local.admin@camxian.com', password: `Local-${randomBytes(10).toString('hex')}7!`,
   };
-  if (settings.format !== 'leadcrm-local-development-v1' || settings.port !== 55434 || settings.database !== 'leadcrm_local_development') throw new Error('Unexpected local development profile; refusing to use it.');
+  if (settings.format !== 'leadcrm-local-development-v1' || settings.port !== databasePort || settings.database !== databaseName) throw new Error('Unexpected local development profile; refusing to use it.');
   if (!fs.existsSync(settingsFile)) fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), { mode: 0o600, flag: 'wx' });
   fs.writeFileSync(path.join(directory, 'LOGIN.txt'), `LeadCRM local development\nURL: http://localhost:3000/login\nEmail: ${settings.email}\nPassword: ${settings.password}\n\nThese credentials work only in this local database. Keep this file private.\n`, { mode: 0o600 });
   const emptyEnv = path.join(directory, 'empty.env');
@@ -88,10 +91,12 @@ async function main() {
     JWT_SECRET: settings.jwtSecret, ENCRYPTION_KEY: settings.encryptionKey, DOTENV_CONFIG_PATH: emptyEnv,
     APP_URL: 'http://localhost:3000', ALLOWED_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000', TRUSTED_PROXIES: 'loopback',
     API_URL: 'http://127.0.0.1:4000/api/v1', HOST: '127.0.0.1', PORT: '4000', NEXT_TELEMETRY_DISABLED: '1',
+    PUBLIC_FORM_ORIGIN: 'http://localhost:3000', NEXT_PUBLIC_FORM_ORIGIN: 'http://localhost:3000',
     NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false',
     STORAGE_ROOT: path.join(directory, 'private-files'),
     AVATAR_STORAGE_BUCKET: 'avatars', RECORD_FILES_STORAGE_BUCKET: 'files',
     LEADCRM_LOCAL_SETTINGS: settingsFile,
+    LEADCRM_LOCAL_SOURCE_DEMO: sourceDemo ? '1' : '0',
   });
   postgresBin = process.env.POSTGRES_BIN || run('pg_config', ['--bindir']).trim();
   const passwordFile = path.join(directory, 'postgres-password');
@@ -109,8 +114,8 @@ async function main() {
     startedDatabase = true;
   }
   const psqlArgs = ['-X', '-h', '127.0.0.1', '-p', String(settings.port), '-U', 'leadcrm_local', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1'];
-  const exists = run(postgres('psql'), [...psqlArgs, '-At', '-c', "SELECT 1 FROM pg_database WHERE datname='leadcrm_local_development'"]).trim() === '1';
-  if (!exists) run(postgres('psql'), [...psqlArgs, '-c', 'CREATE DATABASE leadcrm_local_development']);
+  const exists = run(postgres('psql'), [...psqlArgs, '-At', '-c', `SELECT 1 FROM pg_database WHERE datname='${databaseName}'`]).trim() === '1';
+  if (!exists) run(postgres('psql'), [...psqlArgs, '-c', `CREATE DATABASE "${databaseName}"`]);
   console.log('Applying migrations to the persistent local development database...');
   // This database is owned exclusively by this profile. Existing deployments use db:deploy.
   run(process.execPath, [path.join(root, 'node_modules/prisma/build/index.js'), 'migrate', 'deploy', '--schema', path.join(root, 'backend/prisma/schema.prisma')], { stdio: 'inherit' });
@@ -135,7 +140,7 @@ async function main() {
     if (request.pid === process.pid) stop();
   }, 500);
   console.log('LeadCRM: http://localhost:3000/login');
-  console.log('Local login details: .env.local-development/LOGIN.txt');
+  console.log('Local login details:', path.relative(root, path.join(directory, 'LOGIN.txt')));
   console.log('Background workers enabled. Local records persist after restart. Press Ctrl+C to stop.');
 }
 process.once('SIGINT', () => stop());

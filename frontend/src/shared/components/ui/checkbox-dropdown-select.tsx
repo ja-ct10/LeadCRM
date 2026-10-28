@@ -25,13 +25,24 @@ export interface CheckboxDropdownSelectProps {
   searchable?: boolean;
   ariaInvalid?: boolean;
   ariaDescribedBy?: string;
+  matchTriggerWidth?: boolean;
 }
 
-export function CheckboxDropdownSelect({ id, values, options, onChange, placeholder, ariaLabel, contentAriaLabel = ariaLabel, disabled, emptyMessage = 'No options available.', single = false, searchable = false, ariaInvalid, ariaDescribedBy }: CheckboxDropdownSelectProps) {
+export function CheckboxDropdownSelect({ id, values, options, onChange, placeholder, ariaLabel, contentAriaLabel = ariaLabel, disabled, emptyMessage = 'No options available.', single = false, searchable = false, ariaInvalid, ariaDescribedBy, matchTriggerWidth = false }: CheckboxDropdownSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const visibleOptions = searchable ? options.filter(option => matchesSearch(search, option.label)) : options;
   const trigger = useRef<HTMLButtonElement>(null);
+  const [triggerWidth, setTriggerWidth] = useState<number>();
+  React.useLayoutEffect(() => {
+    if (!matchTriggerWidth || !trigger.current) return;
+    const button = trigger.current;
+    const measure = () => { const width = button.getBoundingClientRect().width; if (width > 0) setTriggerWidth(width); };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    observer?.observe(button); window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [matchTriggerWidth]);
   const selected = [...new Set(values)];
   const labelFor = (value: string) => options.find(option => option.value === value)?.label || value;
   return <div className="min-w-0 [&>div]:w-full">
@@ -39,7 +50,7 @@ export function CheckboxDropdownSelect({ id, values, options, onChange, placehol
       <DropdownMenuTrigger asChild><button ref={trigger} id={id} type="button" disabled={disabled} aria-label={ariaLabel} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} className="flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
         <span className="min-w-0 [overflow-wrap:anywhere]">{selected.length === 0 ? placeholder : selected.length === 1 ? labelFor(selected[0]) : `${selected.length} selected`}</span><ChevronDown className="h-4 w-4 shrink-0" />
       </button></DropdownMenuTrigger>
-      <DropdownMenuContent align="start" role="group" aria-label={contentAriaLabel} className="w-80 max-w-[calc(100vw-2rem)]" onKeyDown={event => {
+      <DropdownMenuContent style={matchTriggerWidth && triggerWidth ? { width: triggerWidth } : undefined} align="start" role="group" aria-label={contentAriaLabel} className="w-80 max-w-[calc(100vw-2rem)]" onKeyDown={event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current?.focus(); }
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
           if ((event.target as HTMLInputElement).type === 'text' && ['Home', 'End'].includes(event.key)) return;

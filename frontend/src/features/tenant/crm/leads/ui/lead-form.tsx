@@ -5,14 +5,13 @@ import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { applyCrmFieldErrors, isStaffEmailError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
 import { usePhoneAvailability } from '@/shared/hooks/use-phone-availability';
-import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
 import { LeadPhoneSchema, STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
 
 import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
-import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
+import { ProductInterestField, ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CrmEmailSchema } from '@leadcrm/shared';
 
 import { LeadStatusSchema, LEAD_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
@@ -53,6 +52,7 @@ const LeadFormSchema = z.object({
   companyName: LeadFieldsSchema.shape.companyName,
   status: LeadStatusSchema,
   source: OptionalLeadSourceSchema.optional(),
+  sourceDetail: LeadFieldsSchema.shape.sourceDetail,
   accountId: z.string().optional(),
   assignedUserId: z.string().optional(),
   productInterest: LeadFieldsSchema.shape.productInterest,
@@ -75,12 +75,13 @@ interface LeadFormProps {
 }
 
 interface AddLeadFormProps {
+  prefill?: Partial<Lead>;
   initialData?: Lead;
   onSave: (data: Partial<Lead>) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
+export function AddLeadForm({ initialData, prefill, onSave, onCancel }: AddLeadFormProps) {
   const recordAccess = useCrmRecordAccess('leads');
   const actionAllowed = useHasPermission(initialData ? 'leads.edit' : 'leads.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
@@ -120,6 +121,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       companyName: '',
       status: 'Inquiry',
       source: '',
+      sourceDetail: '',
       accountId: '',
       assignedUserId: '',
       productInterest: [],
@@ -180,6 +182,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         companyName: initialData.companyName || '',
         status: normalizeCrmStatus(initialData.status),
         source: OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').data ?? '',
+        sourceDetail: initialData.sourceDetail ?? '',
         accountId: initialData.accountId || initialData.organizationId || '',
         assignedUserId: initialData.assignedUserId || '',
         productInterest: initialData.productInterestIds ?? [],
@@ -191,13 +194,14 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       setPhoneLocal('');
       setPhoneTouched(false);
       reset({
-        firstName: '',
-        lastName: '',
-        email: '',
+        firstName: prefill?.firstName ?? '',
+        lastName: prefill?.lastName ?? '',
+        email: prefill?.email ?? '',
         phone: '',
         companyName: '',
         status: 'Inquiry',
-        source: '',
+        source: OptionalLeadSourceSchema.safeParse(prefill?.source ?? '').data ?? '',
+        sourceDetail: prefill?.sourceDetail ?? '',
         accountId: '',
         assignedUserId: '',
         productInterest: [],
@@ -232,6 +236,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       status: isEdit && data.status === normalizeCrmStatus(statusVersion.current?.status) ? undefined : data.status || 'Inquiry',
       ...(isEdit && data.status !== normalizeCrmStatus(statusVersion.current?.status) ? { expectedUpdatedAt: statusVersion.current?.updatedAt } : {}),
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
+      sourceDetail: data.source === 'Others' ? data.sourceDetail?.trim() ?? '' : '',
       assignedUserId: selfAssigned ? recordAccess.policy?.userId : data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
       address: data.address?.trim() ?? '',
@@ -351,10 +356,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>}
             </FieldWrap>
-            <FieldWrap fieldKey="productInterestIds" label="Product Interest" beforeLabel={<ProductCategoryValue values={selectedProducts} products={[...productRecords, ...(initialData?.productInterestRecords ?? []).filter(product => !productRecords.some(current => current.id === product.id))]} />}>
-<ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
-{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
-</FieldWrap>
+            <ProductInterestField fieldKey="productInterestIds" label="Product Interest" error={productError || errors.productInterest?.message}>
+              <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
+            </ProductInterestField>
           </div>
           <CustomFieldGroup form={customFields} group="Status & Interest" />
         </div>
@@ -386,6 +390,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
+              {watch('source') === 'Others' && <div className="mt-3"><label className="block text-sm font-medium" htmlFor={`${fieldId}-source-detail`}>Source detail</label><input id={`${fieldId}-source-detail`} {...register('sourceDetail')} maxLength={200} list={`${fieldId}-source-options`} className={selectCls} placeholder="Call, SMS, event, or another source" /><datalist id={`${fieldId}-source-options`}><option value="Call" /><option value="SMS" /></datalist><p className="mt-1 text-xs text-muted-foreground">Calls and SMS are entered by staff after receiving the inquiry.</p></div>}
             </FieldWrap>
             <FieldWrap fieldKey="assignedUserId" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message} label="Assigned Agent">
               {selfAssigned ? <Input id={`${fieldId}-assignedUserId`} value={currentAgentName} readOnly className={selectCls} /> : (
@@ -471,12 +476,12 @@ function SectionHeader({ title }: { num?: number; title: string }): React.ReactE
   );
 }
 
-function FieldWrap({ label, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, fieldKey, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
-    <div className="space-y-1.5">
+    <div className={`min-w-0 space-y-1.5 ${fieldKey === 'status' ? 'sm:col-span-2' : ''}`}>
       {beforeLabel}
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
