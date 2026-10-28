@@ -3,6 +3,7 @@ import React from 'react';
 import { Search, X, User, Briefcase } from 'lucide-react';
 import { TrelloFilter, FilterOption } from '@/shared/components/trello-filter';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
+import { Input } from '@/shared/components/ui/input';
 
 interface FilterProps {
   searchTerm: string;
@@ -87,12 +88,12 @@ export function ClientFilters({
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
               <Search size={14} />
             </div>
-            <input
+            <Input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search leads by name, email, company..."
-              className="w-full h-9 pl-9 pr-8 text-xs font-medium text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md shadow-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              className="w-full h-9 pl-9 pr-8 text-xs font-medium border rounded-md shadow-xs transition-all"
             />
             {searchTerm && (
               <button

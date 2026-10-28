@@ -12,6 +12,7 @@ import { leadsService } from '@/features/tenant/crm/leads/services/leads.service
 import { accountsService } from '@/features/tenant/crm/accounts/services/accounts.service';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import type { Organization, Contact, User, Pipeline, Stage, Lead } from '@/store/types';
+import { Input } from '@/shared/components/ui/input';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -497,7 +498,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       ) : (
         <div className="relative w-full flex items-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-          <input
+          <Input
             id={props.id}
             ref={inputRef}
             type="text"
@@ -510,7 +511,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
             aria-required={props['aria-required']}
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
-            className="w-full pl-9 pr-10 bg-white dark:bg-slate-900 border-2 border-[var(--primary)] rounded-lg py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none shadow-sm transition-all"
+            className="w-full pl-9 pr-10 border-2 rounded-lg py-2 text-sm shadow-sm transition-all"
             value={searchTerm}
             onChange={(e) => { requestVersion.current++; setRemoteOptions([]); setSearchTerm(e.target.value); }}
             onKeyDown={handleSearchKeyDown}

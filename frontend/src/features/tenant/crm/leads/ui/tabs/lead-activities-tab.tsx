@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle } from 'lucide-react';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
+import { Input } from '@/shared/components/ui/input';
 
 interface TimelineEvent {
   id: string;
@@ -70,13 +71,13 @@ export function LeadActivitiesTab({
           </div>
         </div>
         <div className="flex gap-2">
-          <input
+          <Input
             type="text"
             required
             placeholder={`e.g. Discussed customer requirements during outbound ${logType.toLowerCase()}...`}
             value={logNotes}
             onChange={e => onSetLogNotes(e.target.value)}
-            className="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+            className="flex-1 border rounded-lg px-3 py-1.5 text-xs"
           />
           <button
             type="submit"

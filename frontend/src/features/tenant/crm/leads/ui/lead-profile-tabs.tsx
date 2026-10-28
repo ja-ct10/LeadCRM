@@ -19,6 +19,7 @@ import { CustomerJourneyTimeline } from './customer-journey-timeline';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { toast } from '@/shared/utils/toast';
 import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForLead } from '@/lib/utils';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 interface Props {
   selectedLead: Lead;
@@ -502,22 +503,22 @@ export const ClientProfileTabs = ({
             <div className="space-y-4 text-left animate-in fade-in duration-100">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">General Client Notes (Visually Shared)</label>
-                <textarea 
+                <Textarea
                   rows={4} 
                   value={leadNotes} 
                   onChange={e => setLeadNotes(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-xl p-3 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:focus:border-white/10 transition-all"
+                  className="w-full border rounded-xl p-3 text-xs transition-all"
                   placeholder="Notes shown on main screens..."
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Internal Private Records (Audit-Locked)</label>
-                <textarea 
+                <Textarea
                   rows={4} 
                   value={internalNotes} 
                   onChange={e => setInternalNotes(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-xl p-3 text-xs text-amber-600 dark:text-amber-400 focus:outline-none focus:border-gray-300 dark:focus:border-white/10 transition-all font-mono"
+                  className="w-full border rounded-xl p-3 text-xs text-amber-600 dark:text-amber-400 transition-all font-mono"
                   placeholder="Insert confidential credit evaluation or internal warnings here..."
                 />
               </div>

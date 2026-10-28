@@ -1,5 +1,6 @@
 'use client';
 import { WORKFLOW_ASSIGNMENT_METHODS, type WorkflowAssignmentTarget, type WorkflowAvailability } from '@leadcrm/shared';
+import { Input } from '@/shared/components/ui/input';
 
 type Pool = Extract<WorkflowAssignmentTarget, { type: 'role' | 'group' }>;
 export const defaultAvailability = (): WorkflowAvailability => ({ timeZone: 'Asia/Manila', schedule: { days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' }, members: [] });
@@ -11,8 +12,8 @@ function ScheduleFields({ value, onChange, label, className }: { value: Workflow
       <input type="checkbox" aria-label={`${label} ${name}`} checked={value.days.includes(day)} onChange={event => onChange({ ...value, days: event.target.checked ? [...value.days, day].sort() : value.days.filter(value => value !== day) })} />{name}
     </label>)}</div>
     <div className="grid min-w-0 grid-cols-2 gap-2">
-      <label className="min-w-0 space-y-1">Start<input type="time" aria-label={`${label} start`} className={className} value={value.start} onChange={event => onChange({ ...value, start: event.target.value })} /></label>
-      <label className="min-w-0 space-y-1">End<input type="time" aria-label={`${label} end`} className={className} value={value.end} onChange={event => onChange({ ...value, end: event.target.value })} /></label>
+      <label className="min-w-0 space-y-1">Start<Input type="time" aria-label={`${label} start`} className={className} value={value.start} onChange={event => onChange({ ...value, start: event.target.value })} /></label>
+      <label className="min-w-0 space-y-1">End<Input type="time" aria-label={`${label} end`} className={className} value={value.end} onChange={event => onChange({ ...value, end: event.target.value })} /></label>
     </div>
   </fieldset>;
 }
@@ -33,13 +34,13 @@ export function WorkflowAssignmentSettings({ target, members, entity, task, clas
     {target.capacity && <p className="text-xs text-[var(--muted-foreground)]">Workload counts {workload} across the workspace. Archived work is excluded.</p>}
     <label className="flex items-start gap-2"><input type="checkbox" aria-label="Use availability schedule" checked={!!target.availability} onChange={event => onChange({ ...target, availability: event.target.checked ? defaultAvailability() : undefined })} />Only assign during configured availability</label>
     {target.availability && <div className="space-y-3 rounded-lg border border-[var(--border)] p-3">
-      <label className="block space-y-1">Timezone<input aria-label="Assignment timezone" className={className} value={target.availability.timeZone} list="workflow-assignment-timezones" onChange={event => changeAvailability({ ...target.availability!, timeZone: event.target.value })} placeholder="Asia/Manila" /></label>
+      <label className="block space-y-1">Timezone<Input aria-label="Assignment timezone" className={className} value={target.availability.timeZone} list="workflow-assignment-timezones" onChange={event => changeAvailability({ ...target.availability!, timeZone: event.target.value })} placeholder="Asia/Manila" /></label>
       <datalist id="workflow-assignment-timezones">{['Asia/Manila', 'UTC', 'Asia/Singapore', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Australia/Sydney'].map(zone => <option key={zone} value={zone} />)}</datalist>
       <ScheduleFields label="Default shift" className={className} value={target.availability.schedule} onChange={schedule => changeAvailability({ ...target.availability!, schedule })} />
       <p className="text-xs text-[var(--muted-foreground)]">Members inherit this shift. Override a shift or mark a member unavailable below. Shifts use the timezone above, including daylight saving changes.</p>
     </div>}
     <label className="flex items-start gap-2"><input type="checkbox" aria-label="Enforce capacity limit" checked={!!target.capacity} onChange={event => onChange({ ...target, capacity: event.target.checked ? { maxPerMember: 20, members: [] } : undefined })} />Enforce a workload limit</label>
-    {target.capacity && <label className="block space-y-1">Default maximum per member<input type="number" min={1} max={10000} aria-label="Default capacity limit" className={className} value={Number.isFinite(target.capacity.maxPerMember) ? target.capacity.maxPerMember : ''} onChange={event => onChange({ ...target, capacity: { ...target.capacity!, maxPerMember: event.target.value === '' ? 0 : Number(event.target.value) } })} /></label>}
+    {target.capacity && <label className="block space-y-1">Default maximum per member<Input type="number" min={1} max={10000} aria-label="Default capacity limit" className={className} value={Number.isFinite(target.capacity.maxPerMember) ? target.capacity.maxPerMember : ''} onChange={event => onChange({ ...target, capacity: { ...target.capacity!, maxPerMember: event.target.value === '' ? 0 : Number(event.target.value) } })} /></label>}
     {(target.availability || target.capacity) && <details className="min-w-0 rounded-lg border border-[var(--border)] p-3">
       <summary className="cursor-pointer font-medium">Member settings ({members.length})</summary>
       <div className="mt-3 space-y-3">{members.map(member => {
@@ -53,7 +54,7 @@ export function WorkflowAssignmentSettings({ target, members, entity, task, clas
             <label className="flex items-center gap-2"><input type="checkbox" aria-label={`${member.name} custom shift`} checked={!!availability?.schedule} onChange={event => updateMember({ schedule: event.target.checked ? { ...target.availability!.schedule } : undefined })} />Custom shift</label>
             {availability?.schedule && <ScheduleFields label={`${member.name} shift`} className={className} value={availability.schedule} onChange={schedule => updateMember({ schedule })} />}
           </>}
-          {target.capacity && <label className="block space-y-1">Maximum workload<input type="number" min={1} max={10000} aria-label={`${member.name} capacity limit`} className={className} placeholder={`Default (${target.capacity.maxPerMember})`} value={capacity?.limit ?? ''} onChange={event => onChange({ ...target, capacity: { ...target.capacity!, members: [...target.capacity!.members.filter(row => row.userId !== member.id), ...(event.target.value === '' ? [] : [{ userId: member.id, limit: Number(event.target.value) }])] } })} /></label>}
+          {target.capacity && <label className="block space-y-1">Maximum workload<Input type="number" min={1} max={10000} aria-label={`${member.name} capacity limit`} className={className} placeholder={`Default (${target.capacity.maxPerMember})`} value={capacity?.limit ?? ''} onChange={event => onChange({ ...target, capacity: { ...target.capacity!, members: [...target.capacity!.members.filter(row => row.userId !== member.id), ...(event.target.value === '' ? [] : [{ userId: member.id, limit: Number(event.target.value) }])] } })} /></label>}
         </div>;
       })}{!members.length && <p className="text-xs">Choose a role or group with eligible members to configure overrides.</p>}</div>
     </details>}

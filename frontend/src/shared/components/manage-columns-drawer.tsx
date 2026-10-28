@@ -29,6 +29,7 @@ import { useConfiguredColumnDefinitions } from '@/shared/hooks/use-field-layout'
 import { reconcileTableColumns, PERSON_NAME_COLUMN_GROUPS } from '@leadcrm/shared';
 import { matchesSearch } from '@/shared/utils/search';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
+import { Input } from '@/shared/components/ui/input';
 
 // ─────────────────────────────────────────────────────
 // SHARED MANAGE COLUMNS DRAWER
@@ -358,7 +359,7 @@ export function ManageColumnsDrawer({
         <div className="shrink-0 border-b border-slate-100 px-4 py-4 sm:px-6 dark:border-white/5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

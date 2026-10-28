@@ -9,6 +9,7 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { matchesSearch } from '@/shared/utils/search';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { Input } from '@/shared/components/ui/input';
 
 export interface FilterGroup {
   id: string;
@@ -120,13 +121,13 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                 {/* Filter search */}
                 <div className="px-3 py-2">
                   <div className="relative">
-                    <input
+                    <Input
                       type="text"
                       value={filterSearchTerm}
                       onChange={(e) => onFilterSearch?.(e.target.value)}
                       placeholder="Search filters"
                       aria-label="Search filters"
-                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border transition-all"
                     />
                     <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
                   </div>
@@ -186,13 +187,13 @@ export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters
                 {/* Filter search */}
                 <div className="px-3 py-2">
                   <div className="relative">
-                    <input
+                    <Input
                       type="text"
                       value={filterSearchTerm}
                       onChange={(e) => onFilterSearch?.(e.target.value)}
                       placeholder="Search filters"
                       aria-label="Search filters"
-                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border transition-all"
                     />
                     <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
                   </div>

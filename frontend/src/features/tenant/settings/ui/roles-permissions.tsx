@@ -1,11 +1,15 @@
 'use client';
 import { RoleDeletionDialog } from '@/features/tenant/administration/roles/ui/role-deletion-dialog';
+import { RoleDetailDrawer } from '@/features/tenant/administration/roles/ui/role-detail-drawer';
+import { rolesService } from '@/features/tenant/administration/roles/services/roles.service';
+import type { RoleDetail } from '@/store/types/roles.types';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2, Check, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -246,18 +250,18 @@ function RoleEditor({ role, allPerms, onSave, onCancel }: RoleEditorProps): Reac
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 min-w-0">
             <label htmlFor="role-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role Name <span className="text-red-500">*</span></label>
-            <input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined} maxLength={50} type="text" value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus
+            <Input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined} maxLength={50} type="text" value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus
               disabled={isSystemRole || saving}
               className={cn(
-                "w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm",
-                isSystemRole && "bg-slate-50 dark:bg-slate-800/50 text-slate-500 cursor-not-allowed"
+                "w-full px-4 py-2.5 border rounded-xl text-sm transition-all shadow-sm",
+                isSystemRole && "cursor-not-allowed"
               )} />
             {nameError && <p id="role-name-error" role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>}
           </div>
           <div className="flex-1 min-w-0">
             <label htmlFor="role-description" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description <span className="font-normal text-slate-400">— Optional</span></label>
-            <input id="role-description" maxLength={200} disabled={isSystemRole || saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
-              className="w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm" />
+            <Input id="role-description" maxLength={200} disabled={isSystemRole || saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
+              className="w-full px-4 py-2.5 border rounded-xl text-sm transition-all shadow-sm" />
           </div>
         </div>
         
@@ -310,13 +314,18 @@ interface RolesPermissionsProps {
 }
 
 export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps): React.ReactElement {
-  const { tenant, userCan } = useAuth();
+  const { tenant, user, userCan } = useAuth();
   const { roles, permissions, rolesLoading, rolesError, refreshRoles, addRole, updateRole, deleteRole } = useData();
 
   // view state
   const [view, setView] = useState<'list' | 'edit' | 'new'>('list');
   const [selectedRole, setSelectedRole] = useState<RoleDefinition | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [detailRole, setDetailRole] = useState<RoleDetail | null>(null);
+  const loadedDetailScope = useRef('');
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const detailRequest = useRef<string | null>(null);
+  const detailVersion = useRef(0);
   
   // dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -326,6 +335,8 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   const canEdit = userCan('roles', 'canEdit');
   const canArchive = userCan('roles', 'canArchive');
   const canManage = canCreate || canEdit || canArchive;
+  const detailScope = `${tenant?.id}:${user?.id}:${canView}`;
+  const currentDetailScope = useRef(detailScope); currentDetailScope.current = detailScope;
 
   const visibleRoles = useMemo(
     () => roles.filter((r) => !r.isArchived),
@@ -334,8 +345,39 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
 
   const notify = (isActive: boolean) => onViewActiveChange?.(isActive);
 
+  const closeDetail = () => {
+    detailVersion.current++;
+    detailRequest.current = null;
+    loadedDetailScope.current = '';
+    setDetailRole(null);
+    setDetailLoadingId(null);
+  };
+
+  const openDetail = async (role: RoleDefinition) => {
+    if (!canView || role.isArchived || detailRequest.current === role.id || detailRole?.id === role.id) return;
+    const version = ++detailVersion.current;
+    const scope = detailScope;
+    const current = () => detailVersion.current === version && currentDetailScope.current === scope;
+    detailRequest.current = role.id;
+    setDetailRole(null); setDetailLoadingId(role.id); setOpenDropdownId(null);
+    try {
+      const detail = await rolesService.getById(role.id);
+      if (current()) { loadedDetailScope.current = scope; setDetailRole(detail); }
+    } catch (error) {
+      if (current()) toast.error(error instanceof Error ? error.message : 'Unable to load role details.');
+    } finally {
+      if (current()) { detailRequest.current = null; setDetailLoadingId(null); }
+    }
+  };
+
+  useEffect(() => {
+    closeDetail();
+    return () => { detailVersion.current++; detailRequest.current = null; };
+  }, [detailScope]);
+
   const openEdit = (role: RoleDefinition) => {
     if (role.isSystemRole || !canEdit) return;
+    closeDetail();
     setSelectedRole(role);
     setView('edit');
     notify(true);
@@ -344,6 +386,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
 
   const openNew = () => {
     if (!canCreate) return;
+    closeDetail();
     setSelectedRole(null);
     setView('new');
     notify(true);
@@ -381,6 +424,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
     if (!canView || !canArchive) throw new Error('You do not have permission to delete roles.');
     try {
       await deleteRole(id); toast.success('Role deleted.'); setDeleteConfirmId(null);
+      if (detailRole?.id === id || detailLoadingId === id) closeDetail();
       if (view === 'edit' && selectedRole?.id === id) goList();
     } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to delete role.'); }
   };
@@ -483,7 +527,12 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                       <Shield size={18} strokeWidth={2.5} />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold text-slate-900 dark:text-white truncate">{role.name}</h3>
+                      <h3 className="flex min-w-0 items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+                        <button type="button" aria-label={`View ${role.name}`} disabled={detailLoadingId === role.id}
+                          onClick={() => void openDetail(role)} className="min-w-0 truncate text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring">{role.name}</button>
+                        <UnreadRecordDot entityType="RoleDefinition" entityId={role.id} />
+                      </h3>
+                      {detailLoadingId === role.id && <span role="status" className="text-xs text-muted-foreground">Loading role details…</span>}
                       <div className="mt-0.5">
                         <span className={cn(
                           "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider",
@@ -514,6 +563,9 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-48" aria-label={`Actions for ${role.name}`}>
+                        <DropdownMenuItem disabled={detailLoadingId === role.id} onSelect={() => void openDetail(role)}>
+                          <Eye size={14} className="text-slate-400" /> View Details
+                        </DropdownMenuItem>
                         <DropdownMenuItem disabled={role.isSystemRole || !canEdit} onSelect={() => openEdit(role)}>
                           <Edit2 size={14} className="text-slate-400" /> Edit Permissions
                         </DropdownMenuItem>
@@ -556,6 +608,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         </>}
       </div>
 
+      {detailRole && loadedDetailScope.current === detailScope && <RoleDetailDrawer role={detailRole} isOpen onClose={closeDetail} />}
       <RoleDeletionDialog
         role={visibleRoles.find(role => role.id === deleteConfirmId) ?? null}
         canDelete={canView && canArchive}

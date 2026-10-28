@@ -21,6 +21,8 @@ import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { toast } from '@/shared/utils/toast';
 import { matchesSearch } from '@/shared/utils/search';
 import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 const endpoint = '/administration/closing-requirements';
 type LayoutResponse = { layout: FieldLayout; fields: CrmFieldCatalogEntry[] };
@@ -95,12 +97,12 @@ function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: Closing
         {moduleError && <p id={moduleErrorId} role="alert" className="text-sm text-destructive">{moduleError}</p>}
       </div>
       <div className="space-y-1">
-        <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><input ref={nameInput} aria-label="Display label" autoFocus={!!field} required maxLength={100} aria-invalid={nameError ? true : undefined} aria-describedby={nameError ? nameErrorId : undefined} className={panelInputClass} value={form.name} onChange={event => { update('name', event.target.value); if (nameError) setNameError(''); }} /></label>
+        <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><Input placeholder="Enter field label..." ref={nameInput} aria-label="Display label" autoFocus={!!field} required maxLength={100} aria-invalid={nameError ? true : undefined} aria-describedby={nameError ? nameErrorId : undefined} className={panelInputClass} value={form.name} onChange={event => { update('name', event.target.value); if (nameError) setNameError(''); }} /></label>
         {nameError && <p id={nameErrorId} role="alert" className="text-sm text-destructive">{nameError}</p>}
       </div>
       <label className={`block space-y-1 ${responsiveTypography.control}`}>Type<select disabled={!!field} className={panelInputClass} value={form.type} onChange={event => update('type', event.target.value as FieldDraft['type'])}>{CLOSING_FIELD_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
       <div className="space-y-1">
-        <label className={`block space-y-1 ${responsiveTypography.control}`}>Technical Variable Key<input readOnly className={panelInputClass} value={technicalKey} aria-describedby={technicalKeyNoteId} /></label>
+        <label className={`block space-y-1 ${responsiveTypography.control}`}>Technical Variable Key<Input readOnly className={panelInputClass} value={technicalKey} aria-describedby={technicalKeyNoteId} /></label>
         <p id={technicalKeyNoteId} className="text-xs text-muted-foreground">Technical variable key is generated automatically and cannot be changed after creation.</p>
       </div>
       <div className="space-y-2">
@@ -114,7 +116,7 @@ function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: Closing
         {addingGroup && <div className="space-y-2">
           <label htmlFor={newGroupNameId} className={`block ${responsiveTypography.control}`}>Add a new group name</label>
           <div className="flex flex-wrap items-center gap-2">
-            <input id={newGroupNameId} placeholder="New group name" maxLength={100} value={groupName} disabled={busy} className={panelInputClass + ' w-auto flex-1 basis-24'} onChange={event => setGroupName(event.target.value)} />
+            <Input id={newGroupNameId} placeholder="New group name" maxLength={100} value={groupName} disabled={busy} className={panelInputClass + ' w-auto flex-1 basis-24'} onChange={event => setGroupName(event.target.value)} />
             <Button type="button" size="icon" className="h-[42px] w-[42px] shrink-0" aria-label="Add group" disabled={busy || !groupName.trim()} onClick={() => void addGroup()}><Plus aria-hidden="true" /></Button>
             <Button type="button" variant="ghost" className="h-[42px] w-[42px] shrink-0 px-0 sm:h-9 sm:w-auto sm:px-4" aria-label="Cancel" title="Cancel" disabled={busy} onClick={() => { setAddingGroup(false); setGroupName(''); }}><Trash2 aria-hidden="true" className="text-destructive sm:hidden" /><span className="hidden sm:inline">Cancel</span></Button>
           </div>
@@ -125,8 +127,8 @@ function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: Closing
       <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Show in Details<input type="checkbox" checked={form.visibleInDetails} onChange={event => update('visibleInDetails', event.target.checked)} /></label>
       {form.module && isClosedWonField({ ...form, module: form.module }) && <p className="text-xs text-muted-foreground">Required closing evidence stays enforced in the closing dialog regardless of Details visibility.</p>}
       {field && <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Enabled<input type="checkbox" disabled={!canDisable} checked={form.active} onChange={event => update('active', event.target.checked)} /></label>}
-      <label className={`block space-y-1 ${responsiveTypography.control}`}>Description<textarea maxLength={1000} className={panelInputClass} rows={3} value={form.description} onChange={event => update('description', event.target.value)} /></label>
-      {form.type === 'Dropdown' && <label className={`block space-y-1 ${responsiveTypography.control}`}>Options, one per line<textarea className={panelInputClass} rows={5} value={form.options.join('\n')} onChange={event => update('options', event.target.value.split('\n'))} /></label>}
+      <label className={`block space-y-1 ${responsiveTypography.control}`}>Description<Textarea placeholder="Describe this field..." maxLength={1000} className={panelInputClass} rows={3} value={form.description} onChange={event => update('description', event.target.value)} /></label>
+      {form.type === 'Dropdown' && <label className={`block space-y-1 ${responsiveTypography.control}`}>Options, one per line<Textarea placeholder="Enter one option per line..." className={panelInputClass} rows={5} value={form.options.join('\n')} onChange={event => update('options', event.target.value.split('\n'))} /></label>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div><div className={panelFooterClass + ' justify-end'}><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !!form.module && !moduleReady}>{busy ? 'Saving…' : 'Save field'}</Button></div>
   </form>;
@@ -136,7 +138,7 @@ function NativeFieldForm({ field, layout, onSaved, onClose }: { field: CrmFieldC
   const fixedGroup = field.module === 'leads' || field.module === 'contacts';
   const [label, setLabel] = useState(field.label), [groupId, setGroupId] = useState(field.groupId), [visibleInForm, setVisibleInForm] = useState(field.visibleInForm), [visibleInDetails, setVisibleInDetails] = useState(field.visibleInDetails), [busy, setBusy] = useState(false), [error, setError] = useState('');
   return <form className="space-y-5 p-5" onSubmit={async event => { event.preventDefault(); if (busy) return; setBusy(true); setError(''); try { await apiClient.patch(`${endpoint}/layout/${field.module}`, { action: 'field', technicalKey: field.technicalKey, label, groupId, visibleInForm, visibleInDetails, expectedRevision: layout.revision ?? 0 }); onSaved(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to save field.'); } finally { setBusy(false); } }}>
-    <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><input aria-label="Display label" required maxLength={100} className={panelInputClass} value={label} onChange={event => setLabel(event.target.value)} /></label><p className="text-xs text-muted-foreground">System · {field.type} · {field.technicalKey}</p>
+    <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><Input placeholder="Enter field label..." aria-label="Display label" required maxLength={100} className={panelInputClass} value={label} onChange={event => setLabel(event.target.value)} /></label><p className="text-xs text-muted-foreground">System · {field.type} · {field.technicalKey}</p>
     <label className={`block space-y-1 ${responsiveTypography.control}`}>Group<select disabled={fixedGroup || busy} className={panelInputClass} value={groupId} onChange={event => setGroupId(event.target.value)}>{layout.groups.filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</select></label>
     {fixedGroup && <p className="text-xs text-muted-foreground">This system field uses a fixed section. Custom fields can move between sections.</p>}
     <label className="flex min-h-10 items-center justify-between">Show in Forms<input type="checkbox" disabled={field.mandatory} checked={visibleInForm} onChange={event => setVisibleInForm(event.target.checked)} /></label><label className="flex min-h-10 items-center justify-between">Show in Details<input type="checkbox" checked={visibleInDetails} onChange={event => setVisibleInDetails(event.target.checked)} /></label>

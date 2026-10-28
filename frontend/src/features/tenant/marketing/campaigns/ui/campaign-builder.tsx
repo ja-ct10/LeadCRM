@@ -1,5 +1,6 @@
 'use client';
 import { SMS_DEFAULT_FOOTER } from '@leadcrm/shared';
+import { cn } from '@/lib/utils';
 import { SmsFooterControl } from '@/shared/components/sms-footer-control';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
@@ -38,6 +39,8 @@ import {
 } from 'lucide-react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { campaignsApi } from '@/shared/services/campaigns.api';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input, textFieldClassName } from '@/shared/components/ui/input';
 
 type CampaignType = 'Email' | 'SMS' | 'Multi-Channel';
 type SaveIntent = 'draft' | 'send' | 'schedule';
@@ -379,7 +382,7 @@ export function CampaignBuilder({
   }
   const handleSaveDraft = () => save('draft');
 
-  const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200';
+  const inputCls = cn(textFieldClassName, "w-full h-9 rounded-md border px-3 text-sm transition-all duration-200");
 
   const preview = (
         <div id="campaign-live-preview" className="w-full min-w-0 min-h-0 flex-1 lg:flex-none lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
@@ -507,7 +510,7 @@ export function CampaignBuilder({
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Campaign Details</h3>
             <div>
               <label htmlFor="builder-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Campaign Name <span className="text-red-500">*</span></label>
-              <input id="builder-name" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className={`${inputCls} placeholder:text-slate-400`} placeholder="e.g. Q3 Newsletter" />
+              <Input id="builder-name" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className={`${inputCls} `} placeholder="e.g. Q3 Newsletter" />
               <FieldError message={errors.name} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -572,12 +575,12 @@ export function CampaignBuilder({
                 {campaignType === 'Email' && (
                   <div className="mb-3">
                     <label htmlFor="builder-subject" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject Line <span className="text-red-500">*</span></label>
-                    <input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors" placeholder="e.g. Welcome to LeadCRM, {{firstName}}!" />
+                    <Input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border px-3 text-sm transition-colors" placeholder="e.g. Welcome to LeadCRM, {{firstName}}!" />
                     <FieldError message={errors.subject} />
                   </div>
                 )}
                 <label htmlFor="builder-body" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Body <span className="text-red-500">*</span></label>
-                <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{firstName}}, ...' : 'Hi {{firstName}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
+                <Textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border px-4 py-3 text-sm transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{firstName}}, ...' : 'Hi {{firstName}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
                 {campaignType === 'SMS' && <SmsFooterControl value={messageContent} onChange={setMessageContent} />}
                 {campaignType === 'SMS' && (

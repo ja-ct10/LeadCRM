@@ -56,7 +56,7 @@ export function ManageProductCategories({ open, onOpenChange, categories, pendin
             {categories.map(category => <div key={category} className="flex items-start gap-2 rounded-xl border border-border p-3 sm:p-4">
               <div className="min-w-0 flex-1 pt-2">
                 {editing === category ? <form noValidate className="space-y-2" onSubmit={event => { event.preventDefault(); if (!busy) void save('rename'); }}>
-                  <Input autoFocus aria-label={`Category name: ${category}`} required maxLength={200} className={panelInputClass} value={label} disabled={busy} onChange={event => { setLabel(event.target.value); setError(''); }} />
+                  <Input placeholder="Enter category name..." autoFocus aria-label={`Category name: ${category}`} required maxLength={200} className={panelInputClass} value={label} disabled={busy} onChange={event => { setLabel(event.target.value); setError(''); }} />
                   <div className="flex gap-2"><Button size="sm" disabled={busy || !label.trim()}>Save</Button><Button size="sm" type="button" variant="outline" disabled={busy} onClick={() => { setEditing(null); setError(''); }}>Cancel</Button></div>
                 </form> : <p className={`font-medium [overflow-wrap:anywhere] ${responsiveTypography.control}`}>{category}</p>}
               </div>

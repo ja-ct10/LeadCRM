@@ -61,6 +61,16 @@ vi.mock("@/shared/services/tasks.api", () => ({
   },
 }));
 import { TaskEditor } from "../ui/task-editor";
+
+it('submits literal Unicode Task notes without altering whitespace or markup-like characters', async () => {
+  const notes = `  ñ é 中文 日本語 한글 مرحبا 😊 & ' " < > ∑ ₱ e\u0301\n<tag>literal</tag>  `;
+  render(<TaskEditor task={task} onClose={vi.fn()} />);
+  editField('Notes');
+  const input = screen.getByPlaceholderText('Add task notes...');
+  fireEvent.change(input, { target: { value: notes } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.updateTask).toHaveBeenCalledWith(task.id, { description: notes, expectedUpdatedAt: task.updatedAt }));
+});
 import { manilaCurrentDate } from "../task-data";
 const task = {
   id: "task",
@@ -93,7 +103,7 @@ function enableEditing() {
   fireEvent.click(screen.getByRole('button', { name: 'Task actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
 }
-function editField(label: string) { enableEditing(); fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` })); }
+function editField(label: string) { fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` })); }
 
 it.each(['Sales Associate', 'Renamed custom role'])('creates a personal %s Task with a read-only To do field and no assignment dropdown', async role => {
   user.role = role; mocks.groupAccess = false;
@@ -173,9 +183,8 @@ it('renders saved fields, metadata, permission-filtered ID links and collapsible
   expect(within(history).queryByRole('button', { name: /^Edit/ })).toBeNull();
 });
 
-it.each(['admin', 'missing', 'null', 'readOnly', 'archived', 'permissions'] as const)('keeps %s viewers read-only without preventing viewing or collapsing cards', mode => {
-  if (['admin', 'missing', 'null'].includes(mode)) user.role = 'Client Admin';
-  mocks.detail.data = { ...task, ...(mode === 'admin' ? { createdById: 'someone-else' } : mode === 'missing' ? { createdById: undefined } : mode === 'null' ? { createdById: null } : {}), isArchived: mode === 'archived' };
+it.each(['readOnly', 'archived', 'permissions'] as const)('keeps %s viewers read-only without preventing viewing or collapsing cards', mode => {
+  mocks.detail.data = { ...task, isArchived: mode === 'archived' };
   if (mode === 'permissions') { mocks.canEdit = false; mocks.canAssign = false; mocks.deniedPermissions = ['tasks.complete', 'tasks.archive']; }
   render(<TaskEditor task={task} readOnly={mode === 'readOnly'} onClose={vi.fn()} />);
   expect(screen.getByRole('heading', { name: task.title })).toBeTruthy();
@@ -188,9 +197,25 @@ it.each(['admin', 'missing', 'null', 'readOnly', 'archived', 'permissions'] as c
   expect(mocks.updateTask).not.toHaveBeenCalled(); expect(mocks.deleteTask).not.toHaveBeenCalled();
 });
 
-it('saves one field with the captured version, adopts canonical details and keeps the panel open', async () => {
+it.each(['someone-else', null, undefined])('lets Client Admin edit another agent task with creator %s', async createdById => {
+  user.role = 'Client Admin'; mocks.groupAccess = false;
+  mocks.detail.data = { ...task, createdById, assignedUserId: 'another-agent' };
+  render(<TaskEditor task={task} onClose={vi.fn()} />);
+  editField('Notes');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Notes' }), { target: { value: 'Admin notes' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.updateTask).toHaveBeenCalledWith(task.id, { description: 'Admin notes', expectedUpdatedAt: task.updatedAt }));
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Edit Assigned Agent' })).toBeTruthy();
+  expect(mocks.detail.data?.createdById).toBe(createdById);
+});
+
+it('edits a saved field directly without opening Task actions and saves its captured version', async () => {
   const close = vi.fn(); render(<TaskEditor task={task} onClose={close} />);
+  expect(screen.getByRole('button', { name: 'Task actions' }).getAttribute('aria-expanded')).toBe('false');
+  expect(screen.getByRole('button', { name: 'Edit Title' })).toHaveProperty('disabled', false);
   editField('Title');
+  expect(screen.queryByRole('menuitem', { name: 'Edit task' })).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: /^Title/ }), { target: { value: '  Updated title  ' } });
   expect(screen.getByRole('button', { name: 'Edit Priority' })).toHaveProperty('disabled', true);
   expect(screen.getByRole('button', { name: 'Task actions' })).toHaveProperty('disabled', true);

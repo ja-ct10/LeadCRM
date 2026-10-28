@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
+import { Input } from '@/shared/components/ui/input';
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void;
@@ -123,12 +124,12 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps): React.React
       <div className="px-3 pt-3 pb-2 shrink-0">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-          <input
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search"
-            className="w-full h-8 pl-8 pr-3 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs transition-colors"
           />
         </div>
       </div>

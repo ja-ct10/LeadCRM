@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, Filter, X, ChevronDown, Check, User as UserIcon, Calendar, Activity, Tag } from 'lucide-react';
+import { Input } from '@/shared/components/ui/input';
 
 export interface FilterOption {
   id: string;
@@ -182,12 +183,12 @@ export function TrelloFilter({
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Keyword</label>
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
+                    <Input
                       type="text"
                       placeholder="Search keywords..."
                       value={searchTerm || ''}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-9 pr-8 py-2 text-sm font-medium bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-slate-900 dark:text-slate-100 placeholder-slate-400 transition-colors"
+                      className="w-full pl-9 pr-8 py-2 text-sm font-medium border rounded-xl transition-colors"
                     />
                     {searchTerm && (
                       <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white bg-slate-200 dark:bg-slate-800 rounded-full p-0.5">
@@ -256,7 +257,7 @@ export function TrelloFilter({
                         <details className="group/details" open={memberSearch.length > 0 ? true : undefined}>
                           <summary className="flex items-center justify-between w-full relative cursor-pointer list-none">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            <input 
+                            <Input
                               type="text" 
                               placeholder="Search team members..."
                               value={memberSearch}
@@ -270,7 +271,7 @@ export function TrelloFilter({
                                 }
                                 e.currentTarget.focus();
                               }}
-                              className="w-full pl-9 pr-8 py-2.5 text-sm bg-transparent border-none focus:outline-none text-slate-800 dark:text-slate-200 placeholder-slate-400 font-medium"
+                              className="w-full pl-9 pr-8 py-2.5 text-sm border-none font-medium"
                             />
                             {memberSearch ? (
                                <button 

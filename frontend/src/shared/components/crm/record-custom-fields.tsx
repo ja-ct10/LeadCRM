@@ -9,6 +9,8 @@ import { PanelSectionHeading, panelInputClass } from '@/shared/components/side-p
 import { Button } from '@/shared/components/ui/button';
 import { toast } from '@/shared/utils/toast';
 import { InlineEditRows } from './inline-edit-rows';
+import { Input } from '@/shared/components/ui/input';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 async function uploadCustomFieldFile(module: CustomFieldModule, recordId: string | undefined, file: File) {
   if (!file.size || file.size > CLOSING_FILE_MAX_BYTES) throw new Error('Choose a nonempty file no larger than 10 MB.');
@@ -70,7 +72,7 @@ export function CustomFieldControl({ field, module, value, onChange, onUpload, f
   const props = { id, name: `customFieldValues.${field.id}`, value, disabled, autoFocus: inline,
     'aria-label': inline ? field.name : undefined, 'aria-invalid': !!error, 'aria-describedby': describedBy,
     required: field.required, 'aria-required': field.required,
-    className: inline ? 'w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring' : panelInputClass + ' min-w-0 max-w-full',
+    className: inline ? 'w-full min-w-0 max-w-full rounded-md border px-2 py-1 text-xs' : panelInputClass + ' min-w-0 max-w-full',
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const next = event.target.value;
       if (field.type === 'Number' && !/^-?\d*\.?\d*$/.test(next)) return;
@@ -84,9 +86,9 @@ export function CustomFieldControl({ field, module, value, onChange, onUpload, f
   };
   const file = files.find(file => file.id === value);
   if (field.type === 'File Upload') return <div className="min-w-0 space-y-2"><input id={id} aria-label={inline ? field.name : undefined} aria-describedby={describedBy} aria-invalid={!!error} type="file" autoFocus={inline} className="block w-full min-w-0 max-w-full text-xs" disabled={disabled || uploading} accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx" onChange={event => { const selected = event.target.files?.[0]; if (selected) onUpload(selected); }} />{value && <div className="flex min-w-0 items-center gap-2 text-xs"><span className="min-w-0 [overflow-wrap:anywhere]">{file?.name ?? 'Saved file'}</span><button type="button" disabled={disabled || uploading} className="shrink-0 text-primary" onClick={() => onChange('')}>Clear</button></div>}<p className="text-xs text-muted-foreground">{uploading ? 'Uploading…' : 'Maximum 10 MB.'}</p></div>;
-  if (field.type === 'Long Text') return <textarea {...props} rows={3} maxLength={10000} />;
+  if (field.type === 'Long Text') return <Textarea placeholder={`Enter ${field.name.toLowerCase()}...`} {...props} rows={3} maxLength={10000} />;
   if (field.type === 'Dropdown') return <select {...props}><option value="">Select an option</option>{value && !field.options.includes(value) && <option value={value} disabled>{value} (previous choice)</option>}{field.options.map(option => <option key={option}>{option}</option>)}</select>;
-  return <input {...props} type={field.type === 'Date' ? 'date' : 'text'} inputMode={field.type === 'Number' ? 'decimal' : undefined} maxLength={field.type === 'Number' ? 100 : 1000} />;
+  return <Input placeholder={field.type === 'Text' ? `Enter ${field.name.toLowerCase()}...` : undefined} {...props} type={field.type === 'Date' ? 'date' : 'text'} inputMode={field.type === 'Number' ? 'decimal' : undefined} maxLength={field.type === 'Number' ? 100 : 1000} />;
 }
 
 export function CustomFieldInput({ field, form }: { field: ClosingField; form: FieldForm }) {

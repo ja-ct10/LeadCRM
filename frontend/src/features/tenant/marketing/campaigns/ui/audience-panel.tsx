@@ -13,6 +13,7 @@ import { PaginationControls } from '@/shared/components/crm/pagination-controls'
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { Button } from '@/shared/components/ui/button';
 import { transitionConditionField, transitionConditionOperator } from '@/shared/services/condition-editor';
+import { Input } from '@/shared/components/ui/input';
 
 export function FieldError({ message }: { message?: string }) {
   return message ? <p role="alert" className="mt-1 text-xs text-red-600">{message}</p> : null;
@@ -57,7 +58,7 @@ export function AudiencePanel({ onClose, onCreated, channel = 'EMAIL', initialAu
   const cls = panelInputClass + ' min-w-0 max-w-full';
   return <SideSheet isOpen onClose={onClose} width="w-full max-w-[960px]" title={initialAudience ? 'Edit Target Audience' : 'Create Target Audience'} subtitle="Choose Leads or Contacts and define typed conditions">
     <div className="flex h-full min-h-0 min-w-0 flex-col"><div className={panelBodyClass + ' min-w-0 space-y-5'}>
-      <label className={panelLabelClass}>Audience Name <span className="text-red-500" aria-hidden="true">*</span><input aria-label="Audience Name" aria-required="true" className={cls} value={name} onChange={event => setName(event.target.value)} /><FieldError message={errors.name} /></label>
+      <label className={panelLabelClass}>Audience Name <span className="text-red-500" aria-hidden="true">*</span><Input placeholder="Enter audience name..." aria-label="Audience Name" aria-required="true" className={cls} value={name} onChange={event => setName(event.target.value)} /><FieldError message={errors.name} /></label>
       <label className={panelLabelClass}>Source<select aria-label="Source" className={cls} value={source} onChange={event => { setSource(event.target.value as AudienceInput['source']); setPage(1); setPreview(null); }}>{!source && <option value="">Select a source to repair this audience</option>}<option value="LEADS">All Leads</option><option value="CONTACTS">All Contacts</option></select><FieldError message={errors.source} /></label>
       <label className={panelLabelClass}>Match conditions<select aria-label="Match conditions" className={cls} value={matchMode} onChange={event => { setMatchMode(event.target.value as 'AND' | 'OR'); setPage(1); }}><option value="AND">Match all (AND)</option><option value="OR">Match any (OR)</option></select></label>
       <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold">Conditions</span><Button type="button" disabled={conditions.length >= 20} onClick={() => setConditions(rows => [...rows, { key: nextKey.current++, field: 'status', operator: 'equals', value: '' }])}>+ Add Condition</Button></div>

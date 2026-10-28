@@ -431,7 +431,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect((await request('/notifications?isRead=false', 'GET', undefined, auth)).body.meta.total).toBe(2);
     expect((await request('/notifications?isRead=true', 'GET', undefined, auth)).body.meta.total).toBe(1);
     const summary = await notificationCounts(tenantId, viewer.id, { since: new Date(+now - 1000).toISOString() });
-    expect(summary).toMatchObject({ totalCount: 3, unreadCount: 2, unreadRecords: [{ entityType: 'User', entityId: agentId, count: 1 }], unreadByModule: { settings: 2 }, unreadBySettingsTab: { users: 1, roles: 1 }, updates: [], activeSmsUntil: null });
+    expect(summary).toMatchObject({ totalCount: 3, unreadCount: 2, unreadRecords: [{ entityType: 'RoleDefinition', entityId: adminRoleId, count: 1 }, { entityType: 'User', entityId: agentId, count: 1 }], unreadByModule: { settings: 2 }, unreadBySettingsTab: { users: 1, roles: 1 }, updates: [], activeSmsUntil: null });
     expect((await request('/notifications/' + visible[1].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=roles');
     expect((await request('/notifications/' + visible[0].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=users');
     for (const item of hidden) {
@@ -475,13 +475,14 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
       entityId: foreignUser.id, title: 'Foreign destination', createdAt } });
     const expected = { users: 4, roles: 3, profile: 1 };
     const userRecord = { entityType: 'User', entityId: agentId, count: 4 };
-    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, unreadByModule: { settings: 8 }, unreadRecords: [userRecord] });
-    expect((await request('/notifications?limit=1', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, unreadRecords: [userRecord], meta: { hasMore: true } });
+    const roleRecord = { entityType: 'RoleDefinition', entityId: adminRoleId, count: 3 };
+    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, unreadByModule: { settings: 8 }, unreadRecords: [roleRecord, userRecord] });
+    expect((await request('/notifications?limit=1', 'GET', undefined, auth)).body).toMatchObject({ unreadBySettingsTab: expected, unreadRecords: [roleRecord, userRecord], meta: { hasMore: true } });
     // GETs and resolving a Settings destination do not consume unread state.
     await request('/notifications/' + team[0].id + '/destination', 'GET', undefined, auth);
     expect((await notificationCounts(tenantId, viewer.id)).unreadBySettingsTab).toEqual(expected);
     expect((await request('/notifications/' + team[0].id + '/read', 'PATCH', undefined, auth)).body).toMatchObject({
-      unreadBySettingsTab: { users: 3, roles: 3, profile: 1 }, unreadRecords: [{ ...userRecord, count: 3 }],
+      unreadBySettingsTab: { users: 3, roles: 3, profile: 1 }, unreadRecords: [roleRecord, { ...userRecord, count: 3 }],
     });
     await prisma.notification.create({ data: { tenantId, userId: viewer.id, type: 'user_status_changed', entityType: 'User', entityId: otherId, title: 'Another user' } });
     expect((await notificationCounts(tenantId, viewer.id)).unreadRecords).toEqual(expect.arrayContaining([
@@ -501,6 +502,39 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await prisma.userRole.deleteMany({ where: { tenantId, userId: viewer.id } });
     await prisma.notification.create({ data: { tenantId, userId: viewer.id, type: 'user_created', entityType: 'User', entityId: agentId, title: 'Denied destination' } });
     expect(await notificationCounts(tenantId, viewer.id)).toMatchObject({ unreadBySettingsTab: {}, unreadRecords: [] });
+  });
+
+  it('persists targeted User and Role reads across fresh HTTP requests and leaves other records and recipients unread', async () => {
+    const viewer = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Record', lastName: 'Admin',
+      role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: adminRoleId } } } });
+    const auth = (await issueAuthSession(viewer)).token;
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Unread settings role ' + randomUUID() } });
+    const records = [{ entityType: 'User', entityId: agentId }, { entityType: 'RoleDefinition', entityId: role.id }] as const;
+    for (const record of records) {
+      const type = record.entityType === 'User' ? 'user_status_changed' : 'role_permissions_changed';
+      const unrelated = { entityType: record.entityType, entityId: record.entityType === 'User' ? otherId : adminRoleId };
+      const matching = await Promise.all(Array.from({ length: 3 }, () => prisma.notification.create({ data: {
+        tenantId, userId: viewer.id, type, title: 'Selected record', ...record,
+      } })));
+      const otherRecord = await prisma.notification.create({ data: { tenantId, userId: viewer.id, type, title: 'Unrelated record', ...unrelated } });
+      const otherRecipient = await prisma.notification.create({ data: { tenantId, userId: adminId, type, title: 'Other recipient', ...record } });
+      const initial = (await request('/notifications/counts', 'GET', undefined, auth)).body;
+      expect(initial.unreadRecords).toContainEqual({ ...record, count: 3 });
+      const result = await request('/notifications/read-all', 'PATCH', { record }, auth);
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ success: true, readRecord: record, unreadCount: initial.unreadCount - 3 });
+      expect(result.body.unreadRecords).not.toContainEqual(expect.objectContaining(record));
+      const persisted = await prisma.notification.findMany({ where: { id: { in: matching.map(row => row.id) } } });
+      expect(persisted.every(row => row.isRead && row.readAt !== null)).toBe(true);
+      const fresh = (await request('/notifications/counts', 'GET', undefined, auth)).body;
+      expect(fresh.unreadRecords).not.toContainEqual(expect.objectContaining(record));
+      expect(fresh.unreadRecords).toContainEqual({ ...unrelated, count: 1 });
+      await request('/notifications/read-all', 'PATCH', { record }, auth);
+      expect(await prisma.notification.findMany({ where: { id: { in: matching.map(row => row.id) } } })).toEqual(persisted);
+      for (const row of [otherRecord, otherRecipient]) expect((await prisma.notification.findUniqueOrThrow({ where: { id: row.id } })).isRead).toBe(false);
+      expect((await request('/notifications/read-all', 'PATCH', { record: { ...record, entityId: randomUUID() } }, auth)).status).toBe(404);
+      expect((await prisma.notification.findUniqueOrThrow({ where: { id: otherRecord.id } })).isRead).toBe(false);
+    }
   });
 
   it('reads one record across feed pages, honors the open cutoff and isolates recipients and tenants', async () => {
@@ -529,10 +563,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const final = await request('/notifications/read-all', 'PATCH', { record });
     expect(final.body.unreadRecords.some((row: { entityId: string }) => row.entityId === first.id)).toBe(false);
     expect(final.body.unreadRecords).toContainEqual({ entityType: 'Deal', entityId: second.id, count: 1 });
-    for (const body of [{ record: { entityType: 'Deal' } }, { record: { entityType: 'RoleDefinition', entityId: agentId } }, { record, userId: otherId }, { record, tenantId: foreignTenant.id }]) {
+    for (const body of [{ record: { entityType: 'Deal' } }, { record: { entityType: 'Unsupported', entityId: agentId } }, { record, userId: otherId }, { record, tenantId: foreignTenant.id }]) {
       expect((await request('/notifications/read-all', 'PATCH', body)).status).toBe(400);
     }
     expect((await request('/notifications/read-all', 'PATCH', { record: { entityType: 'User', entityId: agentId } })).status).toBe(404);
+    expect((await request('/notifications/read-all', 'PATCH', { record: { entityType: 'RoleDefinition', entityId: adminRoleId } })).status).toBe(404);
     expect((await request('/notifications/read-all', 'PATCH', { record: { entityType: 'Deal', entityId: randomUUID() } })).status).toBe(404);
     const deniedToken = (await issueAuthSession(await prisma.user.findUniqueOrThrow({ where: { id: deniedId } }))).token;
     expect((await request('/notifications/read-all', 'PATCH', { record }, deniedToken)).status).toBe(404);

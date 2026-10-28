@@ -50,7 +50,8 @@ function openRowAction(name: 'Edit' | 'View') {
   return within(screen.getByRole('dialog'));
 }
 
-it('opens list-menu Edit in edit mode and updates the existing task and list', async () => {
+it('opens Client Admin list-menu Edit on another agent task and updates the existing task and list', async () => {
+  fixture.task.createdById = 'other-creator'; fixture.task.assignedUserId = 'other-agent';
   render(<TaskBoard />);
   const panel = openRowAction('Edit');
   fireEvent.click(panel.getByRole('button', { name: 'Edit Title' }));
@@ -65,13 +66,11 @@ it('opens list-menu Edit in edit mode and updates the existing task and list', a
   expect(screen.getByRole('button', { name: 'Updated from the list' })).toBeTruthy();
 });
 
-it('keeps View read-only, then enables Edit when reopened from the list', () => {
+it('allows direct inline editing from View and preserves cancellation', () => {
   render(<TaskBoard />);
-  let panel = openRowAction('View');
-  expect(panel.queryByRole('button', { name: 'Edit Title' })).toBeNull();
+  const panel = openRowAction('View');
+  expect(panel.getByRole('button', { name: 'Edit Title' })).toHaveProperty('disabled', false);
   expect(panel.queryByRole('textbox')).toBeNull();
-  fireEvent.click(panel.getByRole('button', { name: 'Close record' }));
-  panel = openRowAction('Edit');
   fireEvent.click(panel.getByRole('button', { name: 'Edit Title' }));
   fireEvent.change(panel.getByRole('textbox', { name: 'Title' }), { target: { value: 'Unsaved task' } });
   fireEvent.click(panel.getByRole('button', { name: 'Cancel' }));

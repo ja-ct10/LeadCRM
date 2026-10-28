@@ -10,7 +10,7 @@ export function taskTeamUserIds(user: TeamMember, users: readonly TeamMember[]):
 /** Managers receive only authorized team rows from the server; grants remain separate. */
 export function canManageTask(task: Pick<TaskRecord, 'createdById' | 'assignedUserId'> | undefined, user?: { id: string; role: string } | null, groupAccess = false): boolean {
   if (!task || !user) return false;
-  return user.role === 'Client Admin' ? isTaskOwner(task, user.id) : groupAccess || task.assignedUserId === user.id;
+  return user.role === 'Client Admin' || groupAccess || task.assignedUserId === user.id;
 }
 
 /** Creator ownership is separate from assignment, including for administrators. */

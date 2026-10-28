@@ -25,6 +25,8 @@ import { AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Deal } from '@/store/types';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 const associationFields = {
   associationType: z.enum(['', 'lead', 'contact']).optional(),
@@ -341,7 +343,7 @@ export function DealForm({
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 2 : 1} title="Deal Information" />
           <FieldWrap fieldKey="title" label="Title *" htmlFor={`${fieldId}-title`} error={errors.title?.message}>
-            <input
+            <Input
               {...register('title')}
               id={`${fieldId}-title`}
               aria-invalid={!!errors.title}
@@ -363,7 +365,7 @@ export function DealForm({
             <p className="font-semibold">{selectedProducts.length} {selectedProducts.length === 1 ? 'Deal' : 'Deals'} will be created</p>
             <ul className="mt-2 space-y-2">{selectedProducts.map(product => <li key={product.id} className="flex min-w-0 flex-wrap justify-between gap-2"><span className="min-w-0 [overflow-wrap:anywhere]">{product.name}</span><span>{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(product.dealValue)}</span></li>)}</ul>
             <p className="mt-2 text-xs text-muted-foreground">Each Deal keeps its own Product value. Multiple Deal titles include the Product name.</p>
-          </div> : <FieldWrap fieldKey="value" label="Value" htmlFor={`${fieldId}-value`}><input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
+          </div> : <FieldWrap fieldKey="value" label="Value" htmlFor={`${fieldId}-value`}><Input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
           </FieldWrap>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap fieldKey="priority" label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
@@ -380,7 +382,7 @@ export function DealForm({
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="expectedCloseDate" htmlFor={`${fieldId}-expectedCloseDate`} error={errors.expectedCloseDate?.message} label="Expected Close Date">
-              <input type="date" {...register('expectedCloseDate')}
+              <Input type="date" {...register('expectedCloseDate')}
                 id={`${fieldId}-expectedCloseDate`}
                 aria-invalid={!!errors.expectedCloseDate}
                 aria-describedby={errors.expectedCloseDate ? `${fieldId}-expectedCloseDate-error` : undefined} className={inputCls} />
@@ -433,7 +435,7 @@ export function DealForm({
             </div>
           }>
 
-            <textarea
+            <Textarea
               {...register('address')}
               id={`${fieldId}-address`}
               aria-invalid={!!errors.address}

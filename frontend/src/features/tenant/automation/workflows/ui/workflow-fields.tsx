@@ -14,14 +14,15 @@ import { conditionOperatorLabel, conditionOperatorValueShape, missingWorkflowCon
 import { transitionConditionField, transitionConditionOperator } from '@/shared/services/condition-editor';
 import { Button } from '@/shared/components/ui/button';
 import { ConditionFieldSelect, ConditionOperatorSelect, ConditionScalarInput } from '@/shared/components/condition-controls';
-import { Input } from '@/shared/components/ui/input';
+import { Input, textFieldClassName } from '@/shared/components/ui/input';
+import { cn } from '@/lib/utils';
 import { conditionRuleIssue, newWorkflowCondition, references, retiredActionLabels } from '../services/workflow-editor';
 import { WorkflowAssignmentFields } from './workflow-assignment-fields';
 import { WorkflowEmailOverride } from './workflow-email-override';
 import { WorkflowTaskAssociations } from './workflow-task-associations';
 import { workflowTemplateBinding, workflowTemplateDescriptor, workflowTemplateStageChoices, type WorkflowTemplateBindingPatch } from '../services/workflow-template-bindings';
-export const workflowControl =
-  'w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-sm text-[var(--text-primary)] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
+import { Textarea } from '@/shared/components/ui/textarea';
+export const workflowControl = cn(textFieldClassName, 'min-w-0 rounded-lg p-2');
 export const emptyOptions: WorkflowOptions = {
   users: [],
   pipelines: [],
@@ -116,12 +117,12 @@ function UpdateFieldFields({ action, options, entity, onChange }: {
       </div></fieldset> : <label className="block space-y-1">New value
         {field.type === 'boolean' ? <select aria-label="New value" className={workflowControl} value={String(value ?? false)} onChange={(event) => change({ value: event.target.value === 'true' })}><option value="true">Yes</option><option value="false">No</option></select>
           : choices ? <select aria-label="New value" className={workflowControl} value={String(value ?? '')} onChange={(event) => change({ value: event.target.value })}><option value="">Select {field.label.toLowerCase()}</option>{value && !choices.some(choice => choice.id === value) ? <option value={String(value)}>Unavailable selection</option> : null}{choices.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select>
-            : field.type === 'list' ? <textarea aria-label="New value" className={workflowControl} rows={4} placeholder="One value per line" value={Array.isArray(value) ? value.join('\n') : ''} onChange={(event) => change({ value: event.target.value.split('\n') })} />
-            : ['number', 'date'].includes(field.type) ? <Input aria-label="New value" className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground" type={field.type === 'number' ? 'number' : 'date'} step="any" placeholder={field.type === 'number' ? 'Enter a number...' : undefined} value={String(value ?? '')} onChange={(event) => change({ value: field.type === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value })} />
-              : <textarea aria-label="New value" className={workflowControl} rows={field.multiline ? 4 : 2} placeholder={`Enter ${field.label.toLowerCase()}...`} maxLength={field.maxLength ?? 1000} value={String(value ?? '')} onChange={(event) => change({ value: event.target.value })} />}
+            : field.type === 'list' ? <Textarea aria-label="New value" className={workflowControl} rows={4} placeholder="One value per line" value={Array.isArray(value) ? value.join('\n') : ''} onChange={(event) => change({ value: event.target.value.split('\n') })} />
+            : ['number', 'date'].includes(field.type) ? <Input aria-label="New value" type={field.type === 'number' ? 'number' : 'date'} step="any" placeholder={field.type === 'number' ? 'Enter a number...' : undefined} value={String(value ?? '')} onChange={(event) => change({ value: field.type === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value })} />
+              : <Textarea aria-label="New value" className={workflowControl} rows={field.multiline ? 4 : 2} placeholder={`Enter ${field.label.toLowerCase()}...`} maxLength={field.maxLength ?? 1000} value={String(value ?? '')} onChange={(event) => change({ value: event.target.value })} />}
       </label>}
-      {entity !== 'lead' && othersSelected && <label className="block space-y-1">Specify (optional)<Input aria-label="Specify (optional)" placeholder="Enter additional details..." className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground" maxLength={1000} value={String(action.config.otherDetails ?? '')} onChange={(event) => change({ otherDetails: event.target.value })} /><span className="block text-xs text-[var(--muted-foreground)]">Others counts as a selected interest even without additional details.</span></label>}
-      {field.type === 'stage' && <label className="block space-y-1">Lost reason (for a lost stage)<Input aria-label="Lost reason" placeholder="Enter the loss reason..." className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground" value={String(action.config.lostReason ?? '')} onChange={(event) => change({ lostReason: event.target.value })} /></label>}
+      {entity !== 'lead' && othersSelected && <label className="block space-y-1">Specify (optional)<Input aria-label="Specify (optional)" placeholder="Enter additional details..." maxLength={1000} value={String(action.config.otherDetails ?? '')} onChange={(event) => change({ otherDetails: event.target.value })} /><span className="block text-xs text-[var(--muted-foreground)]">Others counts as a selected interest even without additional details.</span></label>}
+      {field.type === 'stage' && <label className="block space-y-1">Lost reason (for a lost stage)<Input aria-label="Lost reason" placeholder="Enter the loss reason..." value={String(action.config.lostReason ?? '')} onChange={(event) => change({ lostReason: event.target.value })} /></label>}
     </div>}
   </div>;
 }
@@ -236,7 +237,7 @@ export function ConditionFields({
                       </option>
                     ))}
                   </select>
-                ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} aria-required="true" aria-invalid={!!issue} aria-describedby={issue ? issueId : undefined} disabled={!supported} className={workflowControl} rows={4} placeholder={`Enter ${field.label.toLowerCase()}...`} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
+                ) : field?.multiline ? <Textarea aria-label={`Condition ${index + 1} value`} aria-required="true" aria-invalid={!!issue} aria-describedby={issue ? issueId : undefined} disabled={!supported} className={workflowControl} rows={4} placeholder={`Enter ${field.label.toLowerCase()}...`} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
                   <ConditionScalarInput placeholder={field?.type === 'date' ? undefined : field?.type === 'number' ? 'Enter a number...' : field ? `Enter ${field.label.toLowerCase()}...` : 'Choose a field first'} aria-label={`Condition ${index + 1} value`} aria-required="true" aria-invalid={!!issue} aria-describedby={issue ? issueId : undefined} disabled={!supported} className={workflowControl} type={!field ? typeof rule.value === 'number' ? 'number' : 'text' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} maxLength={field?.maxLength ?? 1000} value={rule.value} onValueChange={value => update({ value })} />
                 )}
               </label>
@@ -350,7 +351,7 @@ export function ActionFields({
                   ))}
                 </select>
               ) : ['body', 'description', 'value', 'message'].includes(key) ? (
-                <textarea
+                <Textarea
                   aria-label={field.label}
                   placeholder={placeholder}
                   className={workflowControl}
@@ -363,7 +364,6 @@ export function ActionFields({
                 <Input
                   aria-label={field.label}
                   placeholder={placeholder}
-                  className="placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                   type={field.type === 'number' ? 'number' : 'text'}
                   min={0}
                   max={365}

@@ -19,6 +19,7 @@ import type { ApiRequestError } from '@/lib/api/client';
 import { useFocusMode } from '@/shared/lib/overlay-state';
 import { useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { Input } from '@/shared/components/ui/input';
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -490,10 +491,11 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
           <label htmlFor="compose-to" className="text-[13px] text-slate-500 dark:text-slate-400 w-8 shrink-0">
             To
           </label>
-          <input
+          <Input
             ref={toInputRef}
             id="compose-to"
             type="email"
+            placeholder="name@example.com"
             multiple
             readOnly={!!sentLink || !!initialDraft?.sourceDealId}
             value={to}
@@ -513,7 +515,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
                 setToError(null);
               }
             }}
-            className={`min-w-0 flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent focus:outline-none ${toError ? 'text-red-500 dark:text-red-400' : ''}`}
+            className="h-auto min-w-0 flex-1 py-2.5 text-[13px]"
+            aria-invalid={!!toError}
           />
         </div>
         {toError && (
@@ -525,7 +528,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
 
       {/* Subject */}
       <div className="flex items-center border-b border-gray-100 dark:border-white/[0.05] px-4 shrink-0">
-        <input
+        <Input
           id="compose-subject"
           aria-label="Subject"
           type="text"
@@ -533,7 +536,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
           value={subject}
           onChange={(e) => { authoredContent.current = true; setSubject(e.target.value); }}
           placeholder="Subject"
-          className="min-w-0 flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+          className="h-auto min-w-0 flex-1 py-2.5 text-[13px]"
         />
       </div>
 
@@ -676,12 +679,12 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
                     className="absolute bottom-24 left-3 right-3 sm:bottom-24 sm:left-auto sm:right-3 sm:w-64 mb-2 p-2 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 shadow-lg z-10"
                   >
                     <div className="flex items-center gap-2">
-                      <input
+                      <Input
                         type="url"
                         value={linkUrl}
                         onChange={(e) => setLinkUrl(e.target.value)}
                         placeholder="https://..."
-                        className="min-w-0 flex-1 h-8 px-2.5 rounded-md border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-primary"
+                        className="min-w-0 flex-1 h-8 px-2.5 rounded-md border text-xs"
                         onKeyDown={(e) => { if (e.key === 'Enter') insertLink(); }}
                         autoFocus
                       />

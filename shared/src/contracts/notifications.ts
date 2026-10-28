@@ -13,7 +13,7 @@ export interface AssignmentChangeFacts {
 
 export function assignmentName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const name = value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+  const name = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
   return name && !['undefined', 'null'].includes(name.toLowerCase()) ? name : undefined;
 }
 
@@ -61,7 +61,7 @@ export interface NotificationMutationResponse {
 }
 
 export const NotificationRecordTargetSchema = z.object({
-  entityType: z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User']),
+  entityType: z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form', 'User', 'RoleDefinition']),
   entityId: z.string().uuid(),
 }).strict();
 export type NotificationRecordTarget = z.infer<typeof NotificationRecordTargetSchema>;

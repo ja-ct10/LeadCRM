@@ -23,6 +23,8 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/shared/components/ui/tooltip';
+import { Input } from '@/shared/components/ui/input';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,13 +84,13 @@ function NoteComposer({ onSubmit, onCancel, isSubmitting }: {
 
   return (
     <div className="space-y-2">
-      <textarea
+      <Textarea
         ref={textareaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Write a note..."
         rows={3}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 resize-none dark:bg-white/[0.02]"
+        className="w-full rounded-lg border px-3 py-2 text-sm resize-none"
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -149,12 +151,12 @@ function CallComposer({ onSubmit, onCancel, isSubmitting }: {
           ))}
         </div>
       </div>
-      <textarea
+      <Textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Call notes (optional)..."
         rows={2}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 resize-none dark:bg-white/[0.02]"
+        className="w-full rounded-lg border px-3 py-2 text-sm resize-none"
         onKeyDown={(e) => {
           if (e.key === 'Escape') onCancel();
         }}
@@ -195,12 +197,12 @@ function TaskComposer({ onSubmit, onCancel, isSubmitting }: {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <input
+        <Input
           ref={inputRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Task title..."
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 dark:bg-white/[0.02]"
+          className="flex-1 rounded-lg border px-3 py-2 text-sm"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -209,11 +211,11 @@ function TaskComposer({ onSubmit, onCancel, isSubmitting }: {
             if (e.key === 'Escape') onCancel();
           }}
         />
-        <input
+        <Input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          className="w-[140px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 dark:bg-white/[0.02]"
+          className="w-[140px] rounded-lg border px-3 py-2 text-sm text-muted-foreground"
         />
       </div>
       <div className="flex items-center justify-end gap-2">

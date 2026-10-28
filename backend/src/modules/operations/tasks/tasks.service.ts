@@ -422,7 +422,7 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
   const system = authorizedWorkflowScope(tenantId);
   if (!system && before && !taskAssigneeInScope(policy, before.assignedUserId))
     throw new NotFoundError('Task');
-  if (!system && action !== 'canCreate' && !policy.taskAssignmentRestricted && (!before?.createdById || before.createdById !== userId))
+  if (!system && !policy.clientAdmin && action !== 'canCreate' && !policy.taskAssignmentRestricted && (!before?.createdById || before.createdById !== userId))
     throw new AppError(action === 'canArchive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.', 403);
   if (!system && dto.assignedUserId !== undefined && !taskAssigneeInScope(policy, dto.assignedUserId))
     throw new AppError('You cannot assign Tasks outside your authorized team.', 403);

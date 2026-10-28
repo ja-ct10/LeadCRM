@@ -1,5 +1,6 @@
 import React from 'react';
 import { Send } from 'lucide-react';
+import { Input } from '@/shared/components/ui/input';
 
 interface LeadSmsTabProps {
   smsText: string;
@@ -33,13 +34,13 @@ export function LeadSmsTab({
 
         {/* Input row */}
         <form onSubmit={onSend} className="p-3 border-t border-gray-200 dark:border-white/5 flex gap-2">
-          <input
+          <Input
             type="text"
             required
             placeholder="Type SMS texts..."
             value={smsText}
             onChange={e => onSmsTextChange(e.target.value)}
-            className="flex-1 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-full px-3.5 py-1 text-xs text-slate-900 dark:text-white"
+            className="flex-1 border rounded-full px-3.5 py-1 text-xs"
           />
           <button
             type="submit"

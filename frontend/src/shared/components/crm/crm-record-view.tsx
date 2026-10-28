@@ -47,12 +47,12 @@ import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-task
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
 import { CrmEmailSchema } from '@leadcrm/shared';
 import { DealCardMenu } from './deal-card-menu';
-import { duplicateDeal } from '@/shared/services/deals-actions.api';
 import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import { copyTextWithFeedback } from '@/shared/utils/clipboard';
 import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
+import { Textarea } from '@/shared/components/ui/textarea';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
@@ -420,7 +420,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       </TooltipTrigger></DropdownMenuTrigger><TooltipContent>Record actions</TooltipContent></Tooltip></TooltipProvider>
       <DropdownMenuContent align="end">
         {canEdit && <DropdownMenuItem onSelect={edit}><Pencil size={14} />Edit {label.toLowerCase()}</DropdownMenuItem>}
-        {module === 'deals' && canCreateDeal && !USE_MOCK_DATA && <DropdownMenuItem onSelect={() => { void duplicateDeal(id).then(next => router.push('/crm/deals/' + next.id)).catch(() => {}); }}>Duplicate deal</DropdownMenuItem>}
         {canEdit && !USE_MOCK_DATA && module === 'leads' && !record.contactId && <DropdownMenuItem onSelect={() => setConverting(true)}><UserPlus size={14} />Convert to contact</DropdownMenuItem>}
         {canArchive && <DropdownMenuItem onSelect={() => setArchiving(true)}><Archive size={14} />Archive {label.toLowerCase()}</DropdownMenuItem>}
       </DropdownMenuContent>
@@ -489,7 +488,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordTimelineTab compact focusNote={focusNote && tab === 'activity'} activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters} onRetry={() => void timeline.refetch()}
-              canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} allowCreate={module === "deals" && recordAccess.canMutate(record)} readOnly={module !== "deals"} /></RecordSection>} />
+              canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} allowCreate={module === "deals" && recordAccess.canMutate(record)} readOnly={module !== "deals" && user?.role !== 'Client Admin'} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
@@ -555,7 +554,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     <Dialog open={Boolean(lostStage)} onOpenChange={open => { if (!open && !saving) setLostStage(undefined); }}>
       <DialogContent showClose={false} aria-label="Cancel Deal" className="max-w-sm">
         <form className="space-y-3" onSubmit={e => { e.preventDefault(); if (lostStage && !saving) void changeStage(lostStage, lostReason); }}>
-          <label className="block text-sm">Reason for Cancellation<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label>
+          <label className="block text-sm">Reason for Cancellation<Textarea placeholder="Explain why this deal was cancelled..." required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border p-2" /></label>
           <div className="flex flex-wrap gap-2"><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setLostStage(undefined)}>Cancel</Button></div>
         </form>
       </DialogContent>

@@ -7,6 +7,8 @@ import { CrmEmailSchema, INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm
 import { cn } from '@/lib/utils';
 import { CatalogProductInterestSelect } from './product-interest-select';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { Input } from '@/shared/components/ui/input';
+import { Textarea } from '@/shared/components/ui/textarea';
 const displayText = (value: unknown): string => Array.isArray(value) ? value.join(', ') || '—' : String(value ?? '') || '—';
 const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
@@ -111,9 +113,9 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
                       {options?.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   ) : type === 'textarea' ? (
-                    <textarea aria-label={label} disabled={blocked} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') escapeEdit(e); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
+                    <Textarea placeholder={`Enter ${label.toLowerCase()}...`} aria-label={label} disabled={blocked} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') escapeEdit(e); }} className="w-full rounded-md border px-2 py-1 text-xs resize-none" />
                   ) : (
-                    <input aria-label={label} disabled={blocked} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? maxLength ?? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') escapeEdit(e); }} className={cn("w-full rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring", fieldError ? "border-red-500" : "border-input")} />
+                    <Input placeholder={!type || type === 'text' || type === 'email' ? type === 'email' ? 'email@example.com' : `Enter ${label.toLowerCase()}...` : undefined} aria-label={label} disabled={blocked} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? maxLength ?? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') escapeEdit(e); }} className={cn("w-full rounded-md border px-2 py-1 text-xs", fieldError ? "border-red-500" : "")} />
                   )}
                   {(fieldError || editorError) && <p role="alert" className="text-xs text-destructive [overflow-wrap:anywhere]">{fieldError || editorError}</p>}
                   <div className="flex flex-wrap justify-end gap-1">

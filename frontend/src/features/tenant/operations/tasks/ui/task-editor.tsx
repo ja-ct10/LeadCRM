@@ -15,6 +15,8 @@ import { isPastManilaTaskDueDateTime, manilaCurrentDate, manilaLocalDateTime, ma
 import { TaskSelector } from './task-selector';
 import { TaskRecordCreator } from './task-record-creator';
 import { TaskDetails } from './task-details';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 export { TaskSelector, taskInputClass } from './task-selector';
 export type TaskLinks = TaskLinkInput;
 type TaskEditorProps = { task?: TaskRecord; taskId?: string; links?: TaskLinks; initialMode?: 'view' | 'edit'; readOnly?: boolean; preserveContextLinks?: boolean; onClose: () => void };
@@ -77,7 +79,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
               {renderSection('Task Information', 1, <>
                   <label className="block space-y-1.5">
                     <span className={panelLabelClass}>Title <span className="text-red-500">*</span></span>
-                    <input
+                    <Input
                       className={panelInputClass}
                       required
                       maxLength={255}
@@ -89,7 +91,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label className="min-w-0 space-y-1.5">
                       <span className={panelLabelClass}>Status</span>
-                      <input className={panelInputClass} value="To do" readOnly tabIndex={-1} />
+                      <Input className={panelInputClass} value="To do" readOnly tabIndex={-1} />
                     </label>
                     <label className="min-w-0 space-y-1.5">
                       <span className={panelLabelClass}>Priority</span>
@@ -113,7 +115,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                     <button id={`${heading}-due`} ref={dueTrigger} type="button" className={panelInputClass + " text-left"} aria-expanded={dueDraft !== null} aria-controls={`${heading}-due-picker`} onClick={() => { if (dueDraft === null) setDueDraft(dueDate); else closeDuePicker(); }}>{dueDate.replace('T', ' ')}</button>
                     {dueDraft !== null && <ManilaDateTimePicker id={`${heading}-due-picker`} value={dueDraft} prefix="Due" label="Choose due date and time" rollPastToday onCancel={closeDuePicker} onDone={value => { setDueDate(value); closeDuePicker(); }} />}
                   </div>
-                  {selfOnly ? <label className="block space-y-1.5"><span className={panelLabelClass}>Assigned Agent</span><input className={panelInputClass} value={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()} readOnly tabIndex={-1} /></label> : <TaskSelector
+                  {selfOnly ? <label className="block space-y-1.5"><span className={panelLabelClass}>Assigned Agent</span><Input className={panelInputClass} value={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()} readOnly tabIndex={-1} /></label> : <TaskSelector
                     appearance="panel"
                     kind="user"
                     disabled={false}
@@ -132,7 +134,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
               {renderSection('Additional Information', 3, <>
                   <label className="block space-y-1.5">
                     <span className={panelLabelClass}>Notes</span>
-                    <textarea
+                    <Textarea
                       rows={5}
                       maxLength={10000}
                       placeholder="Describe the task..."

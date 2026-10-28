@@ -49,7 +49,7 @@ type Facts = { version?: number; incidentId?: string; stage?: string; status?: s
   assignedName?: string; value?: number; currency?: string; before?: unknown; after?: unknown; hasAccess?: boolean;
   securityEvent?: 'account_locked'; securityLockedAt?: string };
 const safeName = (value: unknown, fallback: string) => typeof value === 'string' && value.trim()
-  ? value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || fallback : fallback;
+  ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || fallback : fallback;
 
 async function presentation(event: NotificationEvent, facts: Facts) {
   const type = event.type as NotificationType;

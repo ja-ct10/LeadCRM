@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api/client";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { Button } from "@/shared/components/ui/button";
 import { TaskSelector, taskInputClass } from "./task-selector";
+import { Input } from '@/shared/components/ui/input';
 
 const AccountForm = dynamic(() =>
   import("@/features/tenant/crm/accounts/ui/account-form").then(
@@ -245,7 +246,7 @@ export function TaskRelatedRecordCreator({
                 {newAccount && (
                   <label className="block space-y-2 text-sm">
                     <span>New Account name</span>
-                    <input
+                    <Input placeholder="Enter account name..."
                       className={taskInputClass}
                       value={accountName}
                       maxLength={255}

@@ -31,8 +31,8 @@ function SortableStage({ stage, index, name, color, busy, canEdit, canDelete, of
       {canEdit && !official ? <Button ref={setActivatorNodeRef} {...attributes} {...listeners} variant="ghost" size="icon" disabled={busy}
         aria-label={`Drag to reorder stage: ${stage.name}`} title="Drag to reorder stage"
         className={`touch-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}><GripVertical size={16} /></Button> : <span />}
-      <input id={`stage-${stage.id}`} value={name} onChange={event => onName(event.target.value)} maxLength={100} disabled={busy || !canEdit || official}
-        className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
+      <Input placeholder="Enter stage name..." id={`stage-${stage.id}`} value={name} onChange={event => onName(event.target.value)} maxLength={100} disabled={busy || !canEdit || official}
+        className="min-h-11 w-full min-w-0 rounded-lg border px-2 text-sm" />
       {canEdit && <Button size="sm" variant="outline" className="col-start-2 row-start-2 justify-self-start sm:col-start-3 sm:row-start-1"
         disabled={busy || !name.trim() || !StageColorSchema.safeParse(color).success || name.trim() === stage.name && color === stage.color} onClick={onSave}>{busy ? 'Saving…' : 'Save Changes'}</Button>}
       {canDelete && !official && <Button variant="ghost" size="icon" className="col-start-3 row-start-1 text-destructive hover:text-destructive dark:text-destructive dark:hover:text-destructive sm:col-start-4"
@@ -42,7 +42,7 @@ function SortableStage({ stage, index, name, color, busy, canEdit, canDelete, of
       <label className="block text-xs text-muted-foreground" htmlFor={`stage-color-${stage.id}`}>Stage Color</label>
       <div className="flex min-w-0 items-center gap-2">
         <Input type="color" aria-label={`Pick color for ${stage.name}`} value={StageColorSchema.safeParse(color).success ? color : pipelineStageColor(stage)} onChange={event => onColor(event.target.value)} disabled={busy || !canEdit} className="h-10 w-12 shrink-0 cursor-pointer p-1" />
-        <Input id={`stage-color-${stage.id}`} aria-label={`Stage Color for ${stage.name}`} value={color} onChange={event => onColor(event.target.value)} maxLength={7} disabled={busy || !canEdit} aria-invalid={!StageColorSchema.safeParse(color).success} className="min-w-0 flex-1 font-mono" />
+        <Input placeholder="#64748B" id={`stage-color-${stage.id}`} aria-label={`Stage Color for ${stage.name}`} value={color} onChange={event => onColor(event.target.value)} maxLength={7} disabled={busy || !canEdit} aria-invalid={!StageColorSchema.safeParse(color).success} className="min-w-0 flex-1 font-mono" />
         <span aria-label={`Color preview for ${stage.name}`} className="h-6 w-6 shrink-0 rounded-full border border-border" style={{ backgroundColor: StageColorSchema.safeParse(color).success ? color : pipelineStageColor(stage) }} />
       </div>
       {!StageColorSchema.safeParse(color).success && <p className="text-xs text-destructive">Use # followed by six hexadecimal digits.</p>}
@@ -153,7 +153,7 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
         }}>
           <label htmlFor="new-stage-name" className="text-sm">New stage</label>
           <div className="flex min-w-0 items-center gap-2">
-            <input id="new-stage-name" maxLength={100} value={name} disabled={busy} onChange={event => setName(event.target.value)} className="min-h-11 w-full min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm" />
+            <Input placeholder="Enter stage name..." id="new-stage-name" maxLength={100} value={name} disabled={busy} onChange={event => setName(event.target.value)} className="min-h-11 w-full min-w-0 flex-1 rounded-lg border px-2 text-sm" />
             <TooltipProvider><Tooltip><TooltipTrigger asChild><Button size="icon" className="shrink-0" disabled={busy || !name.trim()} type="submit" aria-label="Add stage" title="Add stage"><Plus size={18} /></Button></TooltipTrigger><TooltipContent>Add stage</TooltipContent></Tooltip></TooltipProvider>
           </div>
         </form>}

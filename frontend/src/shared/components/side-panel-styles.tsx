@@ -1,5 +1,7 @@
 import { responsiveTypography } from '@/shared/styles/typography';
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { textFieldClassName } from './ui/input';
 
 // Presentation only: callers retain their existing dialog and form behavior.
 export const panelThemeClass =
@@ -16,8 +18,8 @@ export const panelFooterClass =
   'shrink-0 flex flex-wrap items-center gap-3 border-t border-border bg-card px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6';
 export const panelLabelClass =
   'block text-xs font-semibold text-muted-foreground';
-export const panelInputClass =
-  'min-h-[42px] w-full min-w-0 rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:[--surface:var(--muted)]';
+export const panelInputClass = cn(textFieldClassName,
+  'min-h-[42px] min-w-0 rounded-xl py-2.5 text-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:[--surface:var(--muted)]');
 export const panelSecondaryButtonClass =
   'h-[42px] rounded-xl border-border bg-secondary px-5 text-secondary-foreground hover:bg-accent';
 export const panelPrimaryButtonClass =
@@ -29,7 +31,7 @@ export const panelPrimaryActionClass = responsiveTypography.control + ' ' + pane
 export const panelSecondaryActionClass = responsiveTypography.control + ' ' + panelSecondaryButtonClass +
   ' inline-flex items-center justify-center gap-2 border font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
-export function PanelSectionHeading({ children }: { number: number; children: ReactNode }) {
+export function PanelSectionHeading({ children }: { number?: number; children: ReactNode }) {
   return (
     <h3 className="flex min-h-6 items-center gap-3 text-sm font-bold text-foreground">
       <span className="min-w-0">{children}</span>

@@ -13,6 +13,15 @@ import { campaignSampleValues } from '../campaign-variable-picker';
 const preview = { matched: 1, eligible: 1, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [{ id: 'person', name: 'Saved recipient', recordType: 'Lead', email: 'one@example.test', companyName: '', phone: null }], meta: { page: 1, limit: 25, total: 1, hasMore: false } };
 beforeEach(() => { vi.clearAllMocks(); api.fields.mockImplementation(async source => ({ data: campaignFields(source) })); api.preview.mockResolvedValue({ data: preview }); });
 afterEach(cleanup);
+it('preserves a literal Unicode audience name when submitting', async () => {
+  const name = `ñ é 中文 日本語 한글 مرحبا 😊 & ' " < > ∑ ₱ e\u0301`;
+  api.create.mockResolvedValue({ data: { id: 'saved', name } });
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} />);
+  fireEvent.change(screen.getByPlaceholderText('Enter audience name...'), { target: { value: name } });
+  await waitFor(() => expect(api.preview).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'Create Audience' }));
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ name })));
+});
 it('displays the readable option for a saved UUID rule without rewriting the rule and previews both tokens', async () => {
   const id = '2857e8ec-456d-4503-b955-46db45560974';
   const fields = campaignFields('LEADS', [{ id, technicalAlias: 'age', name: 'Age', module: 'leads', type: 'Number', group: 'Basic Information', required: false, active: true, visibleInForm: true, visibleInDetails: true, order: 0, options: [], description: '', version: 1 }]);

@@ -17,6 +17,8 @@ import { toast } from '@/shared/utils/toast';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input } from '@/shared/components/ui/input';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -298,15 +300,15 @@ export function DealDetailsModal({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Deal Title</label>
-                    <input required type="text" value={editFields.title} onChange={e => setEditFields({ ...editFields, title: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none transition-all" />
+                    <Input placeholder="Enter deal title..." required type="text" value={editFields.title} onChange={e => setEditFields({ ...editFields, title: e.target.value })}
+                      className="w-full border rounded-xl px-3 py-2 text-sm transition-all" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Value (₱)</label>
-                      <input required type="number" value={editFields.value} onChange={e => setEditFields({ ...editFields, value: Number(e.target.value) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input required type="number" value={editFields.value} onChange={e => setEditFields({ ...editFields, value: Number(e.target.value) })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Priority</label>
@@ -328,15 +330,15 @@ export function DealDetailsModal({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Expected Close Date</label>
-                    <input type="date" value={editFields.expectedCloseDate} onChange={e => setEditFields({ ...editFields, expectedCloseDate: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                    <Input type="date" value={editFields.expectedCloseDate} onChange={e => setEditFields({ ...editFields, expectedCloseDate: e.target.value })}
+                      className="w-full border rounded-xl px-3 py-2 text-sm" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Company Name</label>
-                      <input type="text" value={editFields.companyName} onChange={e => setEditFields({ ...editFields, companyName: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input placeholder="Enter company name..." type="text" value={editFields.companyName} onChange={e => setEditFields({ ...editFields, companyName: e.target.value })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Contacts</label>
@@ -348,23 +350,23 @@ export function DealDetailsModal({
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Source</label>
-                      <input type="text" value={editFields.leadSource} onChange={e => setEditFields({ ...editFields, leadSource: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input placeholder="Enter lead source..." type="text" value={editFields.leadSource} onChange={e => setEditFields({ ...editFields, leadSource: e.target.value })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Product Interests (comma separated)</label>
-                      <input type="text" value={editFields.productInterests} onChange={e => setEditFields({ ...editFields, productInterests: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input placeholder="Enter product interests..." type="text" value={editFields.productInterests} onChange={e => setEditFields({ ...editFields, productInterests: e.target.value })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Address</label>
-                      <input type="text" value={editFields.address} onChange={e => setEditFields({ ...editFields, address: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input placeholder="Enter address..." type="text" value={editFields.address} onChange={e => setEditFields({ ...editFields, address: e.target.value })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Campaign</label>
-                      <input type="text" value={editFields.campaign} onChange={e => setEditFields({ ...editFields, campaign: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <Input placeholder="Enter campaign name..." type="text" value={editFields.campaign} onChange={e => setEditFields({ ...editFields, campaign: e.target.value })}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
 
@@ -378,8 +380,8 @@ export function DealDetailsModal({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Tags (comma-separated)</label>
-                    <input type="text" value={editFields.tags} onChange={e => setEditFields({ ...editFields, tags: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                    <Input placeholder="e.g. Priority, Referral" type="text" value={editFields.tags} onChange={e => setEditFields({ ...editFields, tags: e.target.value })}
+                      className="w-full border rounded-xl px-3 py-2 text-sm" />
                   </div>
 
 
@@ -531,9 +533,9 @@ export function DealDetailsModal({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Date & Time</label>
-                    <input type="datetime-local" value={newActivity.timestamp}
+                    <Input type="datetime-local" value={newActivity.timestamp}
                       onChange={e => setNewActivity({ ...newActivity, timestamp: e.target.value })}
-                      className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none" />
+                      className="w-full border rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">User</label>
@@ -545,10 +547,10 @@ export function DealDetailsModal({
                     </select>
                   </div>
                 </div>
-                <textarea rows={3} required value={newActivity.description}
+                <Textarea rows={3} required value={newActivity.description}
                   onChange={e => setNewActivity({ ...newActivity, description: e.target.value })}
                   placeholder="Describe what happened..."
-                  className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-sm text-slate-900 dark:text-white focus:outline-none resize-none" />
+                  className="w-full border rounded-xl p-3 text-sm resize-none" />
                 <div className="flex justify-end">
                   <button type="submit"
                     className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-[var(--primary-hover)] transition-all">

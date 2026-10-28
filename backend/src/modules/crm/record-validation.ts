@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import sanitizeHtml from 'sanitize-html';
 import type { Prisma } from '@prisma/client';
 import { INTERNAL_EMPLOYEE_CUSTOMER_EMAIL_ERROR } from '@leadcrm/shared';
 import { readCrmStatusEvidence } from './access/crm-record-access.service';
 
-// Record fields are plain text, including notes; HTML is never stored as markup.
-export const recordText = (max = 2000) => z.string().max(max).transform(value =>
-  sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim());
+// Store literal plain text; renderers escape it at the output boundary.
+export const recordText = (max = 2000) => z.string().max(max)
+  .refine(value => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value), 'Control characters are not allowed.')
+  .transform(value => value.trim());
 export const recordName = (max = 100) => recordText(max).pipe(z.string().min(1, 'Name is required'));
 
 /** User identity is internal regardless of role, activation or assignment eligibility. */

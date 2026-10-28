@@ -7,6 +7,7 @@ import { FormFieldType, FormDesign } from '../types/form.types';
 import { leadCatalogFormField, type CrmFieldCatalogEntry, type FormField } from '@leadcrm/shared';
 import { cn } from '@/lib/utils';
 import { panelInputClass, panelLabelClass } from '@/shared/components/side-panel-styles';
+import { Input } from '@/shared/components/ui/input';
 
 // ── Palette item descriptor ─────────────────────────────────────────────────
 export interface PaletteField {
@@ -176,7 +177,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
       <div className="relative">
         <input type="color" aria-label={`${label} color picker`} value={/^#[\da-f]{6}$/i.test(value) ? value : '#ffffff'} onChange={(e) => onChange(e.target.value)}
           className="absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded cursor-pointer border-0 bg-transparent" />
-        <input id={id} type="text" value={value} maxLength={9} onChange={(e) => onChange(e.target.value)} placeholder="e.g. #3B82F6"
+        <Input id={id} type="text" value={value} maxLength={9} onChange={(e) => onChange(e.target.value)} placeholder="e.g. #3B82F6"
           className={panelInputClass + " pl-9"} />
       </div>
     </div>

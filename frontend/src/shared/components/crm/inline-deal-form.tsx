@@ -19,6 +19,8 @@ import { applyCrmAssociationError, showCrmMutationError } from '@/shared/utils/c
 import { Button } from '@/shared/components/ui/button';
 import { useData } from '@/store/DataContext';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/shared/components/ui/textarea';
+import { Input, textFieldClassName } from '@/shared/components/ui/input';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -172,10 +174,10 @@ export function InlineDealForm({
 
   // ── Shared Styling ──────────────────────────────────────────────────────
   const inputCls =
-    'w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:ring-2 focus:ring-ring/20 focus:border-primary';
+    cn(textFieldClassName, "w-full border rounded-lg px-3 py-2 text-sm transition-all");
   const selectCls =
     'w-full bg-card border border-border rounded-lg pl-3 pr-8 py-2 text-sm text-foreground outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-ring/20 focus:border-primary transition-all [&>option]:bg-card';
-  const errorCls = '!border-destructive focus:!ring-destructive/20';
+  const errorCls = '!border-destructive';
   const labelCls = 'block text-xs font-medium text-muted-foreground mb-1';
 
   const isSubmitDisabled = !defaultPipeline || !defaultStage || !isValid || loading || !!error || !selectedProductIds.length || isSubmitting || isLoading;
@@ -190,7 +192,7 @@ export function InlineDealForm({
       {/* Title */}
       <div data-crm-field-key="title">
         <label htmlFor={`${productFieldId}-title`} className={labelCls}>Title <span className="text-red-500">*</span></label>
-        <input
+        <Input
           id={`${productFieldId}-title`}
           aria-required="true"
           aria-invalid={!!errors.title}
@@ -212,7 +214,7 @@ export function InlineDealForm({
       </div>
       <div data-crm-field-key="value">
         <label htmlFor={`${productFieldId}-value`} className={labelCls}>Value</label>
-        <input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />
+        <Input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />
       </div>
 
       <input type="hidden" {...register('pipelineId')} />
@@ -226,13 +228,13 @@ export function InlineDealForm({
         <div data-crm-field-key="stageId">
           <label htmlFor={`${productFieldId}-stage`} className={labelCls}>Starting stage</label>
           <input type="hidden" {...register('stageId')} />
-          <input id={`${productFieldId}-stage`} readOnly className={inputCls} value={defaultStage?.name ?? 'Unavailable'} />
+          <Input id={`${productFieldId}-stage`} readOnly className={inputCls} value={defaultStage?.name ?? 'Unavailable'} />
           {errors.stageId && <p className="text-xs text-destructive">{errors.stageId.message}</p>}
         </div>
       </div>
       <div data-crm-field-key="expectedCloseDate">
         <label htmlFor={`${productFieldId}-close`} className={labelCls}>Expected Close Date</label>
-        <input id={`${productFieldId}-close`} type="date" {...register('expectedCloseDate')} className={cn(inputCls, 'min-w-0')} />
+        <Input id={`${productFieldId}-close`} type="date" {...register('expectedCloseDate')} className={cn(inputCls, 'min-w-0')} />
       </div>
       {!defaultPipeline && <p role="alert" className="text-xs text-destructive">Sales Pipeline is unavailable.</p>}
       {defaultPipeline && !defaultStage && <p role="alert" className="text-xs text-destructive">The Lead starting stage is unavailable.</p>}
@@ -262,7 +264,7 @@ export function InlineDealForm({
         <p role="status" className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{addressOptions.isInitialLoad ? 'Loading customer addresses…' : addressOptions.error || dealCustomerAddressMessage(addressContext)}</p>
         {addressOptions.error && <Button type="button" variant="ghost" size="sm" onClick={() => void addressOptions.refetch()}>Retry addresses</Button>}
         <Label htmlFor={`${productFieldId}-address`} className={labelCls}>Deal Address (override)</Label>
-        <textarea {...register('address')} id={`${productFieldId}-address`} className={inputCls} rows={2} placeholder="Optional project or service location..." aria-invalid={!!errors.address} />
+        <Textarea {...register('address')} id={`${productFieldId}-address`} className={inputCls} rows={2} placeholder="Optional project or service location..." aria-invalid={!!errors.address} />
         {errors.address && <p role="alert" className="text-xs text-destructive">{errors.address.message}</p>}
         <p className="text-xs text-muted-foreground">Leave blank to use the linked address. Changes affect only this Deal.</p>
       </div>

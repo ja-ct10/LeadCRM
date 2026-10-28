@@ -9,6 +9,7 @@ import type { PermissionFlags, PermissionAction, RoleListItem } from '@/store/ty
 import { PermissionMatrix } from './permission-matrix';
 import { rolesService } from '../services/roles.service';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
+import { Input } from '@/shared/components/ui/input';
 
 interface RoleBuilderModalProps {
   isOpen:    boolean;
@@ -134,26 +135,26 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
           {/* Name */}
           <div>
             <label className="block text-[12px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role name <span className="text-red-500">*</span></label>
-            <input
+            <Input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={50}
               placeholder="e.g. Senior Sales"
-              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary"
+              className="w-full h-9 px-3 text-[13px] rounded-lg border"
             />
           </div>
 
           {/* Description */}
           <div>
             <label className="block text-[12px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description</label>
-            <input
+            <Input
               type="text"
               value={description}
               onChange={e => setDesc(e.target.value)}
               maxLength={200}
               placeholder="Optional short description"
-              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary"
+              className="w-full h-9 px-3 text-[13px] rounded-lg border"
             />
           </div>
 
