@@ -7,12 +7,15 @@ import { AppError } from '../../shared/errors/app-error';
 // One persisted-state observer per account per process, shared by all its tabs.
 // Database revisions also deliver updates across backend replicas.
 const observers = new Map<string, { clients: Map<Response, string>; stop: () => void }>();
+const open = (res: Response) => !res.destroyed && !res.writableEnded;
+const write = (res: Response, chunk: string) => { if (open(res)) res.write(chunk); };
 export async function mailboxEvents(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantId, userId } = req.user!;
     const sessionToken = req.cookies?.leadcrm_token ?? req.headers.authorization?.replace(/^Bearer /, '');
     if (!sessionToken) throw new AppError('Sign in again to receive mailbox updates.', 401);
     const { account, scope } = await authorizedMailbox(tenantId, userId);
+    if (!open(res)) return;
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
@@ -21,42 +24,56 @@ export async function mailboxEvents(req: Request, res: Response, next: NextFunct
     let observer = observers.get(account.id);
     if (!observer) {
       const clients = new Map<Response, string>();
-      let busy = false, revision = account.mailboxVersion, scopeRevision = scope.hash;
+      let busy = false, stopped = false, revision = account.mailboxVersion, scopeRevision = scope.hash;
       const tick = async () => {
-        if (busy) return;
+        if (busy || stopped) return;
         busy = true;
         try {
           // Each tab retains its own session, even though mailbox observation is shared.
           for (const [client, token] of clients) {
             try {
               const session = await tenantContext.run({ tenantId }, () => validateSession(token));
+              if (stopped) return;
               if (session.tenantId !== tenantId || session.userId !== userId) throw new AppError('Mailbox session changed.', 401);
-            } catch { client.write('event: mailbox-access-changed\ndata: {}\n\n'); client.end(); clients.delete(client); }
+            } catch {
+              if (clients.has(client) && open(client)) { write(client, 'event: mailbox-access-changed\ndata: {}\n\n'); client.end(); }
+              clients.delete(client);
+            }
           }
-          if (!clients.size) return;
+          if (stopped || !clients.size) return;
           const current = await tenantContext.run({ tenantId }, () => authorizedMailbox(tenantId, userId));
+          if (stopped) return;
           const accessChanged = current.scope.hash !== scopeRevision;
           if (accessChanged || current.account.mailboxVersion !== revision) {
             revision = current.account.mailboxVersion; scopeRevision = current.scope.hash;
-            for (const client of clients.keys()) client.write(`event: ${accessChanged ? 'mailbox-access-changed' : 'mailbox-change'}\ndata: ${JSON.stringify({ version: revision, scopeRevision })}\n\n`);
-          } else for (const client of clients.keys()) client.write(': heartbeat\n\n');
+            for (const client of clients.keys()) write(client, `event: ${accessChanged ? 'mailbox-access-changed' : 'mailbox-change'}\ndata: ${JSON.stringify({ version: revision, scopeRevision })}\n\n`);
+          } else for (const client of clients.keys()) write(client, ': heartbeat\n\n');
         } catch {
-          for (const client of clients.keys()) { client.write('event: mailbox-access-changed\ndata: {}\n\n'); client.end(); }
+          if (!stopped) for (const client of clients.keys()) {
+            if (open(client)) { write(client, 'event: mailbox-access-changed\ndata: {}\n\n'); client.end(); }
+          }
         } finally { busy = false; }
       };
       const timer = setInterval(() => void tick(), 5000);
       timer.unref();
-      observer = { clients, stop: () => clearInterval(timer) };
+      observer = { clients, stop: () => { stopped = true; clearInterval(timer); } };
       observers.set(account.id, observer);
     }
     observer.clients.set(res, sessionToken);
     // Bound connection lifetime and reauthenticate the actual session on reconnect.
-    const expiry = setTimeout(() => res.end(), 45000);
+    const expiry = setTimeout(() => { cleanup(); if (open(res)) res.end(); }, 45000);
+    expiry.unref();
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       clearTimeout(expiry);
       observer!.clients.delete(res);
-      if (!observer!.clients.size) { observer!.stop(); observers.delete(account.id); }
+      if (!observer!.clients.size) {
+        observer!.stop();
+        if (observers.get(account.id) === observer) observers.delete(account.id);
+      }
     };
-    res.on('close', cleanup);
+    res.once('close', cleanup); res.once('finish', cleanup); res.once('error', cleanup);
   } catch (error) { next(error); }
 }

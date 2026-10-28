@@ -29,6 +29,41 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.resto
 
 
 describe('Persisted scoped Inbox', () => {
+  it('shows a load failure with retry instead of an empty mailbox, then recovers', async () => {
+    mocks.list.mockRejectedValueOnce(new TypeError('Connection interrupted'));
+    render(<InboxPage />); await flush();
+    expect(screen.getByRole('alert').textContent).toContain('Connection interrupted');
+    expect(screen.queryByText('No emails found')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading emails' })); await flush();
+    expect(screen.getByText(email.subject)).toBeTruthy(); expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('shows an empty state only after the current query succeeds', async () => {
+    mocks.list.mockResolvedValueOnce({ emails: [] });
+    render(<InboxPage />); await flush(); expect(screen.getByText('No emails found')).toBeTruthy();
+    let finish!: (value: { emails: typeof email[] }) => void;
+    mocks.list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Filter emails' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Unread only' })); await flush();
+    expect(screen.queryByText('No emails found')).toBeNull();
+    expect(screen.getByRole('status', { name: 'Loading conversations' })).toBeTruthy();
+    await act(async () => finish({ emails: [] }));
+    expect(screen.getByText('No emails found')).toBeTruthy();
+  });
+  it('does not let a cancelled query finish loading its replacement', async () => {
+    let old!: (value: { emails: typeof email[] }) => void, latest!: (value: { emails: typeof email[] }) => void;
+    mocks.list.mockImplementationOnce(() => new Promise(resolve => { old = resolve; }));
+    mocks.list.mockImplementationOnce(() => new Promise(resolve => { latest = resolve; }));
+    render(<InboxPage />); await flush();
+    const signal = mocks.list.mock.calls[0][1] as AbortSignal;
+    fireEvent.click(screen.getByRole('button', { name: 'Filter emails' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Unread only' })); await flush();
+    expect(signal.aborted).toBe(true);
+    await act(async () => old({ emails: [] }));
+    expect(screen.getByRole('status', { name: 'Loading conversations' })).toBeTruthy();
+    expect(screen.queryByText('No emails found')).toBeNull();
+    await act(async () => latest({ emails: [email] }));
+    expect(screen.getByText(email.subject)).toBeTruthy();
+  });
   it('styles only the open toolbar menu and clears the style on toggle, Escape or outside dismissal', async () => {
     render(<InboxPage />); await flush();
     const archive = screen.getByRole('button', { name: 'Archived messages' });

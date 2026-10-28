@@ -1,5 +1,6 @@
 import type { Notification, Prisma } from '@prisma/client';
-import { DEFAULT_CLOSING_FIELDS, isClosedWonField, type ClosingValues, type NotificationType } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, isClosedWonField, permittedCrmScopes, type CustomFieldModule, type ClosingValues, type NotificationType } from '@leadcrm/shared';
+import { crmActor, readCrmStatusEvidence } from '../crm/access/crm-record-access.service';
 import prisma from '../../config/database.config';
 import { formatAssignmentChange } from '@leadcrm/shared';
 import { assignmentEventFacts, resolveAssignmentNames } from './assignment-presentation';
@@ -20,13 +21,18 @@ const modules: Record<string, string> = { Lead: 'leads', Contact: 'contacts', Ac
 
 /** Current role and ownership checks are shared by delivery, presentation and navigation. */
 export async function notificationAccess(tenantId: string, userId: string, db: Prisma.TransactionClient = prisma) {
-  const user = await db.user.findFirst({ where: { tenantId, id: userId, status: 'ACTIVE', tenant: { status: { in: ['ACTIVE', 'SANDBOX'] } } } });
+  const user = await readCrmStatusEvidence(async () => await db.user.findFirst({ where: { tenantId, id: userId, status: 'ACTIVE', tenant: { status: { in: ['ACTIVE', 'SANDBOX'] } } } }));
   let active = !!user;
   if (user) {
     try { await requireEmployeeAccount(user, db); } catch (error) { if (error instanceof AppError) active = false; else throw error; }
   }
   const admin = active && !!await db.user.findFirst({ where: { ...activeAdminWhere(tenantId), id: userId }, select: { id: true } });
+  if (user?.role === 'Client Admin' && !admin) active = false;
   const permissions = active && !admin ? await findUserEffectivePermissions(userId, tenantId, db) : {};
+  // Scope every deferred read to the recipient, including standalone workers and
+  // mutation responses. Never inherit a source actor's CRM visibility or cached policy.
+  const recipient = { tenantId, userId, readRecords: true };
+  const asRecipient = <T>(work: () => Promise<T>) => crmActor.run(recipient, work);
   // Apply before pagination/counting. Stored operational history remains untouched.
   const visibilityWhere: Prisma.NotificationWhereInput = admin ? { OR: [
     { type: { in: [...adminNotifications].filter(type => type !== 'password_expiring_soon') } },
@@ -68,8 +74,9 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
         return { entityType, entityId, destination: account.userId === userId ? '/inbox' : '/settings?tab=users' };
       }
       if (!can(modules[entityType])) return null;
-      // CRM View permission permits eligible same-tenant records after reassignment.
-      // Current ownership is checked separately for prospective delivery below.
+      if (['Lead', 'Contact', 'Account', 'Deal'].includes(entityType) && !admin &&
+          !permittedCrmScopes(permissions, modules[entityType] as CustomFieldModule).length) return null;
+      // Destination access follows current View tabs; delivery additionally checks ownership.
       const visible = { ...scope, isArchived: false, deletedAt: null };
       let exists: unknown = false;
       let destination = '';
@@ -88,9 +95,9 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
       else if (entityType === 'Form') { exists = admin && await db.marketingForm.findFirst({ where: { ...scope, isArchived: false }, select: { id: true } }); destination = '/marketing/forms?formId=' + id; }
       return exists ? { entityType, entityId, destination } : null;
     };
-    const result = load(); cache.set(key, result); return result;
+    const result = asRecipient(load); cache.set(key, result); return result;
   };
-  const eligible = async (type: NotificationType, entityType?: string | null, entityId?: string | null) => {
+  const eligible = async (type: NotificationType, entityType?: string | null, entityId?: string | null) => asRecipient(async () => {
     if (!active || !entityType || !entityId || !notificationEntities[type]?.includes(entityType) || !await resolve(entityType, entityId)) return false;
     if (type === 'password_expiring_soon') return entityType === 'PasswordSecurity' && entityId === userId;
     if (admin) return adminNotifications.has(type);
@@ -98,7 +105,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
     const owned = { tenantId, id: entityId, assignedUserId: userId, isArchived: false, deletedAt: null };
     if (entityType === 'Lead') return !!await db.lead.findFirst({ where: { ...owned, convertedAt: null }, select: { id: true } });
     if (entityType === 'Contact') return !!await db.contact.findFirst({ where: owned, select: { id: true } });
-    if (entityType === 'Account') return !!await db.account.findFirst({ where: owned, select: { id: true } });
+    if (entityType === 'Account') return false; // Account assignment is retired; historical rows remain readable.
     if (entityType === 'Deal') {
       const deal = await db.deal.findFirst({ where: owned, include: { stage: true } });
       if (!deal) return false;
@@ -112,7 +119,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
     }
     // Task/Campaign/Mailbox/Message resolve already verifies the specific owner.
     return ['Task', 'Campaign', 'Mailbox', 'MailboxMessage'].includes(entityType);
-  };
+  });
   return { active, admin, resolve, eligible, visibilityWhere };
 }
 

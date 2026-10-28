@@ -68,6 +68,8 @@ export interface ProductInterest {
   updatedAt: string;
 }
 export type ProductInterestConfig = ProductInterest[];
+/** Read-only metadata for a CRM record's canonical selected products, including retired products. */
+export type ProductInterestRecord = Pick<ProductInterest, 'id' | 'name' | 'category'>;
 export interface ProductWonDeal {
   id: string;
   title: string;

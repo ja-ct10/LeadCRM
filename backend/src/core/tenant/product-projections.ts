@@ -33,16 +33,16 @@ function selectProducts(model: string, args: Args): (row: any) => any {
   if (wanted.length) {
     const add = (key: string, value: unknown) => { if (!selection[key]) { selection[key] = value; extra.add(key); } };
     if (model === 'Deal') {
-      add('productInterestRecord', { select: { id: true, name: true } });
+      add('productInterestRecord', { select: { id: true, name: true, category: true } });
       if (!extra.has('productInterestRecord')) {
         const relation = selection.productInterestRecord === true ? {} : selection.productInterestRecord;
         selection.productInterestRecord = relation;
-        const clean = ensureFields(relation, ['id', 'name']);
+        const clean = ensureFields(relation, ['id', 'name', 'category']);
         cleanups.push(row => clean(row.productInterestRecord));
       }
       if (args.select) add('productsNormalized', true);
     } else {
-      add('productLinks', { include: { product: { select: { id: true, name: true } } }, orderBy: [{ position: 'asc' }, { productInterestId: 'asc' }] });
+      add('productLinks', { include: { product: { select: { id: true, name: true, category: true } } }, orderBy: [{ position: 'asc' }, { productInterestId: 'asc' }] });
       if (!extra.has('productLinks')) {
         const links = selection.productLinks === true ? {} : selection.productLinks;
         selection.productLinks = links;
@@ -51,7 +51,7 @@ function selectProducts(model: string, args: Args): (row: any) => any {
         const addedProduct = !linkFields.product;
         const product = linkFields.product === true ? {} : linkFields.product || { select: { id: true, name: true } };
         linkFields.product = product;
-        const cleanProduct = ensureFields(product, ['id', 'name']);
+        const cleanProduct = ensureFields(product, ['id', 'name', 'category']);
         cleanups.push(row => { for (const link of row.productLinks ?? []) { cleanFlags(link); cleanProduct(link.product); if (addedProduct) delete link.product; } });
       }
       if (args.select) add('productsNormalized', true);
@@ -80,6 +80,11 @@ function selectProducts(model: string, args: Args): (row: any) => any {
         if (wanted.includes('productInterests')) row.productInterests = links.filter((link: any) => link.interested).map((link: any) => link.product.name);
         if (wanted.includes('activeProducts')) row.activeProducts = links.filter((link: any) => link.activeProduct).map((link: any) => link.product.name);
       }
+    }
+    if (wanted.length && !args.select) {
+      const products = model === 'Deal' ? [row.productInterestRecord].filter(Boolean)
+        : (row.productLinks ?? []).filter((link: any) => model === 'Lead' || link.interested).map((link: any) => link.product);
+      row.productInterestRecords = products.map(({ id, name, category }: any) => ({ id, name, category }));
     }
     for (const clean of cleanups) clean(row);
     for (const key of extra) delete row[key];

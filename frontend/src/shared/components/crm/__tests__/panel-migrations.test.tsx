@@ -41,6 +41,17 @@ const records = {
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
 
+it.each(['leads', 'contacts', 'deals'] as const)('shows canonical Product Category directly above Product Interest in the %s detail panel', async module => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], productInterestIds: ['retired'], productInterest: ['Old product'], productInterests: ['Old product'], productInterestRecords: [{ id: 'retired', name: 'Old product', category: 'Security' }] } } : original(path));
+  render(<CrmRecordView module={module} id="one" />);
+  fireEvent.click(await screen.findByRole('tab', { name: /Details/ }));
+  const category = await screen.findByText('Product Category');
+  expect(category.closest('div')?.textContent).toContain('Security');
+  expect(category.closest('div')?.nextElementSibling?.textContent).toContain('Product Interest');
+  expect(category.closest('section')?.textContent).toContain(module === 'deals' ? 'Deal Information' : 'Status & Interest');
+});
+
 it.each(['leads', 'contacts', 'deals'] as const)('shows a persisted Files-tab upload immediately on %s', async module => {
   const saved = { id: 'uploaded-file', name: 'persisted.txt', type: 'text/plain', size: 5, uploadedAt: '2026-10-21T00:00:00Z', url: '/authorized/file' };
   mocks.upload.mockResolvedValueOnce({ data: saved });

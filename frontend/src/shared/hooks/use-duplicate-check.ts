@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { CrmEmailSchema } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
 
@@ -44,119 +45,50 @@ const EMPTY_MATCHES: DuplicateMatch[] = [];
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
 
-/**
- * useDuplicateCheck — debounced duplicate detection hook.
- * Calls POST /api/v1/crm/duplicate-check when input fields change.
- * Returns matches with confidence levels and a dismiss function.
- *
- * IMPORTANT: This hook is designed to be safe against infinite re-render loops.
- * - Uses a stable empty array constant (EMPTY_MATCHES) to avoid new references
- * - Uses refs for mutable values that shouldn't trigger re-renders
- * - Stabilizes the entityTypes dependency via a string key
- * - Only calls setState when values actually change
- */
+/** Non-blocking checks belong to the normalized draft that requested them. */
 export function useDuplicateCheck(options: UseDuplicateCheckOptions): UseDuplicateCheckResult {
   const { email, phone, firstName, lastName, companyName, excludeId, entityTypes, enabled = true } = options;
+  const body: Record<string, unknown> = {};
+  const parsedEmail = CrmEmailSchema.safeParse(email);
+  if (parsedEmail.success) body.email = parsedEmail.data;
+  if (phone && phone.replace(/\D/g, '').length >= 7) body.phone = phone.trim();
+  if (firstName?.trim() && lastName?.trim()) { body.firstName = firstName.trim(); body.lastName = lastName.trim(); }
+  if (companyName && companyName.trim().length >= 2) body.companyName = companyName.trim();
+  const hasCriteria = Object.keys(body).length > 0;
+  if (excludeId) body.excludeId = excludeId;
+  body.entityTypes = [...new Set(entityTypes ?? ['lead', 'contact', 'account'])].sort();
+  const searchKey = hasCriteria && (body.entityTypes as string[]).length ? JSON.stringify(body) : '';
+  const identity = JSON.stringify([enabled && !USE_MOCK_DATA, searchKey]);
+  const draft = useRef(identity);
+  draft.current = identity;
+  const [check, setCheck] = useState({ identity: '', matches: EMPTY_MATCHES, isChecking: false, isDismissed: false });
 
-  const [matches, setMatches] = useState<DuplicateMatch[]>(EMPTY_MATCHES);
-  const [isChecking, setIsChecking] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const prevKeyRef = useRef<string>('');
-
-  // Stabilize entityTypes — convert array to string for stable dep comparison
-  const entityTypesStable = useMemo(
-    () => entityTypes ?? ['lead', 'contact', 'account'],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [(entityTypes ?? []).join(',')],
-  );
-
-  // Build a stable "search key" from the meaningful input values.
-  // Only trigger the effect when this key actually changes.
-  const searchKey = useMemo(() => {
-    const parts: string[] = [];
-    if (email && email.includes('@')) parts.push(`e:${email}`);
-    if (phone && phone.replace(/\D/g, '').length >= 7) parts.push(`p:${phone}`);
-    if (firstName && lastName) parts.push(`n:${firstName}|${lastName}`);
-    if (companyName && companyName.length >= 2) parts.push(`c:${companyName}`);
-    return parts.join(';');
-  }, [email, phone, firstName, lastName, companyName]);
-
-  // Reset dismissed state only when the search key meaningfully changes
   useEffect(() => {
-    if (searchKey !== prevKeyRef.current) {
-      prevKeyRef.current = searchKey;
-      setIsDismissed(false);
-    }
-  }, [searchKey]);
-
-  // Main duplicate check effect — triggers only when searchKey changes
-  useEffect(() => {
-    // Skip entirely in mock mode or when disabled
-    if (USE_MOCK_DATA || !enabled) {
-      if (matches.length > 0) setMatches(EMPTY_MATCHES);
-      return;
-    }
-
-    // No valid search criteria — clear matches
-    if (!searchKey) {
-      if (matches.length > 0) setMatches(EMPTY_MATCHES);
-      return;
-    }
-
-    // Debounce the API call
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    timerRef.current = setTimeout(async () => {
-      // Cancel previous in-flight request
-      if (abortRef.current) abortRef.current.abort();
-      abortRef.current = new AbortController();
-
-      setIsChecking(true);
+    setCheck({ identity, matches: EMPTY_MATCHES, isChecking: false, isDismissed: false });
+    if (USE_MOCK_DATA || !enabled || !searchKey) return;
+    const controller = new AbortController();
+    const current = () => !controller.signal.aborted && draft.current === identity;
+    const timer = setTimeout(async () => {
+      setCheck(previous => ({ ...previous, isChecking: true }));
       try {
-        const body: Record<string, unknown> = {};
-        if (email && email.includes('@')) body.email = email;
-        if (phone && phone.replace(/\D/g, '').length >= 7) body.phone = phone;
-        if (firstName && lastName) { body.firstName = firstName; body.lastName = lastName; }
-        if (companyName && companyName.length >= 2) body.companyName = companyName;
-        if (excludeId) body.excludeId = excludeId;
-        body.entityTypes = entityTypesStable;
-
         const response = await apiClient.post<{ success: boolean; data: { matches: DuplicateMatch[] } }>(
-          '/crm/duplicate-check',
-          body,
+          '/crm/duplicate-check', JSON.parse(searchKey), { signal: controller.signal },
         );
-
-        if (response.success && response.data?.matches?.length > 0) {
-          setMatches(response.data.matches);
-        } else {
-          setMatches(EMPTY_MATCHES);
-        }
+        if (current()) setCheck(previous => ({ ...previous, matches: response.success ? response.data?.matches ?? EMPTY_MATCHES : EMPTY_MATCHES }));
       } catch {
-        // Silently fail — duplicate check is non-blocking
-        setMatches(EMPTY_MATCHES);
+        if (current()) setCheck(previous => ({ ...previous, matches: EMPTY_MATCHES }));
       } finally {
-        setIsChecking(false);
+        if (current()) setCheck(previous => ({ ...previous, isChecking: false }));
       }
     }, DEBOUNCE_MS);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [searchKey, enabled, identity]);
 
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchKey, excludeId, enabled]);
-
-  const dismiss = useCallback((): void => {
-    setIsDismissed(true);
-  }, []);
-
+  const dismiss = useCallback(() => setCheck(previous => ({ ...previous, isDismissed: true })), []);
+  const current = enabled && !USE_MOCK_DATA && !!searchKey && check.identity === identity;
+  const isDismissed = current && check.isDismissed;
+  const matches = current && !isDismissed ? check.matches : EMPTY_MATCHES;
   return {
-    matches: isDismissed ? EMPTY_MATCHES : matches,
-    isChecking,
-    hasDuplicates: !isDismissed && matches.length > 0,
-    dismiss,
-    isDismissed,
+    matches, isChecking: current && check.isChecking, hasDuplicates: matches.length > 0, dismiss, isDismissed,
   };
 }

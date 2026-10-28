@@ -31,6 +31,7 @@ export interface Deal {
   engagementStatus?: import('../contracts/record-experience').CrmStatus;
   addressContext?: DealAddressContext;
   productInterestIds?: string[];
+  productInterestRecords?: import('../contracts/product-interests.contract').ProductInterestRecord[];
   id: string;
   tenantId: string;
   pipelineId: string;

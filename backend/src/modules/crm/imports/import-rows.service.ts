@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { assertExternalCustomerEmail } from '../record-validation';
+import { assertExternalCustomerEmail, assertExternalCustomerPhone } from '../record-validation';
 import { importIdentity, importRowSchemas, normalizeAccountImportRow, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { createAssignedLead } from '../leads/lead-automation.service';
@@ -46,7 +46,10 @@ export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantI
   if (!parsed.success) result.errors = importValidationErrors(parsed.error)!;
   if (!parsed.success) return result;
   try {
-    if (module !== 'accounts') await assertExternalCustomerEmail(tx, tenantId, result.data.email);
+    if (module !== 'accounts') {
+      await assertExternalCustomerEmail(tx, tenantId, result.data.email);
+      await assertExternalCustomerPhone(tx, tenantId, result.data.phone);
+    }
     if (duplicate) { result.status = 'duplicate'; result.errors.push(duplicate); return result; }
     const handler = importHandlers[module];
     result.errors.push(...await handler.duplicates(tx, tenantId, result.data));

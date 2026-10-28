@@ -1,5 +1,5 @@
 import { classifyCustomerRecord } from '../customer-classification.service';
-import { assertExternalCustomerEmail } from '../record-validation';
+import { assertExternalCustomerEmail, assertExternalCustomerPhone } from '../record-validation';
 import { weightedLeadScores, lowestWorkloadRotation } from './lead-workload';
 import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
@@ -160,6 +160,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     if (existing) return existing;
   }
   await assertExternalCustomerEmail(tx, input.tenantId, input.email);
+  await assertExternalCustomerPhone(tx, input.tenantId, input.phone);
   if (input.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before closing this customer.');
   if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable in this workspace.');
   // API callers provide IDs. Trusted imports may still provide historical names; resolve them here.

@@ -59,6 +59,7 @@ export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
   tags?: string;
   productInterests?: string[];
   productInterestIds?: string[];
+  productInterestRecords?: import('@leadcrm/shared').ProductInterestRecord[];
 
   // ── Address breakdown fields ────────────────────────────────────────────
   streetAddress?: string;

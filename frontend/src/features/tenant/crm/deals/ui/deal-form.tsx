@@ -1,4 +1,5 @@
 'use client';
+import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
 import { DealAddressSourceSchema, dealAddressKey, resolveDealAddress, dealAddressMessage, dealCustomerAddressMessage } from '@leadcrm/shared';
 import { useDealAddressOptions } from '@/shared/hooks/use-deal-address-options';
 import { applyCrmAssociationError, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
@@ -352,7 +353,7 @@ export function DealForm({
               placeholder="Enter deal title"
             />
           </FieldWrap>
-          <FieldWrap fieldKey="productInterestIds" error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
+          <FieldWrap fieldKey="productInterestIds" error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`} beforeLabel={<ProductCategoryValue values={watch('productInterests') ?? []} products={[...products, ...(initialData?.productInterestRecords ?? []).filter(product => !products.some(current => current.id === product.id))]} />}>
             <Controller
               name="productInterests"
               control={control}

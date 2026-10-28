@@ -1,6 +1,9 @@
 'use client';
 import { applyCrmFieldErrors, showCrmMutationError, isStaffEmailError } from '@/shared/utils/crm-mutation-error';
 import { useEmailAvailability } from '@/shared/hooks/use-email-availability';
+import { usePhoneAvailability } from '@/shared/hooks/use-phone-availability';
+import { STAFF_PHONE_CONFLICT } from '@leadcrm/shared';
+import { ProductCategoryValue } from '@/shared/components/crm/product-category-value';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
@@ -105,7 +108,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     firstName: initialData?.firstName || '',
     lastName: initialData?.lastName || '',
     email: initialData?.email || '',
-    phone: initialData?.phone || '',
+    phone: initialData?.phone ? toE164(normalizePhInput(initialData.phone)) : '',
     companyName: initialData?.companyName || '',
     notes: initialData?.notes || '',
     status: initialData?.status ? normalizeCrmStatus(initialData.status) : 'Inquiry',
@@ -162,11 +165,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const selectedProducts = watch('productInterest') || [];
   const emailCheck = useEmailAvailability(watch('email'), 'contacts', !isEdit && canSubmit);
   const emailError = emailCheck.error || errors.email?.message;
+  const phoneCheck = usePhoneAvailability(watch('phone') ?? '', 'contacts', canSubmit);
+  const phoneError = phoneCheck.error || errors.phone?.message || (phoneTouched ? validatePhMobile(phoneLocal) : null);
 
   const [saveError, setSaveError] = useState('');
   const saving = useRef(false);
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
     if (!canSubmit || saving.current) return;
+    if (!phoneCheck.confirm(data.phone ?? '')) return;
     if (!isEdit && !emailCheck.confirm(data.email!)) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
@@ -195,6 +201,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     setIsSaving(true);
     try { await onSave(cleaned); }
     catch (error) {
+      if ((error as { fieldErrors?: { phone?: string[] } }).fieldErrors?.phone?.includes(STAFF_PHONE_CONFLICT)) {
+        phoneCheck.reject(); setError('phone', { type: 'server', message: STAFF_PHONE_CONFLICT }); setSaveError(''); return;
+      }
       if (!isEdit && isStaffEmailError(error)) {
         emailCheck.reject('STAFF_EMAIL_NOT_ALLOWED');
         setSaveError('');
@@ -264,11 +273,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 {emailCheck.available && !emailError && <Check size={16} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-green-600 dark:text-green-400" />}
               </div>
             </FieldWrap>
-            <FieldWrap fieldKey="phone" label="Phone">
+            <FieldWrap fieldKey="phone" label="Phone" htmlFor={`${fieldId}-phone`}>
               <PhilippinePhoneInput
+                id={`${fieldId}-phone`}
                 value={phoneLocal}
-                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); setValue('phone', v ? toE164(v) : '', { shouldDirty: true }); }}
-                error={phoneTouched ? validatePhMobile(phoneLocal) : null}
+                onBlur={phoneCheck.retry}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); clearErrors('phone'); setValue('phone', v ? toE164(v) : '', { shouldDirty: true, shouldValidate: true }); }}
+                error={phoneError}
               />
             </FieldWrap>
           </div>
@@ -301,7 +312,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               </div>}
             </FieldWrap>
 
-            <FieldWrap fieldKey="productInterestIds" label="Product Interest">
+            <FieldWrap fieldKey="productInterestIds" label="Product Interest" beforeLabel={<ProductCategoryValue values={selectedProducts} valueMode="name" products={[...(initialData?.productInterestRecords ?? []).map(retained => productRecords.find(product => product.id === retained.id) ?? retained), ...productRecords.filter(product => !initialData?.productInterestRecords?.some(retained => retained.name === product.name))]} />}>
               <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true, shouldDirty: true })} disabled={productsLoading || !!productError} />
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
@@ -403,7 +414,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         </button>
         <button
           type="submit"
-          disabled={!canSubmit || emailCheck.blocked || customFields.blocked || isSubmitting}
+          disabled={!canSubmit || emailCheck.blocked || phoneCheck.blocked || customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-[var(--primary-hover)] active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}
@@ -434,12 +445,13 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
     <div className="space-y-1.5">
+      {beforeLabel}
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
       </label>

@@ -1,0 +1,21 @@
+'use client';
+import React from 'react';
+import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
+import { normalizePhInput, toE164 } from '@/shared/utils/ph-phone';
+import { usePhoneAvailability } from '@/shared/hooks/use-phone-availability';
+
+export function PhoneInlineEditor({ module, value, onChange, disabled, error, onSave, onCancel }: {
+  module: 'leads' | 'contacts'; value: string; onChange: (value: string) => void;
+  disabled: boolean; error: string; onSave: () => void; onCancel: () => void;
+}) {
+  const check = usePhoneAvailability(value, module);
+  return <div className="space-y-1.5">
+    <PhilippinePhoneInput value={normalizePhInput(value)} onChange={local => onChange(local ? toE164(local) : '')}
+      disabled={disabled} onBlur={check.retry} error={check.error || error} />
+    <div className="flex justify-end gap-1">
+      <button type="button" className="rounded-md bg-primary px-2 py-0.5 text-[11px] text-primary-foreground disabled:opacity-50" disabled={disabled || check.blocked}
+        onClick={() => { if (check.confirm(value)) onSave(); }}>Save</button>
+      <button type="button" className="rounded-md border border-border px-2 py-0.5 text-[11px]" disabled={disabled} onClick={onCancel}>Cancel</button>
+    </div>
+  </div>;
+}
