@@ -11,7 +11,12 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true 
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 't' }, isLoading: false, authError: null, isPermissionsLoaded: mocks.permissionsLoaded, permissionsError: mocks.permissionsError, refreshPermissions: mocks.refreshPermissions, user: { id: 'admin', tenantId: 't', role: mocks.role }, userCan: (module: string, action: string) => !mocks.denied.has(`${module}.${action}`) }) }));
 vi.mock('@/shared/services/groups.api', () => ({ groupsApi: { getAll: mocks.groups } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], rolesLoading: mocks.rolesLoading, rolesError: mocks.rolesError, refreshRoles: vi.fn() }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [
+  { id: 'r', name: 'Sales', isArchived: false, isSystemRole: false },
+  { id: 'admin-role', name: 'Client Admin', isArchived: false, isSystemRole: true },
+  { id: 'retired-role', name: 'Guest', isArchived: false, isSystemRole: true },
+  { id: 'archived-role', name: 'Archived Staff', isArchived: true, isSystemRole: false },
+], rolesLoading: mocks.rolesLoading, rolesError: mocks.rolesError, refreshRoles: vi.fn() }) }));
 vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive, deactivationImpact: mocks.impact, deactivate: mocks.deactivate, unlock: mocks.unlock } }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: { counts: mocks.counts, list: mocks.notificationList, markRead: mocks.markRead, markAllRead: mocks.markAllRead, delete: mocks.delete } }));
 vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -40,6 +45,17 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 });
 afterEach(() => { cleanup(); clearPageCache(); clearNotificationTracking(); });
+it.each(['Client Admin', 'Sales'])('offers Client Admin creation only to an existing admin: %s', async actor => {
+  mocks.role = actor; mocks.list.mockResolvedValue({ data: [], meta: { hasMore: false } });
+  render(<UsersSubTab />);
+  const create = await screen.findByRole('button', { name: 'New User' });
+  await act(async () => { fireEvent.click(create); });
+  const role = screen.getByLabelText('Role', { exact: false });
+  expect(within(role).queryByRole('option', { name: 'Client Admin' }) !== null).toBe(actor === 'Client Admin');
+  expect(within(role).getByRole('option', { name: 'Sales' })).toBeTruthy();
+  expect(within(role).queryByRole('option', { name: 'Guest' })).toBeNull();
+  expect(within(role).queryByRole('option', { name: 'Archived Staff' })).toBeNull();
+});
 it('waits for resolved permissions before reading the Users table during startup invalidation', async () => {
   mocks.permissionsLoaded = false;
   mocks.list.mockResolvedValue({ data: [{ id: 'staff', tenantId: 't', firstName: 'Staff', lastName: 'User', status: 'active', role: 'Sales' }], meta: { hasMore: false } });

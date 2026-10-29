@@ -93,7 +93,7 @@ exports.SOURCE_LINK_PRESETS = [
     { category: 'Content Marketing', source: 'article', medium: 'content_marketing' },
     { category: 'Others', source: 'event', medium: 'offline' },
 ];
-function sourceCampaignLink(base, source, medium, campaign = 'leadcrm_demo') {
+function sourceCampaignLink(base, source, medium, campaign = '') {
     const url = new URL(base);
     if (!/^https?:$/.test(url.protocol) || url.username || url.password)
         throw new Error('Use an HTTP or HTTPS form URL.');
@@ -101,8 +101,9 @@ function sourceCampaignLink(base, source, medium, campaign = 'leadcrm_demo') {
         url.searchParams.delete(key);
     url.searchParams.set('utm_source', source);
     url.searchParams.set('utm_medium', medium);
-    url.searchParams.set('utm_campaign', campaign);
+    if (campaign)
+        url.searchParams.set('utm_campaign', campaign);
     return url.toString();
 }
-exports.BUSINESS_INQUIRY_EMAIL = 'goldenbits.1993@gmail.com';
+exports.BUSINESS_INQUIRY_EMAIL = 'leadcrm.tech@gmail.com';
 exports.BUSINESS_INQUIRY_MAILTO = `mailto:${exports.BUSINESS_INQUIRY_EMAIL}?subject=Product%20inquiry`;

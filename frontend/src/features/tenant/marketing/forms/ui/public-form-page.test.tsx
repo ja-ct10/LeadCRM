@@ -30,6 +30,7 @@ async function mount() {
 function fill() { change('First Name', 'Anne'); change('Last Name', 'Visitor'); change('Email Address', 'anne@example.com'); }
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
+  localStorage.clear(); sessionStorage.clear(); window.history.replaceState({}, '', '/forms/public');
   definition = { ...defaultContactForm(), version: 1, trackUrlParams: false };
   definition.fields = definition.fields.filter(field => field.mapToField !== 'productInterest').map(field => field.mapToField === 'email' ? { ...field, id: 'visitorEmail' } : field);
   mocks.get.mockReset().mockResolvedValue(available);
@@ -37,6 +38,20 @@ beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch);
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+it('captures legacy tagged links without a remember checkbox and reuses the submission identity on retry', async () => {
+  definition.trackUrlParams = true;
+  window.history.replaceState({}, '', '/forms/public?utm_source=google&utm_medium=cpc&utm_campaign=shared_before_cleanup');
+  await mount();
+  expect(screen.queryByRole('checkbox', { name: /Remember how I found this form/ })).toBeNull();
+  fill(); await advance();
+  mocks.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Please retry.' }) });
+  await submit(); await submit();
+  const [first, second] = posts().map(([, options]) => JSON.parse(options.body));
+  expect(first.attribution).toMatchObject({ storage: 'session', last: { params: { utm_campaign: 'shared_before_cleanup' } } });
+  expect(first.tracking).toMatchObject({ utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'shared_before_cleanup' });
+  expect(second.requestId).toBe(first.requestId);
+  expect(localStorage.length).toBe(0);
+});
 
 it.each([
   { id: 'firstName', label: 'First Name', type: 'single-line' as const },

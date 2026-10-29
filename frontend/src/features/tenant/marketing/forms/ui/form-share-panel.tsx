@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { Copy, Download, ExternalLink } from 'lucide-react';
 import { BUSINESS_INQUIRY_EMAIL, BUSINESS_INQUIRY_MAILTO, SOURCE_LINK_PRESETS, sourceCampaignLink } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
@@ -18,13 +18,10 @@ interface Props {
 const actionClass = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 export function FormSharePanel({ form, dirty, shareLink }: Props) {
-  const [campaign, setCampaign] = useState('leadcrm_demo');
   const [downloading, setDownloading] = useState(false);
-  const campaignId = useId();
-  const validCampaign = /^[a-zA-Z0-9_-]{1,100}$/.test(campaign);
   const published = form.status === 'published' && form.publishedVersion > 0;
   const needsPublish = dirty || form.publishedRevision !== form.revision;
-  const canShare = published && !needsPublish && form.settings.trackUrlParams && validCampaign;
+  const canShare = published && !needsPublish && form.settings.trackUrlParams;
 
   const copy = async (value: string) => {
     try { await navigator.clipboard.writeText(value); toast.success('Copied.'); }
@@ -34,7 +31,7 @@ export function FormSharePanel({ form, dirty, shareLink }: Props) {
     if (!canShare || downloading) return;
     setDownloading(true);
     try {
-      const blob = await apiClient.download(`/marketing/forms/${form.id}/source-links.pdf?campaign=${encodeURIComponent(campaign)}`);
+      const blob = await apiClient.download(`/marketing/forms/${form.id}/source-links.pdf`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url; anchor.download = 'leadcrm-source-links.pdf';
@@ -54,15 +51,10 @@ export function FormSharePanel({ form, dirty, shareLink }: Props) {
       {!published ? <p className="p-4 text-sm text-muted-foreground sm:p-5">Publish this form to enable source links and the QR PDF.</p> : <>
         <div className="space-y-3 border-b border-border p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-sm">
-              <label htmlFor={campaignId} className="block text-xs font-semibold text-muted-foreground">Campaign name</label>
-              <input id={campaignId} maxLength={100} value={campaign} onChange={event => setCampaign(event.target.value)} aria-invalid={!validCampaign} aria-describedby={`${campaignId}-hint`} className="min-h-11 w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            </div>
             <button type="button" disabled={!canShare || downloading} onClick={() => void download()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
               <Download size={16} aria-hidden="true" />{downloading ? 'Preparing PDF…' : 'Download links + QR PDF'}
             </button>
           </div>
-          <p id={`${campaignId}-hint`} role={!validCampaign ? 'alert' : undefined} className={`text-xs ${validCampaign ? 'text-muted-foreground' : 'text-destructive'}`}>Use 1–100 letters, numbers, underscores, or hyphens. No advertising account is needed to test these links.</p>
           {!form.settings.trackUrlParams && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">Enable Track URL Parameters in Settings, then publish the form to use source links.</p>}
         </div>
         <div className="max-w-full overflow-x-auto">
@@ -74,7 +66,7 @@ export function FormSharePanel({ form, dirty, shareLink }: Props) {
             </tr></thead>
             <tbody className="divide-y divide-border">
               {SOURCE_LINK_PRESETS.map(row => {
-                const link = canShare ? sourceCampaignLink(shareLink, row.source, row.medium, campaign) : undefined;
+                const link = canShare ? sourceCampaignLink(shareLink, row.source, row.medium) : undefined;
                 return <tr key={row.source}>
                   <th scope="row" className="px-4 py-3 font-medium">{row.category}</th>
                   <td className="px-4 py-3 text-muted-foreground">{row.source}</td>

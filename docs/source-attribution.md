@@ -26,11 +26,13 @@ scanning it alone creates no Lead. Unknown acquisition evidence stays unattribut
    origin, set backend `PUBLIC_FORM_ORIGIN` and frontend `NEXT_PUBLIC_FORM_ORIGIN`
    to that same public origin. Never distribute localhost URLs to other devices.
 3. In Settings -> Forms, enable Track URL Parameters, then publish. Open Share to copy
-   category links or download the table with QR codes. Use a stable campaign name.
+   category links or download the table with QR codes. Generated links include source
+   and medium without a default campaign; existing explicitly tagged campaign links remain supported.
 4. Embedding support is retained for a later development phase. Embed controls and
    website-origin instructions are intentionally absent from the UI. Existing origin
    settings, the generator and the embed script remain compatible and are preserved
-   when saving other settings. Direct forms offer a separate 30-day remember checkbox.
+   when saving other settings. Direct forms retain attribution only in browser session
+   storage. Legacy remembered data for that form is removed when capture runs.
 5. Test each link using a clean browser context and a distinct test identity. Confirm
    the Lead source, Details attribution panel, persisted submission and related Deal.
 
@@ -50,11 +52,13 @@ attribution on its Deals. Direct returns do not erase a known qualifying source.
 ## Direct Email
 
 Business email is a separate admin-managed, read-only Gmail connection for
-`goldenbits.1993@gmail.com`; employee mailbox ownership rules remain unchanged.
+`leadcrm.tech@gmail.com`; employee mailbox ownership rules remain unchanged.
+Connections for the previous inquiry address report disconnected and cannot sync;
+the Client Admin must explicitly authorize the replacement mailbox using OAuth.
 In Google Cloud, enable Gmail API, configure OAuth and register the exact backend
 `/api/v1/integrations/business-email/callback` URI. Set `BUSINESS_EMAIL_REDIRECT_URI`
 to that URI; the existing Gmail OAuth client ID/secret and encryption key are reused.
-Existing business-mailbox connections and their authorized API remain supported.
+The authorized business-mailbox API remains supported.
 The Business Email Inquiries Inbox page and its navigation have been retired;
 the application no longer presents that connection/review UI.
 
@@ -96,6 +100,8 @@ Ordinary Source fields and persisted acquisition evidence remain available.
 - Form Settings: `allowedEmbedOrigins` for validated parent-window messages.
 - Lead writes/reads: `sourceDetail`; Lead, Contact, Deal and submission history retain attribution.
 - `GET /marketing/forms/:id/source-links[.pdf]`: published, tracking-enabled form links; Forms View required.
+  The optional `campaign` query retains explicit campaign support. Omission returns
+  `campaign: ''` in the manifest and leaves campaign tags/headings out of new links and PDFs.
 - `/integrations/business-email`: admin-only connection status/authorize/disconnect,
   sync and paginated review queue. Review-to-Lead also requires Leads Create.
 

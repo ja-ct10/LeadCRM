@@ -8,7 +8,7 @@ if (base.protocol !== 'https:' || base.username || base.password || !/^\/forms\/
 const output = resolve(root, 'output/pdf'); mkdirSync(output, { recursive: true });
 const { SOURCE_LINK_PRESETS, sourceCampaignLink, BUSINESS_INQUIRY_EMAIL, BUSINESS_INQUIRY_MAILTO } = require('../shared/src/contracts/source-attribution.js');
 const QRCode = require('qrcode');
-const campaign = 'leadcrm_demo';
+const campaign = '';
 const rows = [];
 for (const preset of SOURCE_LINK_PRESETS) {
   const link = sourceCampaignLink(base.href, preset.source, preset.medium, campaign);

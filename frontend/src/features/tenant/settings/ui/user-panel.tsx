@@ -80,7 +80,8 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
       if (!next[field]) next[field] = issue.message;
     }
     if (creating && StaffEmailSchema.safeParse(value.email).success && actor?.role !== 'Client Admin' && !EmployeeEmailSchema.safeParse(value.email).success) next.email = 'Only Client Admin users can approve an external staff email.';
-    if (value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
+    if (value.role && (!roles.some(role => role.name === value.role) ||
+      (value.role === 'Client Admin' && (!creating || actor?.role !== 'Client Admin')))) next.role = 'Select an active role.';
     return next;
   };
   const change = (key: keyof Draft, value: string, interact = false) => {
@@ -187,7 +188,6 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
         </label>)}
         {groupsLoading && <p role="status">Loading available groups…</p>}
         {!groupsLoading && !groupError && !groupOptions.length && <p>No groups have been created.</p>}
-        <p className="text-muted-foreground">The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.</p>
       </fieldset> },
   ];
   const input = (key: keyof Draft, required = false) => {
@@ -236,7 +236,6 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
             {groupError && <p role="alert" className="text-xs text-red-500">{groupError}</p>}
             {canManageGroups && groupsLoading && <p className="text-xs text-slate-500" role="status">Loading available groups…</p>}
             {errors.groupIds && <p role="alert" className="text-xs text-red-500">{errors.groupIds}</p>}
-            <p className="text-xs text-slate-500">The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.</p>
           </fieldset>
         </section>
       </div>

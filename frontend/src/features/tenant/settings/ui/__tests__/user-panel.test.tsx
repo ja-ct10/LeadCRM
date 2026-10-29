@@ -24,6 +24,17 @@ const groupChoices = [
 const fillNewUser = () => {
   change('First Name', 'New'); change('Last Name', 'Staff'); change('Email', 'new@camxian.com'); change('Phone', '9171234567'); change('Role', 'Sales');
 };
+it('submits a Client Admin selection from an existing admin without changing the create payload shape', async () => {
+  mocks.actor.role = 'Client Admin';
+  const created = { ...user, role: 'Client Admin' };
+  mocks.create.mockResolvedValue({ data: created });
+  const { onSaved } = renderPanel(undefined, { roles: [...roles, { id: 'admin-role', name: 'Client Admin' }] });
+  fillNewUser(); change('Role', 'Client Admin');
+  fireEvent.click(screen.getByRole('button', { name: 'Create User' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(created));
+  expect(mocks.create.mock.calls[0][0]).toMatchObject({ role: 'Client Admin', email: 'new@camxian.com' });
+  expect(screen.queryByText(/The same memberships are used by workflow assignment/)).toBeNull();
+});
 
 it('renders red required markers and one accessible error below each invalid control', () => {
   renderPanel();
@@ -257,7 +268,7 @@ it('selects multiple New User Groups in a dropdown and submits their IDs through
   await waitFor(() => expect(trigger).toHaveProperty('disabled', false));
   expect(trigger.textContent).toBe('Select groups...');
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(screen.getByText('The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.')).toBeTruthy();
+  expect(screen.queryByText(/The same memberships are used by workflow assignment/)).toBeNull();
   fireEvent.click(trigger);
   for (const group of groupChoices) expect(screen.getByRole('checkbox', { name: group.name })).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Sales' }));

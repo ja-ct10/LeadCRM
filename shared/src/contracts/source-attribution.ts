@@ -68,12 +68,13 @@ export const SOURCE_LINK_PRESETS = [
   { category: 'Content Marketing', source: 'article', medium: 'content_marketing' },
   { category: 'Others', source: 'event', medium: 'offline' },
 ] as const;
-export function sourceCampaignLink(base: string, source: string, medium: string, campaign = 'leadcrm_demo'): string {
+export function sourceCampaignLink(base: string, source: string, medium: string, campaign = ''): string {
   const url = new URL(base);
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error('Use an HTTP or HTTPS form URL.');
   for (const key of ATTRIBUTION_KEYS) url.searchParams.delete(key);
-  url.searchParams.set('utm_source', source); url.searchParams.set('utm_medium', medium); url.searchParams.set('utm_campaign', campaign);
+  url.searchParams.set('utm_source', source); url.searchParams.set('utm_medium', medium);
+  if (campaign) url.searchParams.set('utm_campaign', campaign);
   return url.toString();
 }
-export const BUSINESS_INQUIRY_EMAIL = 'goldenbits.1993@gmail.com';
+export const BUSINESS_INQUIRY_EMAIL = 'leadcrm.tech@gmail.com';
 export const BUSINESS_INQUIRY_MAILTO = `mailto:${BUSINESS_INQUIRY_EMAIL}?subject=Product%20inquiry`;

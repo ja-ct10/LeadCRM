@@ -4,10 +4,10 @@ import { BUSINESS_INQUIRY_EMAIL, BUSINESS_INQUIRY_MAILTO, SOURCE_LINK_PRESETS, s
 import prisma from '../../../config/database.config';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 
-export async function formSourceLinks(tenantId: string, id: string, origin: string, campaign = 'leadcrm_demo') {
+export async function formSourceLinks(tenantId: string, id: string, origin: string, campaign = '') {
   const form = await prisma.marketingForm.findFirst({ where: { tenantId, id, isArchived: false } });
   if (!form) throw new NotFoundError('Form');
-  if (form.status !== 'published' || !form.publishedVersion) throw new ValidationError('Publish this form before sharing campaign links.');
+  if (form.status !== 'published' || !form.publishedVersion) throw new ValidationError('Publish this form before sharing source links.');
   const config = form.publishedConfig as { settings?: { trackUrlParams?: boolean } };
   if (config.settings?.trackUrlParams === false) throw new ValidationError('Enable Track URL Parameters and publish the form before sharing source links.');
   const url = new URL(origin);
@@ -25,10 +25,10 @@ export function sourceLinksPdf(manifest: Awaited<ReturnType<typeof formSourceLin
   const width = 523, heights = 108;
   const header = () => {
     doc.font('Helvetica-Bold').fontSize(19).fillColor('#142b45').text('Lead source links');
-    doc.font('Helvetica').fontSize(10).fillColor('#475569').text(manifest.formName + ' | Campaign: ' + manifest.campaign);
+    doc.font('Helvetica').fontSize(10).fillColor('#475569').text(manifest.formName + (manifest.campaign ? ' | Campaign: ' + manifest.campaign : ''));
     if (notice) doc.moveDown(0.4).fontSize(8).fillColor('#475569').text(notice, { width: 523 });
     if (['localhost', '127.0.0.1'].includes(new URL(manifest.base).hostname)) doc.font('Helvetica-Bold').fontSize(9).fillColor('#a04010').text('LOCAL PREVIEW - these form links work only while this local demo is running.');
-    doc.moveDown(0.6).fontSize(8).text('Use the link or scan the QR code, then submit the form. URL tags identify the campaign link; they do not verify ad-platform delivery.');
+    doc.moveDown(0.6).fontSize(8).text('Use the link or scan the QR code, then submit the form. URL tags identify the source; they do not verify ad-platform delivery.');
     doc.moveDown(0.8);
     const y = doc.y;
     doc.rect(36, y, width, 24).fill('#142b45');

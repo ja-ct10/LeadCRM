@@ -8,21 +8,13 @@ export function captureFormSource(publicId: string): AttributionContext {
   const touch: AttributionTouch = { params, observedAt: now.toISOString(), landingPage: url.origin + url.pathname, ...(referrer ? { referrer } : {}) };
   const key = 'leadcrm-source:' + publicId;
   let context: AttributionContext = { first: touch, last: touch, storage: 'session' };
+  try { localStorage.removeItem(key); } catch { /* Session capture does not require local storage. */ }
   try {
-    const previous = AttributionContextSchema.safeParse(JSON.parse(localStorage.getItem(key) || sessionStorage.getItem(key) || 'null'));
-    if (previous.success && +now - Date.parse(previous.data.first.observedAt) < 30 * 86400000 && Date.parse(previous.data.first.observedAt) <= +now) {
-      context = { ...previous.data, last: classifySource(touch).method === 'unattributed' ? previous.data.last : touch };
+    const previous = AttributionContextSchema.safeParse(JSON.parse(sessionStorage.getItem(key) || 'null'));
+    if (previous.success && previous.data.storage === 'session' && +now - Date.parse(previous.data.first.observedAt) < 30 * 86400000 && Date.parse(previous.data.first.observedAt) <= +now) {
+      context = { ...previous.data, last: classifySource(touch).method === 'unattributed' ? previous.data.last : touch, storage: 'session' };
     }
-    (context.storage === 'remembered' ? localStorage : sessionStorage).setItem(key, JSON.stringify(context));
+    sessionStorage.setItem(key, JSON.stringify(context));
   } catch { context.storage = 'unavailable'; }
   return context;
-}
-export function rememberFormSource(publicId: string, context: AttributionContext, remember: boolean): AttributionContext {
-  const updated: AttributionContext = { ...context, storage: remember ? 'remembered' : 'session' };
-  try {
-    const key = 'leadcrm-source:' + publicId;
-    localStorage.removeItem(key); sessionStorage.removeItem(key);
-    (remember ? localStorage : sessionStorage).setItem(key, JSON.stringify(updated));
-  } catch { updated.storage = 'unavailable'; }
-  return updated;
 }

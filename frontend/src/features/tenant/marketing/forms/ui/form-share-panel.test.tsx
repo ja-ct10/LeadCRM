@@ -27,16 +27,18 @@ it('shows source sharing without redundant cards or submission history', () => {
     expect(link.origin + link.pathname).toBe('https://example.test/forms/public');
     expect(link.searchParams.get('utm_source')).toBe(row.source);
     expect(link.searchParams.get('utm_medium')).toBe(row.medium);
+    expect(link.searchParams.has('utm_campaign')).toBe(false);
   }
-  expect(screen.getByRole('link', { name: 'Open email' }).getAttribute('href')).toContain('mailto:goldenbits.1993@gmail.com');
+  expect(screen.getByRole('link', { name: 'Open email' }).getAttribute('href')).toBe('mailto:leadcrm.tech@gmail.com?subject=Product%20inquiry');
+  expect(screen.queryByLabelText('Campaign name')).toBeNull();
+  expect(screen.queryByText(/No advertising account is needed/)).toBeNull();
   expect(screen.getByText('Call / SMS')).toBeTruthy();
 });
 
-it('copies the selected campaign link and reports clipboard failures accurately', async () => {
+it('copies the selected source link and reports clipboard failures accurately', async () => {
   mount();
-  fireEvent.change(screen.getByLabelText('Campaign name'), { target: { value: 'defense_2026' } });
   fireEvent.click(screen.getByRole('button', { name: 'Copy google link' }));
-  await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.test/forms/public?utm_source=google&utm_medium=cpc&utm_campaign=defense_2026'));
+  await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.test/forms/public?utm_source=google&utm_medium=cpc'));
   vi.mocked(toast.success).mockClear(); vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('Denied'));
   fireEvent.click(screen.getByRole('button', { name: 'Copy facebook link' }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Unable to copy'));
@@ -55,16 +57,6 @@ it.each([
   expect(screen.getByRole('link', { name: 'Open email' })).toBeTruthy();
 });
 
-it('explains invalid campaigns and restores sharing after correction', () => {
-  mount(); const input = screen.getByLabelText('Campaign name');
-  fireEvent.change(input, { target: { value: 'invalid campaign' } });
-  expect(input.getAttribute('aria-invalid')).toBe('true');
-  expect(screen.getByRole('alert').textContent).toContain('1–100');
-  expect(screen.getByRole('button', { name: 'Copy google link' })).toHaveProperty('disabled', true);
-  fireEvent.change(input, { target: { value: 'valid-campaign' } });
-  expect(screen.getByRole('button', { name: 'Copy google link' })).toHaveProperty('disabled', false);
-});
-
 it.each([{ ...form, publishedVersion: 0 }, { ...form, status: 'draft' as const }])('requires publication before rendering campaign actions', draft => {
   mount({ form: draft });
   expect(screen.getByText(/Publish this form to enable source links/)).toBeTruthy();
@@ -78,7 +70,7 @@ it('downloads the selected PDF and recovers from a download failure', async () =
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   vi.mocked(apiClient.download).mockResolvedValueOnce(new Blob(['%PDF-test']));
   fireEvent.click(screen.getByRole('button', { name: 'Download links + QR PDF' }));
-  await waitFor(() => expect(apiClient.download).toHaveBeenCalledWith('/marketing/forms/form/source-links.pdf?campaign=leadcrm_demo'));
+  await waitFor(() => expect(apiClient.download).toHaveBeenCalledWith('/marketing/forms/form/source-links.pdf'));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Download links + QR PDF' })).toHaveProperty('disabled', false));
   expect(URL.createObjectURL).toHaveBeenCalledOnce();
   vi.mocked(apiClient.download).mockRejectedValueOnce(new Error('Download unavailable'));
