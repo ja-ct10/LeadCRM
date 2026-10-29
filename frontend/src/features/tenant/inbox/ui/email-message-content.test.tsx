@@ -66,3 +66,17 @@ it('retains saved content on temporary errors, retries, and clears content on au
   await waitFor(() => expect(onUnavailable).toHaveBeenCalledOnce());
   expect(screen.getByTitle('Email message content').getAttribute('srcdoc')).not.toContain('Saved body');
 });
+it('normalizes both saved and recovered content without revealing prior replies', async () => {
+  const body = '<pre>Yes&amp;nbsp;please &amp;#39;confirmed&amp;#39; &amp;lt; &amp;gt; &amp;amp;\nSecond line\nOn Thu, Oct 8, 2026, Staff wrote:\n&amp;gt; Old question</pre>';
+  mocks.content.mockRejectedValueOnce(Object.assign(new Error('Temporary provider error'), { status: 503 }));
+  render(<EmailMessageContent email={{ ...email, body }} />);
+  await screen.findByRole('alert');
+  const getBody = () => new DOMParser().parseFromString(screen.getByTitle('Email message content').getAttribute('srcdoc')!, 'text/html').body;
+  expect(getBody().textContent).toContain("Yes please 'confirmed' < > &\nSecond line");
+  expect(getBody().textContent).not.toMatch(/Old question|wrote:/);
+  mocks.content.mockResolvedValueOnce({ body: '<p>Yes&nbsp;please &#39;confirmed&#39; &lt; &gt; &amp;</p><p>Second line</p><div class="gmail_quote">Old question</div>', attachments: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry message' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(getBody().textContent?.replace(/\u00a0/g, ' ')).toContain("Yes please 'confirmed' < > &");
+  expect(getBody().textContent).not.toMatch(/Old question|wrote:/); expect(body).toContain('Old question');
+});

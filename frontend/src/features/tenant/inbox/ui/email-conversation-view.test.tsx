@@ -13,7 +13,10 @@ const latest: GmailEmail = { ...old, id: 'latest', from: 'Doris <customer@exampl
 const props = () => ({ email: latest, onBack: vi.fn(), onEmailsChanged: vi.fn() });
 beforeEach(() => { vi.resetAllMocks(); mocks.content.mockImplementation(() => new Promise(() => {})); mocks.thread.mockResolvedValue({ emails: [latest, old], dealOptions: [], canAssociateDeal: false }); mocks.read.mockResolvedValue({ success: true }); mocks.archive.mockResolvedValue({ success: true }); mocks.trash.mockResolvedValue({ success: true }); });
 afterEach(cleanup);
-const loaded = () => waitFor(() => expect(screen.queryByText('Loading conversation…')).toBeNull());
+const loaded = () => waitFor(() => {
+  expect(screen.queryByText('Loading conversation…')).toBeNull();
+  expect(screen.queryByLabelText('Updating conversation')).toBeNull();
+});
 const messageDocument = (element: ParentNode = document) => new DOMParser().parseFromString(element.querySelector('iframe[data-mailbox-body]')?.getAttribute('srcdoc') ?? '', 'text/html');
 
 it('keeps only one bottom Reply and Forward area per expanded message, without Reply All or header reply icons', async () => {
@@ -107,10 +110,11 @@ it('keeps the existing topic Deal selector once inside the first eligible expand
 });
 it('forwards the selected older message with its existing source identity', async () => {
   mocks.correspondent.mockResolvedValue(groupResult()); mocks.send.mockResolvedValue({ success: true });
+  mocks.content.mockImplementation((id: string) => Promise.resolve({ body: id === olderTopic.id ? olderTopic.body : latest.body, attachments: [] }));
   render(<EmailConversationView {...props()} email={groupedEmail} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: 'Expand message from Doris' }));
   fireEvent.click(within(screen.getAllByRole('article')[0]).getByRole('button', { name: 'Forward' }));
-  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('Fwd: CCTV quotation');
+  await waitFor(() => expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('Fwd: CCTV quotation'));
   fireEvent.change(screen.getByLabelText('To'), { target: { value: 'other@example.test' } });
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toContain('Older quotation'));
   fireEvent.click(screen.getByLabelText('Send email'));
@@ -229,15 +233,19 @@ it('renders chronological vertical messages, one subject, latest expanded, older
   expect(screen.getByText(/1:58 PM/)).toBeTruthy();
   expect(within(screen.getByRole('toolbar')).queryByRole('button', { name: /Reply|Forward/ })).toBeNull();
 });
-it('folds only recognizable quotes and keeps complete sanitized content accessible', async () => {
+it('shows the same new reply when collapsed and expanded without restoring quoted history', async () => {
   render(<EmailConversationView {...props()} />); await loaded();
-  const quote = messageDocument().querySelector('details')!;
-  expect(quote.open).toBe(false); expect(quote.textContent).toContain('Original question');
-  expect(quote.querySelector('details')).toBeNull();
-  quote.open = true; expect(quote.open).toBe(true);
+  const body = messageDocument();
+  expect(body.body.textContent).toContain('Please send the catalog');
+  expect(body.body.textContent).not.toContain('Original question'); expect(body.querySelector('details')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse message from Doris' }));
+  expect(screen.getByText('Please send the catalog', { selector: 'span' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand message from Doris' }));
   fireEvent.click(screen.getByRole('button', { name: 'Expand message from Staff' }));
-  expect(quote.open).toBe(true);
+  expect(messageDocument(screen.getAllByRole('article')[1]).body.textContent).not.toContain('Original question');
+  expect(messageDocument(screen.getAllByRole('article')[0]).body.textContent).toContain('Original question');
   expect(latest.body).toContain('class="gmail_quote"');
+  expect(forwardDraft(latest).body).toContain('Original question');
 });
 it('does not issue read operations on Strict Mode or revision changes', async () => {
   const actions = props(), view = render(<StrictMode><EmailConversationView {...actions} /></StrictMode>);

@@ -13,6 +13,21 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 const note = { id: 'saved', type: 'note', title: 'Follow-up note', createdAt: '2026-10-01T10:00:00Z', createdBy: { id: 'actor', firstName: 'Author', lastName: 'Test', email: 'author@example.test' } };
 beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.actor = 'actor'; });
 afterEach(cleanup);
+it.each(['leads', 'contacts', 'deals'] as const)('normalizes email content and removes prior replies in the %s timeline', module => {
+  const body = '<pre>Yes&amp;nbsp;please &amp;#39;confirmed&amp;#39; &amp;lt; &amp;gt; &amp;amp;\nSecond line\n\nOn Thu, Oct 8, 2026, Staff wrote:\n&amp;gt; Old question</pre>';
+  const email = { id: 'email', type: 'email', title: 'Email history', createdAt: note.createdAt, metadata: { email: {
+    id: 'message', providerMessageId: 'provider', accountId: 'account', threadId: 'thread', direction: 'inbound',
+    from: 'lead@example.test', to: ['staff@example.test'], subject: 'Re: Inquiry', sentAt: note.createdAt, body,
+  } } };
+  const { container } = render(<RecordTimelineTab activities={[email]} module={module} recordId="record" />);
+  const content = container.querySelector('[data-email-body]')!;
+  expect(content.textContent).toContain("Yes please 'confirmed' < > &\nSecond line");
+  expect(content.textContent).not.toMatch(/Old question|wrote:|&nbsp;|&#39;/);
+  expect(screen.getByText('Received')).toBeTruthy(); expect(screen.getByText('Re: Inquiry')).toBeTruthy();
+  expect(screen.getByText('lead@example.test')).toBeTruthy(); expect(screen.getByText('staff@example.test')).toBeTruthy();
+  expect(container.querySelector('time')?.getAttribute('dateTime')).toBe(note.createdAt);
+  expect(email.metadata.email.body).toBe(body);
+});
 it('shows the complete assignment message and preserves the actual event-time actor', () => {
   render(<RecordTimelineTab activities={[{ ...note, type: 'assignment', title: 'Assigned Agent changed to Next Agent',
     description: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.',

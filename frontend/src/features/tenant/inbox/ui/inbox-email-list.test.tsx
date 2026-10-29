@@ -17,6 +17,17 @@ it('renders participant names, count and latest preview without changing the row
   expect(screen.getByText('— Latest reply')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /Open email from Doris/ })); expect(options.onEmailClick).toHaveBeenCalledWith(row);
 });
+it('uses the normalized latest body instead of the provider snippet and keeps quote-only bodies empty', () => {
+  const options = props();
+  const view = render(<InboxEmailList {...options} emails={[{ ...row, snippet: 'Old question', body: '<p>Yes&nbsp;&#39;please&#39; &lt; &gt; &amp;</p><div class="gmail_quote">Old question</div>' }]} />);
+  expect(screen.getByText("— Yes 'please' < > &")).toBeTruthy(); expect(screen.queryByText(/Old question/)).toBeNull();
+  view.rerender(<InboxEmailList {...options} emails={[{ ...row, snippet: 'Old question', body: '<div class="gmail_quote">Old question</div>' }]} />);
+  expect(screen.getByText('— (No content)')).toBeTruthy(); expect(screen.queryByText(/Old question/)).toBeNull();
+});
+it('decodes legacy snippet-only rows once and keeps decoded markup inert', () => {
+  const { container } = render(<InboxEmailList {...props()} emails={[{ ...row, snippet: 'A&nbsp;B &#39;yes&#39; &lt;img&gt; &amp;' }]} />);
+  expect(screen.getByText("— A B 'yes' <img> &")).toBeTruthy(); expect(container.querySelector('img')).toBeNull();
+});
 it('keeps the external name and count when the owner replies', () => {
   const conversationId = 'c_' + 'b'.repeat(32), options = props();
   const view = render(<InboxEmailList {...options} emails={[{ ...row, conversationId, participants: ['Doris'] }]} />);

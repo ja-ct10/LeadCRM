@@ -44,23 +44,23 @@ export async function readMailboxAttachment(tenantId: string, userId: string, me
   await assertStoredMessages(account, scope, [messageId]);
   const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { attachments: true, threadId: true } });
   const attachment = (Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : []).find(file => file.id === attachmentId);
-  if (!attachment) throw new AppError('Attachment is not available for this message.', 404);
+  if (!attachment) throw new AppError('Attachment is not available for this message.', 404, 'MAILBOX_ATTACHMENT_UNAVAILABLE');
   if (attachment.size !== undefined && (!Number.isSafeInteger(attachment.size) || attachment.size < 0) || typeof attachment.filename !== 'string' || typeof attachment.mimeType !== 'string') throw new AppError('Invalid attachment metadata.', 502);
   if (attachment.size !== undefined && attachment.size > MAX_MAILBOX_ATTACHMENT_BYTES) throw new AppError('This attachment exceeds the download limit.', 413);
   const token = await getValidAccessToken(tenantId, userId);
   let result: { data?: string; size?: number };
   if (attachmentId.startsWith('part:')) {
     const message = await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=full`);
-    if (message.id !== messageId || message.threadId !== row.threadId) throw new AppError('Message changed during download.', 409);
+    if (message.id !== messageId || message.threadId !== row.threadId) throw new AppError('Message changed during download.', 409, 'MAILBOX_SCOPE_CHANGED');
     const part = gmailParts(message.payload).find(part => part.partId === attachment.partId && `part:${part.partId}` === attachmentId);
-    if (!part?.body || part.body.attachmentId) throw new AppError('Attachment is no longer available.', 404);
+    if (!part?.body || part.body.attachmentId) throw new AppError('Attachment is no longer available.', 404, 'MAILBOX_ATTACHMENT_UNAVAILABLE');
     result = part.body;
   } else result = await readGmailJson<{ data: string; size: number }>(token, `messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
   const data = decodeGmailBody(result);
   if (attachment.size !== undefined && data.length !== attachment.size) throw new AppError('Gmail returned an incomplete attachment.', 502);
   // Recheck after the network request so a reassignment during download revokes it.
   const current = await authorizedMailbox(tenantId, userId);
-  if (current.account.id !== account.id) throw new AppError('Mailbox changed during download.', 409);
+  if (current.account.id !== account.id) throw new AppError('Mailbox changed during download.', 409, 'MAILBOX_SCOPE_CHANGED');
   await assertStoredMessages(current.account, current.scope, [messageId]);
   if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
   return { data, filename: attachment.filename, mimeType: previewContentType(data, attachment.mimeType) };

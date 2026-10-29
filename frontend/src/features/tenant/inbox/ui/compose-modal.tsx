@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useReducedMotion } from 'motion/react';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
-import { SendMailboxEmailSchema, MAILBOX_ATTACHMENT_TYPES, type MailboxComposeMode, type MailboxUploadAttachment, type MailboxRecordContext } from '@leadcrm/shared';
+import { SendMailboxEmailSchema, mailboxAttachmentType, MAILBOX_ATTACHMENT_TYPES, MAILBOX_ATTACHMENT_MAX_BYTES, MAILBOX_ATTACHMENTS_MAX_BYTES, type MailboxComposeMode, type MailboxUploadAttachment, type MailboxRecordContext } from '@leadcrm/shared';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { toast } from '@/shared/utils/toast';
 import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft, fetchGmailThread, fetchGmailMessageContent, fetchGmailAttachment, type GmailEmail } from '../services/gmail.service';
@@ -40,6 +40,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentError, setAttachmentError] = useState('');
   const [attachmentRetry, setAttachmentRetry] = useState(0);
+  const [attachmentIssues, setAttachmentIssues] = useState<{ id: string; filename: string; error: string }[]>([]);
+  const [inlineAttachmentNotice, setInlineAttachmentNotice] = useState(false);
+  const restoredAttachments = useRef(new Map<string, MailboxUploadAttachment>());
+  const omittedAttachments = useRef(new Set<string>());
+  const attachmentBytes = attachments.reduce((sum, file) => sum + file.content.length * 3 / 4 - (file.content.endsWith('==') ? 2 : file.content.endsWith('=') ? 1 : 0), 0);
+  const attachmentLimitError = attachments.length > 10 ? 'Remove attachments until at most 10 remain.' : attachmentBytes > MAILBOX_ATTACHMENTS_MAX_BYTES ? 'Remove attachments until they total 10 MB or less.' : '';
+  const attachmentBlocked = !!attachmentError || !!attachmentIssues.length || !!attachmentLimitError;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readingFiles = useRef(false);
   const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string; messageId?: string } | null>(null);
@@ -105,6 +112,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
       scheduleRequest.current = null; sendRequest.current = null; draftRequest.current = null;
       setTo(''); setSubject(''); setCurrentDraftId(undefined); setSentLink(null); setError(null);
       setAttachments([]); setDealId(''); setRecordContext(undefined); setAttachmentError('');
+      setAttachmentIssues([]); setInlineAttachmentNotice(false); setAttachmentBusy(false);
+      restoredAttachments.current.clear(); omittedAttachments.current.clear();
       if (editorRef.current) editorRef.current.innerHTML = '';
       onClose();
     }
@@ -144,7 +153,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     if (isOpen) {
       const restored = initialDraft ?? retainedComposer.current;
       authoredContent.current = !initialDraft && !!retainedComposer.current;
-      setError(null); setShowScheduleMenu(false); setConfirmDiscard(false);
+      setError(null); setToError(null); setShowScheduleMenu(false); setConfirmDiscard(false);
       if (initialDraft || !retainedComposer.current) { scheduleRequest.current = null; sendRequest.current = null; draftRequest.current = null; }
       setSentLink(null);
       setTo(restored?.to ?? '');
@@ -152,6 +161,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
       setDealId(restored?.dealId ?? ''); setRecordContext(restored?.recordContext);
       setAttachments(!initialDraft ? retainedComposer.current?.attachments ?? [] : []);
       setAttachmentError('');
+      setAttachmentIssues([]); setInlineAttachmentNotice(!!initialDraft?.forwardImageNotice);
+      restoredAttachments.current.clear(); omittedAttachments.current.clear();
       setCurrentDraftId(initialDraft?.draftId);
       setComposeMode(initialDraft?.draftContextRequired ? '' : initialDraft?.composeMode ?? (initialDraft?.replyToMessageId ? 'reply' : initialDraft?.forwardSourceMessageId ? 'forward' : 'compose'));
       setSourceMessageId(initialDraft?.replyToMessageId ?? initialDraft?.forwardSourceMessageId ?? '');
@@ -164,24 +175,51 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   useEffect(() => {
     const messageId = initialDraft?.attachmentSourceMessageId;
     if (!isOpen || !messageId) return;
-    const controller = new AbortController();
+    const controller = new AbortController(), generation = operationGeneration.current;
+    const stale = () => controller.signal.aborted || generation !== operationGeneration.current;
     setAttachmentBusy(true); setAttachmentError('');
     void (async () => {
-      const content = await fetchGmailMessageContent(messageId, controller.signal);
-      const files: File[] = [];
-      for (const file of content.attachments) {
-        const blob = await fetchGmailAttachment(messageId, file.id, controller.signal);
-        files.push(new File([blob], file.filename, { type: file.mimeType }));
+      const files = initialDraft.sourceAttachments ?? (await fetchGmailMessageContent(messageId, controller.signal)).attachments;
+      if (stale()) return;
+      const issues: { id: string; filename: string; error: string }[] = [];
+      setInlineAttachmentNotice(!!initialDraft.forwardImageNotice || files.some(file => file.disposition === 'inline' || !!file.contentId));
+      for (const [index, file] of files.entries()) {
+        if (stale()) return;
+        if (omittedAttachments.current.has(file.id) || restoredAttachments.current.has(file.id)) continue;
+        const extension = Object.keys(MAILBOX_ATTACHMENT_TYPES).find(key => MAILBOX_ATTACHMENT_TYPES[key] === file.mimeType);
+        const filename = file.filename || (extension ? `inline-image-${index + 1}.${extension}` : `attachment-${index + 1}`);
+        try {
+          if (!mailboxAttachmentType(filename)) throw new Error('This file format cannot be forwarded. Remove it to continue.');
+          if (file.size !== undefined && (!file.size || file.size > MAILBOX_ATTACHMENT_MAX_BYTES)) throw new Error('Forwarded files must be nonempty and up to 5 MB each. Remove this file to continue.');
+          const blob = await fetchGmailAttachment(messageId, file.id, controller.signal);
+          const [restored] = await readComposeFiles([new File([blob], filename, { type: file.mimeType })]);
+          if (stale()) return;
+          restoredAttachments.current.set(file.id, restored);
+          setAttachments(current => [...current, restored]);
+        } catch (error) {
+          if (stale()) return;
+          const request = error as ApiRequestError;
+          const fileFailure = request.code === 'MAILBOX_ATTACHMENT_UNAVAILABLE' || request.code?.startsWith('GMAIL_') && request.code !== 'GMAIL_RECONNECT_REQUIRED';
+          if ((!fileFailure && [401, 403, 404].includes(request.status ?? 0)) || request.code === 'MAILBOX_SCOPE_CHANGED') { actionFailed(error, 'Original attachments are unavailable.'); return; }
+          if (request.retryAt || request.status === 429) setActionRetryAt(Date.parse(request.retryAt ?? '') || Date.now() + 60000);
+          issues.push({ id: file.id, filename, error: error instanceof Error ? error.message : 'Unable to load this attachment.' });
+        }
       }
-      const restored = await readComposeFiles(files);
-      if (!controller.signal.aborted) setAttachments(restored);
-    })().catch(() => { if (!controller.signal.aborted) setAttachmentError('Draft attachments could not be loaded. Retry before sending or saving.'); })
-      .finally(() => { if (!controller.signal.aborted) setAttachmentBusy(false); });
+      if (!stale()) setAttachmentIssues(issues);
+    })().catch(error => { if (!stale()) {
+      const request = error as ApiRequestError;
+      if ([401, 403, 404].includes(request.status ?? 0) || request.code === 'MAILBOX_SCOPE_CHANGED') actionFailed(error, 'Original attachments are unavailable.');
+      else {
+        if (request.retryAt || request.status === 429) setActionRetryAt(Date.parse(request.retryAt ?? '') || Date.now() + 60000);
+        setAttachmentError('Original attachments could not be loaded. Retry before sending or saving.');
+      }
+    } })
+      .finally(() => { if (!stale()) setAttachmentBusy(false); });
     return () => controller.abort();
   }, [isOpen, initialDraft, attachmentRetry]);
 
   const addAttachments = async (files: File[]) => {
-    if (readingFiles.current || mutationPending.current || attachmentBusy || attachmentError || !files.length) return;
+    if (readingFiles.current || mutationPending.current || attachmentBusy || attachmentBlocked || !files.length) return;
     readingFiles.current = true; setAttachmentBusy(true);
     const generation = operationGeneration.current;
     try { const result = await readComposeFiles(files, attachments); if (generation === operationGeneration.current) { setAttachments(result); authoredContent.current = true; } }
@@ -246,7 +284,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const sourceRequired = !!initialDraft?.draftContextRequired && (!composeMode || !sourceOptions.some(email => email.id === sourceMessageId));
   const actionFailed = (error: unknown, fallback: string) => {
     const request = error as ApiRequestError;
-    if (([401, 403, 404].includes(request.status ?? 0) || request.code === 'MAILBOX_SCOPE_CHANGED') && (currentDraftId || sourceMessageId || recordContext || initialDraft?.sourceDealId)) {
+    const editableFailure = request.code === 'MAILBOX_RECIPIENT_REJECTED' || request.code === 'GMAIL_WRITE_REJECTED';
+    if (!editableFailure && ([401, 403, 404].includes(request.status ?? 0) || request.code === 'MAILBOX_SCOPE_CHANGED') && (currentDraftId || sourceMessageId || recordContext || initialDraft?.sourceDealId)) {
       operationGeneration.current++; resetForm(); onClose(); return;
     }
     setError(error instanceof Error ? error.message : fallback);
@@ -254,7 +293,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   };
 
   const handleSend = async (scheduledAt?: string): Promise<void> => {
-    if (mutationPending.current || paused || attachmentBusy || attachmentError) return;
+    if (mutationPending.current || paused || attachmentBusy || attachmentBlocked) return;
     if (sourceRequired) { setError('Choose the original authorized message and its action before continuing.'); return; }
     if (sentLink) {
       mutationPending.current = true; setIsSending(true);
@@ -270,10 +309,9 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     }
 
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const recipients = to.split(',').map(value => value.trim());
-    if (recipients.some(value => !emailRegex.test(value))) {
-      setError('Please enter a valid email address (e.g., name@gmail.com)');
+    if (!SendMailboxEmailSchema.shape.to.safeParse(recipients).success) {
+      setError('Enter valid email addresses separated by commas (at most 50).');
       return;
     }
 
@@ -325,6 +363,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     setTo('');
     setSubject('');
     setAttachments([]); setDealId(''); setRecordContext(undefined); setAttachmentError('');
+    setAttachmentIssues([]); setInlineAttachmentNotice(false);
+    restoredAttachments.current.clear(); omittedAttachments.current.clear();
     setError(null);
     setToError(null);
     setIsMinimized(false);
@@ -340,8 +380,9 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   };
 
   const handleSaveDraft = async (): Promise<void> => {
-    if (mutationPending.current || paused || sentLink || attachmentBusy || attachmentError) return;
+    if (mutationPending.current || paused || sentLink || attachmentBusy || attachmentBlocked) return;
     if (sourceRequired) { setError('Choose the original authorized message and its action before continuing.'); return; }
+    if (to.trim() && !SendMailboxEmailSchema.shape.to.safeParse(to.split(',').map(value => value.trim())).success) { setError('Enter valid email addresses separated by commas (at most 50).'); return; }
     const htmlBody = getEditorContent();
     if (!to.trim() && !subject.trim() && !htmlBody.trim() && !attachments.length) {
       return; // Nothing to save
@@ -504,13 +545,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
               setTo(e.target.value);
               setError(null);
               // Clear error if user is typing a valid email
-              if (toError && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value.trim())) {
+              if (toError && SendMailboxEmailSchema.shape.to.safeParse(e.target.value.split(',').map(value => value.trim())).success) {
                 setToError(null);
               }
             }}
             onBlur={() => {
-              if (to.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) {
-                setToError('Please enter a valid email address (e.g., name@gmail.com)');
+              if (to.trim() && !SendMailboxEmailSchema.shape.to.safeParse(to.split(',').map(value => value.trim())).success) {
+                setToError('Enter valid email addresses separated by commas (at most 50).');
               } else {
                 setToError(null);
               }
@@ -573,9 +614,15 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
 
       </div>
 
-      {!!attachments.length && <ul aria-label="Email attachments" className="max-h-28 shrink-0 overflow-y-auto px-4 py-2 text-xs">{attachments.map((file, index) => <li key={index} className="flex min-w-0 items-center gap-2 py-1"><Paperclip size={13} aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{file.filename}</span><button type="button" disabled={isSending || isSavingDraft || attachmentBusy || !!sentLink} aria-label={`Remove attachment ${file.filename}`} onClick={() => setAttachments(current => current.filter((_, position) => position !== index))} className="grid h-8 w-8 place-items-center"><X size={14} /></button></li>)}</ul>}
+      {!!attachments.length && <ul aria-label="Email attachments" className="max-h-28 shrink-0 overflow-y-auto px-4 py-2 text-xs">{attachments.map((file, index) => <li key={index} className="flex min-w-0 items-center gap-2 py-1"><Paperclip size={13} aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{file.filename}</span><button type="button" disabled={isSending || isSavingDraft || attachmentBusy || !!sentLink} aria-label={`Remove attachment ${file.filename}`} onClick={() => {
+        for (const [id, restored] of restoredAttachments.current) if (restored === file) omittedAttachments.current.add(id);
+        setAttachments(current => current.filter((_, position) => position !== index));
+      }} className="grid h-8 w-8 place-items-center"><X size={14} /></button></li>)}</ul>}
+      {!!attachmentIssues.length && <ul aria-label="Attachments needing attention" className="max-h-28 overflow-y-auto px-4 text-xs">{attachmentIssues.map(file => <li key={file.id} className="py-1"><p role="alert">{file.filename}: {file.error}</p><button type="button" disabled={attachmentBusy || isSending || isSavingDraft || paused} onClick={() => setAttachmentRetry(value => value + 1)} className="mr-3 underline">Retry {file.filename}</button><button type="button" disabled={attachmentBusy || isSending || isSavingDraft} onClick={() => { omittedAttachments.current.add(file.id); setAttachmentIssues(current => current.filter(issue => issue.id !== file.id)); }} className="underline">Remove {file.filename} from forward</button></li>)}</ul>}
+      {inlineAttachmentNotice && <p role="status" className="px-4 py-1 text-xs text-muted-foreground">Available embedded images are included as attachments. Original image placement and remote images are not preserved.</p>}
+      {attachmentLimitError && <p role="alert" className="px-4 py-1 text-xs text-destructive">{attachmentLimitError}</p>}
       {attachmentBusy && <p role="status" className="px-4 py-1 text-xs text-muted-foreground">Loading attachments…</p>}
-      {attachmentError && <p role="alert" className="px-4 py-1 text-xs text-destructive">{attachmentError} <button type="button" onClick={() => setAttachmentRetry(value => value + 1)} className="underline">Retry attachments</button></p>}
+      {attachmentError && <p role="alert" className="px-4 py-1 text-xs text-destructive">{attachmentError} <button type="button" disabled={attachmentBusy || paused} onClick={() => setAttachmentRetry(value => value + 1)} className="underline">Retry attachments</button></p>}
       {/* Error */}
       {paused && <p role="status" className="px-4 py-1.5 text-xs text-muted-foreground">Gmail updates are temporarily paused. Your message remains open.</p>}
       {error && (
@@ -591,7 +638,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
           <div className="flex items-center" ref={scheduleRef}>
             <button
               onClick={() => void handleSend()}
-              disabled={isSending || isSavingDraft || paused || sourceRequired || attachmentBusy || !!attachmentError}
+              disabled={isSending || isSavingDraft || paused || sourceRequired || attachmentBusy || attachmentBlocked}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
               aria-label={sentLink ? "Retry deal link" : "Send email"}
             >
@@ -603,7 +650,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
               <span>{isSending ? (sentLink ? 'Linking…' : 'Sending...') : sentLink ? 'Retry deal link' : 'Send'}</span>
             </button>
             <button
-              disabled={isSending || isSavingDraft || paused || sourceRequired || attachmentBusy || !!attachmentError || !!initialDraft?.sourceDealId || !!sentLink}
+              disabled={isSending || isSavingDraft || paused || sourceRequired || attachmentBusy || attachmentBlocked || !!initialDraft?.sourceDealId || !!sentLink}
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"
@@ -622,7 +669,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
           {/* Formatting toolbar */}
           <div role="toolbar" aria-label="Message formatting" className="flex w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto [&>*]:shrink-0">
             <input ref={fileInputRef} type="file" multiple hidden accept={Object.keys(MAILBOX_ATTACHMENT_TYPES).map(extension => `.${extension}`).join(',')} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void addAttachments(files); }} />
-            <button type="button" aria-label="Attach files" title="Attach files (up to 5 MB each, 10 MB total)" disabled={isSending || isSavingDraft || attachmentBusy || !!attachmentError || !!sentLink} onClick={() => fileInputRef.current?.click()} className="rounded-full p-2 text-slate-500 hover:bg-muted disabled:opacity-50"><Paperclip className="h-4 w-4" /></button>
+            <button type="button" aria-label="Attach files" title="Attach files (up to 5 MB each, 10 MB total)" disabled={isSending || isSavingDraft || attachmentBusy || attachmentBlocked || !!sentLink} onClick={() => fileInputRef.current?.click()} className="rounded-full p-2 text-slate-500 hover:bg-muted disabled:opacity-50"><Paperclip className="h-4 w-4" /></button>
             <button
               onClick={() => execFormat('bold')}
               className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('bold') ? 'text-primary dark:text-primary bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
@@ -740,7 +787,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
           {/* Save Draft */}
           <button
             onClick={handleSaveDraft}
-            disabled={isSavingDraft || isSending || paused || sourceRequired || attachmentBusy || !!attachmentError}
+            disabled={isSavingDraft || isSending || paused || sourceRequired || attachmentBusy || attachmentBlocked}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
             aria-label="Save as draft"
             title="Save as draft"

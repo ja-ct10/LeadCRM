@@ -247,7 +247,7 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
       throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
     }
     await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions,
-      { sourceMessageId: context.replyToMessageId, dealId: context.dealId ?? context.quotation?.draft.dealId, recordContext: context.recordContext });
+      { composeMode: context.composeMode, forwardSourceMessageId: context.forwardSourceMessageId, sourceMessageId: context.replyToMessageId, dealId: context.dealId ?? context.quotation?.draft.dealId, recordContext: context.recordContext });
     await mailboxChanged(account.id);
   } catch (error) {
     const where = { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true };
