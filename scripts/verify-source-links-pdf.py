@@ -26,7 +26,7 @@ if targets != expected:
 if decoded != expected:
     raise ValueError(f'QR mismatch: missing {expected - decoded}; unexpected {decoded - expected}')
 text = ' '.join(' '.join(page.extract_text() for page in reader.pages).split())
-for phrase in ['Others - Call / SMS', 'goldenbits.1993@gmail.com', 'still needs deployment']:
+for phrase in ['Others - Call / SMS', 'leadcrm.tech@gmail.com', 'still needs deployment']:
     if phrase not in text:
         raise ValueError('PDF missing required text: ' + phrase)
 if 'localhost' in text:

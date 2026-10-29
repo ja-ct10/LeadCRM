@@ -60,14 +60,17 @@ export async function finishBusinessEmail(state: string, code: string) {
     if (!info.verified_email || normalizeEmail(info.email) !== BUSINESS_INQUIRY_EMAIL || normalizeEmail(profile.emailAddress) !== BUSINESS_INQUIRY_EMAIL) throw new AppError(`Connect ${BUSINESS_INQUIRY_EMAIL} for business inquiries.`, 400);
     if (!tokens.scope?.split(' ').includes(scope) || !tokens.refresh_token) throw new AppError('Approve read-only and offline Gmail access, then reconnect.', 400);
     await checkSession();
-    const data = { email: BUSINESS_INQUIRY_EMAIL, connectedById: challenge.userId, accessToken: encryptToken(tokens.access_token), refreshToken: encryptToken(tokens.refresh_token), tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000), isActive: true, syncError: null, leaseId: null, leaseUntil: null };
+    const previous = await prisma.businessEmailConnection.findUnique({ where: { tenantId: challenge.tenantId }, select: { email: true } });
+    const data = { email: BUSINESS_INQUIRY_EMAIL, connectedById: challenge.userId, accessToken: encryptToken(tokens.access_token), refreshToken: encryptToken(tokens.refresh_token), tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000), isActive: true, syncError: null, leaseId: null, leaseUntil: null,
+      ...(previous && previous.email !== BUSINESS_INQUIRY_EMAIL ? { startsAt: new Date(), lastSyncAt: null, nextPageToken: null } : {}) };
     await prisma.businessEmailConnection.upsert({ where: { tenantId: challenge.tenantId }, create: { tenantId: challenge.tenantId, ...data }, update: data });
     await prisma.auditLog.create({ data: { tenantId: challenge.tenantId, userId: challenge.userId, action: 'business_email.connected', entityType: 'BusinessEmailConnection' } });
   });
 }
 export async function businessEmailStatus(tenantId: string) {
   const row = await prisma.businessEmailConnection.findUnique({ where: { tenantId }, select: { isActive: true, email: true, lastSyncAt: true, syncError: true } });
-  return { email: BUSINESS_INQUIRY_EMAIL, connected: row?.isActive ?? false, lastSyncAt: row?.lastSyncAt?.toISOString() ?? null, syncError: row?.syncError ?? null };
+  const matchesMailbox = row?.email === BUSINESS_INQUIRY_EMAIL;
+  return { email: BUSINESS_INQUIRY_EMAIL, connected: matchesMailbox && !!row?.isActive, lastSyncAt: matchesMailbox ? row.lastSyncAt?.toISOString() ?? null : null, syncError: matchesMailbox ? row.syncError : null };
 }
 export async function disconnectBusinessEmail(tenantId: string, userId: string) {
   await requireBusinessEmailAdmin(tenantId, userId);
@@ -95,12 +98,12 @@ export function inquiryMetadata(input: unknown, startsAt: Date) {
 }
 export async function syncBusinessEmail(tenantId: string) {
   let row = await prisma.businessEmailConnection.findUnique({ where: { tenantId } });
-  if (!row?.isActive) throw new AppError('Connect the business inquiry mailbox first.', 409);
+  if (!row?.isActive || row.email !== BUSINESS_INQUIRY_EMAIL) throw new AppError(`Connect ${BUSINESS_INQUIRY_EMAIL} for business inquiries.`, 409);
   await requireBusinessEmailAdmin(tenantId, row.connectedById);
   const now = new Date(), leaseId = randomUUID();
   // Cover one bounded page: 31 provider calls can each take 15 seconds.
   const acquired = await prisma.businessEmailConnection.updateMany({
-    where: { id: row.id, isActive: true, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] },
+    where: { id: row.id, email: BUSINESS_INQUIRY_EMAIL, isActive: true, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] },
     data: { leaseId, leaseUntil: new Date(+now + 600000) },
   });
   if (!acquired.count) return { busy: true, captured: 0 };
@@ -168,6 +171,6 @@ export async function reviewBusinessInquiry(tenantId: string, userId: string, id
   });
 }
 export async function syncBusinessEmailConnections() {
-  const connections = await tenantContext.exit(() => prisma.businessEmailConnection.findMany({ where: { isActive: true, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: new Date(Date.now() - 30000) } }] }, take: 10 }));
+  const connections = await tenantContext.exit(() => prisma.businessEmailConnection.findMany({ where: { email: BUSINESS_INQUIRY_EMAIL, isActive: true, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: new Date(Date.now() - 30000) } }] }, take: 10 }));
   for (const connection of connections) await tenantContext.run({ tenantId: connection.tenantId }, () => syncBusinessEmail(connection.tenantId)).catch(() => { /* Safe diagnostic is persisted on the connection. */ });
 }

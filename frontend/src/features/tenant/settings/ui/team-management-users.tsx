@@ -107,6 +107,9 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   );
   const roleNames = useMemo(() => roles.filter((r) => !r.isArchived).map((r) => r.name), [roles]);
   const roleObjs = useMemo(() => roles.filter((r) => !r.isArchived && !r.isSystemRole).map((r) => ({ id: r.id, name: r.name })), [roles]);
+  const creationRoleObjs = useMemo(() => roles.filter((r) => !r.isArchived && (
+    r.name === 'Client Admin' ? r.isSystemRole && currentUser?.role === 'Client Admin' : !r.isSystemRole
+  )).map((r) => ({ id: r.id, name: r.name })), [roles, currentUser?.role]);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
@@ -333,7 +336,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {/* Modals */}
       <AnimatePresence>
         {isAddOpen && (
-          <UserPanel roles={roleObjs} canEdit={canCreateUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
+          <UserPanel roles={creationRoleObjs} canEdit={canCreateUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
         )}
         {editingUser && (
           <UserPanel key={editingUser.id} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)}

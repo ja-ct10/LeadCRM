@@ -46,7 +46,7 @@ For local development and automated testing only, the backend can permit exact G
 
 ## Client Admin approval of production staff
 
-Client Admin can provision a personal Gmail or Workspace address through Team Management with an existing active custom role. User creation, exact-email approval (`user.staff_approved`), role/group assignments and audit records commit together. Welcome submission follows the commit using the existing transport. New addresses require no environment-variable edits. Non-admin provisioners retain the company-domain policy even when their role allows user creation.
+Client Admin can provision a personal Gmail or Workspace address through Team Management with an existing active custom role or the canonical Client Admin system role. Only an existing Client Admin can create another Client Admin; delegated provisioners retain custom-role assignment. User creation, exact-email approval (`user.staff_approved`), role/group assignments and audit records commit together. Welcome submission follows the commit using the existing transport. New addresses require no environment-variable edits. Non-admin provisioners retain the company-domain policy even when their role allows user creation.
 
 Historical external staff without approval evidence remain denied until Client Admin selects **Approve registered email** in their User Details. The corresponding `POST /administration/users/:id/approve-email` requires an active ready Client Admin and `users.edit`, verifies the target in the same tenant, and records approval once. It does not create an account, reset credentials, assign permissions or bypass onboarding. Email matching remains exact after trimming/lowercasing; Gmail dot/plus aliases are not interchangeable.
 
@@ -135,6 +135,6 @@ An **External / Testing** Google app still requires selected controlled Google t
 
 Apply forward migrations with `npm --prefix backend run db:deploy`. See [retirement migration and validation](retired-features-cleanup.md). Existing passwordless accounts use password recovery or administrator provisioning.
 
-The final role migration disables historical Guest accounts, revokes their sessions and any legacy pending invitations, and archives their role definitions without deleting identities, CRM data, assignments, or permissions. Only Client Admin is seeded as a predefined tenant role. There is no automatic User role: an administrator must select an existing custom role. Existing User definitions become editable custom roles with unchanged permissions. See [migration and verification](plans/final-role-model.md).
+The final role migration disables historical Guest accounts, revokes their sessions and any legacy pending invitations, and archives their role definitions without deleting identities, CRM data, assignments, or permissions. Only Client Admin is seeded as a predefined tenant role. There is no automatic User role: an administrator must select an existing active role. Existing User definitions become editable custom roles with unchanged permissions. Existing Client Admin role reassignment remains protected. See [migration and verification](plans/final-role-model.md).
 
 See [implementation and retirement inventory](plans/internal-camxian-crm.md) for affected files, preserved dependencies, and verification.

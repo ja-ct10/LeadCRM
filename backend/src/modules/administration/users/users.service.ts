@@ -85,8 +85,10 @@ export async function create(tenantId: string, actorId: string, dto: CreateAdmin
     await assertPermissions({ userId: actorId, tenantId, role: actor.role }, ['users.create', 'roles.assign'], tx);
     const externalEmail = !EmployeeEmailSchema.safeParse(dto.email).success;
     if (externalEmail && actor.role !== 'Client Admin') throw new ForbiddenError('Only Client Admin users can approve an external staff email.');
-    const role = await tx.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
-    if (!role) throw new ValidationError('Select an active custom role.');
+    const creatingAdmin = dto.role === 'Client Admin';
+    if (creatingAdmin && actor.role !== 'Client Admin') throw new ForbiddenError('Only Client Admin users can create another Client Admin.');
+    const role = await tx.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: creatingAdmin } });
+    if (!role) throw new ValidationError('Select an active role.');
     const created = await tx.user.create({
       data: {
         tenantId, firstName: dto.firstName, lastName: dto.lastName,
@@ -98,7 +100,9 @@ export async function create(tenantId: string, actorId: string, dto: CreateAdmin
     });
     if (externalEmail) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.staff_approved', category: 'auth', entityType: 'User', entityId: created.id,
       metadata: { email: dto.email, approvedByRole: actor.role } } });
-    await replaceUserRole(tx, created.id, tenantId, created.role);
+    if (creatingAdmin) {
+      await tx.userRole.create({ data: { userId: created.id, tenantId, roleId: role.id } });
+    } else await replaceUserRole(tx, created.id, tenantId, created.role);
     if (dto.groupIds !== undefined) await replaceUserGroups(tx, tenantId, created.id, dto.groupIds);
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: created.id, changeset: { before: null, after: { email: dto.email, role: created.role } } } });
     return dto.groupIds !== undefined ? tx.user.findFirstOrThrow({ where: { id: created.id, tenantId }, select: SAFE_USER_SELECT }) : created;

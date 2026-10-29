@@ -10,7 +10,14 @@ describe('Source evidence', () => {
   });
   it.each(SOURCE_LINK_PRESETS)('classifies $source / $medium as $category', row => {
     const link = new URL(sourceCampaignLink('https://crm.example.test/forms/public', row.source, row.medium));
+    expect(link.searchParams.has('utm_campaign')).toBe(false);
     expect(classifySource(touch(Object.fromEntries(link.searchParams)))).toMatchObject({ source: row.source, category: row.category, method: 'url_tags' });
+  });
+  it('preserves explicit campaigns while removing stale tracking from the base URL', () => {
+    const base = 'https://crm.example.test/forms/public?utm_campaign=stale&gclid=stale&keep=yes';
+    const plain = new URL(sourceCampaignLink(base, 'partner', 'referral'));
+    expect(Object.fromEntries(plain.searchParams)).toEqual({ keep: 'yes', utm_source: 'partner', utm_medium: 'referral' });
+    expect(new URL(sourceCampaignLink(base, 'google', 'cpc', 'existing_campaign')).searchParams.get('utm_campaign')).toBe('existing_campaign');
   });
   it('distinguishes organic Facebook from advertising and rejects lookalike domains', () => {
     expect(classifySource(touch({}, { referrer: 'https://m.facebook.com/' }))).toMatchObject({ channel: 'Organic Social' });

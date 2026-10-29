@@ -388,7 +388,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await submit(form.publicId, v); await submit(form.publicId, v);
     const repaired = await prisma.lead.findUniqueOrThrow({ where: { id: l.id } }); expect(repaired.contactId).toBeTruthy();
     expect(repaired.status).toBe('Inquiry');
-    expect(await prisma.contact.findUniqueOrThrow({ where: { id: repaired.contactId! } })).toMatchObject({ status: 'INQUIRY', lifecycleStage: 'CUSTOMER', customerSince: new Date('2025-01-01') });
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: repaired.contactId! } })).toMatchObject({ status: 'CLOSED_DEAL', lifecycleStage: 'CUSTOMER', customerSince: new Date('2025-01-01') });
     expect(await prisma.deal.findUnique({ where: { id: deal.id }, include: { contactDeals: true } })).toMatchObject({
       id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactDeals: [{ contactId: repaired.contactId }],
     });
@@ -661,7 +661,19 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).attribution).toMatchObject({ first: { source: 'google' }, last: { source: 'newsletter' } });
     expect(await prisma.deal.findMany({ where: { tenantId, automationKey: { startsWith: 'form:' }, leadDeals: { some: { tenantId, leadId: lead.id } } } })).toEqual(expect.arrayContaining([expect.objectContaining({ leadSource: 'Email Campaign' })]));
     expect((await request(`/marketing/forms/${f.id}/source-links`, 'GET', undefined, denied)).status).toBe(403);
-    expect((await request(`/marketing/forms/${f.id}/source-links`)).body.rows).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'Direct Email', link: expect.stringContaining('mailto:goldenbits.1993@gmail.com') })]));
+    const manifest = (await request(`/marketing/forms/${f.id}/source-links`)).body;
+    expect(manifest.campaign).toBe('');
+    expect(manifest.rows).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'Direct Email', link: 'mailto:leadcrm.tech@gmail.com?subject=Product%20inquiry' })]));
+    for (const row of manifest.rows.filter((row: { category: string }) => row.category !== 'Direct Email')) {
+      const link = new URL(row.link);
+      expect(link.searchParams.has('utm_campaign')).toBe(false);
+      expect(link.searchParams.get('utm_source')).toBe(row.source);
+      expect(link.searchParams.get('utm_medium')).toBe(row.medium);
+    }
+    const legacy = await request(`/marketing/forms/${f.id}/source-links?campaign=existing_campaign`);
+    expect(legacy.body.campaign).toBe('existing_campaign');
+    expect(new URL(legacy.body.rows[0].link).searchParams.get('utm_campaign')).toBe('existing_campaign');
+    expect((await request(`/marketing/forms/${f.id}/source-links?campaign=invalid%20campaign`)).status).toBe(400);
     const pdf = await fetch(base + `/marketing/forms/${f.id}/source-links.pdf`, { headers: { Authorization: 'Bearer ' + token } });
     expect(pdf.status).toBe(200); expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
   });
@@ -688,13 +700,47 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       expect(result.body.data).toMatchObject({ source: 'Others', sourceDetail, attribution: { captureMethod: 'manual', first: { source: sourceDetail } } });
     }
   });
+  it('reports a legacy mailbox disconnected and never uses its credentials to sync the replacement address', async () => {
+    const { syncBusinessEmail, finishBusinessEmail } = await import('../../../integrations/gmail/business-email.service');
+    const { encryptToken } = await import('../../../core/encryption/crypto.service');
+    const { hashToken } = await import('../../../core/auth/session.service');
+    const oauth = await import('../../../integrations/gmail/gmail.oauth');
+    const connection = await prisma.businessEmailConnection.create({ data: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: 'legacy-token', refreshToken: 'legacy-refresh', tokenExpiresAt: new Date(0), lastSyncAt: new Date(), nextPageToken: 'old-mailbox-page', startsAt: new Date(Date.now() - 60000) } });
+    try {
+      const status = await request('/integrations/business-email/status');
+      expect(status.body).toMatchObject({ email: 'leadcrm.tech@gmail.com', connected: false, lastSyncAt: null });
+      const provider = vi.spyOn(globalThis, 'fetch');
+      try {
+        await expect(scoped(() => syncBusinessEmail(tenantId))).rejects.toMatchObject({ statusCode: 409 });
+        expect(provider).not.toHaveBeenCalled();
+      } finally { provider.mockRestore(); }
+      expect(await prisma.businessEmailConnection.findUniqueOrThrow({ where: { id: connection.id } })).toMatchObject({ email: 'goldenbits.1993@gmail.com', accessToken: 'legacy-token', refreshToken: 'legacy-refresh', isActive: true });
+      const exchange = vi.spyOn(oauth, 'exchangeCodeForTokens').mockResolvedValue({ access_token: 'replacement-token', refresh_token: 'replacement-refresh', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.readonly', token_type: 'Bearer' });
+      const info = vi.spyOn(oauth, 'getUserInfo').mockResolvedValue({ email: 'goldenbits.1993@gmail.com', verified_email: true });
+      const profile = vi.spyOn(oauth, 'getMailboxProfile').mockResolvedValue({ emailAddress: 'goldenbits.1993@gmail.com' });
+      const challenge = async () => {
+        const state = randomUUID();
+        await prisma.businessEmailOAuthState.create({ data: { stateHash: hashToken(state), tenantId, userId, sessionHash: hashToken(token), verifier: encryptToken('disposable-verifier'), expiresAt: new Date(Date.now() + 60000) } });
+        return state;
+      };
+      try {
+        await expect(finishBusinessEmail(await challenge(), 'disposable-code')).rejects.toMatchObject({ statusCode: 400 });
+        info.mockResolvedValue({ email: 'leadcrm.tech@gmail.com', verified_email: true });
+        profile.mockResolvedValue({ emailAddress: 'leadcrm.tech@gmail.com' });
+        await finishBusinessEmail(await challenge(), 'disposable-code');
+        const replacement = await prisma.businessEmailConnection.findUniqueOrThrow({ where: { id: connection.id } });
+        expect(replacement).toMatchObject({ email: 'leadcrm.tech@gmail.com', lastSyncAt: null, nextPageToken: null, isActive: true });
+        expect(+replacement.startsAt).toBeGreaterThan(+connection.startsAt);
+      } finally { exchange.mockRestore(); info.mockRestore(); profile.mockRestore(); }
+    } finally { await prisma.businessEmailConnection.delete({ where: { id: connection.id } }); }
+  });
   it('captures unknown business senders separately and creates one reviewed Lead', async () => {
     const { encryptToken } = await import('../../../core/encryption/crypto.service');
     const { syncBusinessEmail } = await import('../../../integrations/gmail/business-email.service');
     const sender = `${randomUUID()}@example.test`;
-    await prisma.businessEmailConnection.create({ data: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: encryptToken('disposable'), refreshToken: encryptToken('disposable'), tokenExpiresAt: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() - 60000) } });
+    await prisma.businessEmailConnection.create({ data: { tenantId, connectedById: userId, email: 'leadcrm.tech@gmail.com', accessToken: encryptToken('disposable'), refreshToken: encryptToken('disposable'), tokenExpiresAt: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() - 60000) } });
     const original = globalThis.fetch;
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ messages: [{ id: 'inquiry1' }] })).mockImplementation(async (url: string | URL | Request) => String(url).includes('inquiry1') ? Response.json({ id: 'inquiry1', snippet: 'Please send pricing.', labelIds: ['INBOX'], internalDate: String(Date.now() - 1000), payload: { headers: [{ name: 'From', value: `New Prospect <${sender}>` }, { name: 'To', value: 'goldenbits.1993@gmail.com' }, { name: 'Subject', value: 'Product inquiry' }] } }) : Response.json({ messages: [{ id: 'inquiry1' }] })));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ messages: [{ id: 'inquiry1' }] })).mockImplementation(async (url: string | URL | Request) => String(url).includes('inquiry1') ? Response.json({ id: 'inquiry1', snippet: 'Please send pricing.', labelIds: ['INBOX'], internalDate: String(Date.now() - 1000), payload: { headers: [{ name: 'From', value: `New Prospect <${sender}>` }, { name: 'To', value: 'leadcrm.tech@gmail.com' }, { name: 'Subject', value: 'Product inquiry' }] } }) : Response.json({ messages: [{ id: 'inquiry1' }] })));
     try { await scoped(() => syncBusinessEmail(tenantId)); await scoped(() => syncBusinessEmail(tenantId)); }
     finally { vi.stubGlobal('fetch', original); }
     expect(await prisma.lead.count({ where: { tenantId, email: sender } })).toBe(0);
@@ -717,7 +763,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   it('protects inquiry data, credentials and review actions across tenant and role boundaries', async () => {
     const { encryptToken } = await import('../../../core/encryption/crypto.service');
     const sender = randomUUID() + '@example.test';
-    const connection = await prisma.businessEmailConnection.upsert({ where: { tenantId }, create: { tenantId, connectedById: userId, email: 'goldenbits.1993@gmail.com', accessToken: encryptToken('private-provider-token'), refreshToken: encryptToken('private-refresh-token'), tokenExpiresAt: new Date(Date.now()+3600000) }, update: {} });
+    const connection = await prisma.businessEmailConnection.upsert({ where: { tenantId }, create: { tenantId, connectedById: userId, email: 'leadcrm.tech@gmail.com', accessToken: encryptToken('private-provider-token'), refreshToken: encryptToken('private-refresh-token'), tokenExpiresAt: new Date(Date.now()+3600000) }, update: {} });
     const inquiry = await prisma.businessEmailInquiry.create({ data: { tenantId, connectionId: connection.id, providerMessageId: randomUUID(), sender, senderName: 'Private Prospect', subject: 'Private inquiry', snippet: 'Private pricing request', receivedAt: new Date() } });
     const outsider = await prisma.user.create({ data: { tenantId: otherTenant, email: randomUUID()+'@camxian.com', firstName: 'Other', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     const foreignToken = (await issueAuthSession(outsider)).token;

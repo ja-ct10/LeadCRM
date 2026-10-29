@@ -36,6 +36,8 @@ The forward migration preserves existing memberships and turns each nonempty leg
 
 The protected default Sales Group has stable key `SALES`; renaming its display label preserves routing. Membership remains administrator-managed. New public-form Leads rotate only among its eligible members, with a transactionally persisted cursor and request-ID retries consuming one turn. Returning records retain their agent. See [Forms verification](docs/forms-production-report.md).
 
+In Team Management, an existing Client Admin can provision another Client Admin through New User. Delegated staff with Users Create and Roles Assign permissions can provision active custom roles. Existing Client Admin role reassignment remains protected.
+
 ## Local development
 
 Use the project-pinned npm version from `package.json` and a supported Node version (20.19+, 22.13+, or later). A local PostgreSQL instance is required for API-backed development.
