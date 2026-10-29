@@ -22,7 +22,7 @@ it.each([['leads', 'leadId'], ['accounts', 'accountId'], ['deals', 'dealId'], ['
 it('reuses contact relationship history without another activity request', () => {
   const history = [{ id: 'event', title: 'Note', type: 'note', createdAt: '2026-09-21' }];
   const { result } = renderHook(() => useRecordActivities('contacts', 'contact', true, history));
-  expect(mocks.cache.mock.calls[0][0].disabled).toBe(true);
+  expect(mocks.cache.mock.calls.find(([options]) => options.params.recordModule)![0].disabled).toBe(true);
   expect(result.current.activities).toBe(history);
   expect(mocks.getAll).not.toHaveBeenCalled();
   expect(mocks.get).not.toHaveBeenCalled();
@@ -31,7 +31,7 @@ it('withholds cached history and disables reads when permission is absent', () =
   mocks.permission = false;
   mocks.cache.mockReturnValue({ data: [{ id: 'cached' }] });
   const { result } = renderHook(() => useRecordActivities('deals', 'deal'));
-  expect(mocks.cache.mock.calls[0][0].disabled).toBe(true);
+  expect(mocks.cache.mock.calls.find(([options]) => options.params.recordModule)![0].disabled).toBe(true);
   expect(result.current.activities).toEqual([]);
 });
 
