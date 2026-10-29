@@ -6,12 +6,17 @@ import { actionIssues } from '../services/workflow-editor';
 import { ActionFields } from './workflow-fields';
 afterEach(cleanup);
 const definition = getAvailableActions().find(action => action.type === 'send_sms');
-it('offers editable footer insertion for SMS actions without adding it to email actions', () => {
+it('preserves saved SMS footer text for manual editing without a footer insertion control', () => {
   const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [] };
   const change = vi.fn();
-  const view = render(<ActionFields entity="lead" action={{ type: 'send_sms', config: { message: 'My message' } }} definition={definition} options={options} onChange={change} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Insert default SMS footer' }));
-  expect(change).toHaveBeenCalledWith({ message: `My message\n\n${SMS_DEFAULT_FOOTER}` });
+  const message = `My message\n\n${SMS_DEFAULT_FOOTER}`;
+  const view = render(<ActionFields entity="lead" action={{ type: 'send_sms', config: { message } }} definition={definition} options={options} onChange={change} />);
+  expect((screen.getByLabelText('SMS message') as HTMLTextAreaElement).value).toBe(message);
+  expect(screen.queryByRole('button', { name: 'Insert default SMS footer' })).toBeNull();
+  expect(screen.queryByText(/Edit or remove the footer directly/)).toBeNull();
+  expect(change).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('SMS message'), { target: { value: 'Manually edited message' } });
+  expect(change).toHaveBeenCalledExactlyOnceWith({ message: 'Manually edited message' });
   view.rerender(<ActionFields entity="lead" action={{ type: 'send_email', config: {} }} definition={getAvailableActions().find(action => action.type === 'send_email')} options={options} onChange={change} />);
   expect(screen.queryByRole('button', { name: 'Insert default SMS footer' })).toBeNull();
 });
@@ -85,6 +90,8 @@ it('keeps unsupported variable errors inline and discards legacy sender settings
   render(<ActionFields entity="lead" action={{ type: 'send_email', config: { subject: '{{unavailable}}' } }} definition={getAvailableActions().find(action => action.type === 'send_email')} options={{ users: [], templates: [], campaigns: [], pipelines: [] }} onChange={vi.fn()} />);
   expect(screen.getByRole('alert').textContent).toContain('{{unavailable}}');
   expect(screen.getByLabelText('Subject (overrides template)').getAttribute('aria-invalid')).toBe('true');
+  const errorId = screen.getByLabelText('Subject (overrides template)').getAttribute('aria-describedby');
+  expect(document.getElementById(errorId!)?.textContent).toContain('{{unavailable}}');
   expect(screen.queryByLabelText('Connected Gmail sender')).toBeNull();
   expect(WorkflowDraftSchema.parse({ name: 'Legacy', trigger: 'lead.created', actions: [{ type: 'send_email', config: { subject: 'Hello', body: 'Message', senderUserId: 'legacy' } }] }).actions[0].config).toEqual({ subject: 'Hello', body: 'Message' });
 });

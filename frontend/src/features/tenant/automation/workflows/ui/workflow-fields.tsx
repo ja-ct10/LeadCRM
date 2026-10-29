@@ -57,12 +57,12 @@ export function WorkflowTemplateFields({ draft, templateIndex, templateIdentity,
   };
   return <fieldset className="space-y-3 rounded-xl border border-[var(--border)] p-3 text-sm">
     <legend className="px-1 font-semibold">Template stage setup</legend>
-    <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open source and target stages in the same pipeline. These selections update the workflow rules and stage action together.' : descriptor?.setup === 'initial-entry' ? 'Create the first follow-up when a new Deal is created in this pipeline’s open Lead stage.' : descriptor?.setup === 'reopen-entry' ? 'Only a never-Won Deal with verified history can reopen from Lost to an open Qualified stage.' : descriptor?.setup === 'won-entry' || descriptor?.setup === 'lost-entry' ? 'Create an outcome Task after governed closure into the selected terminal stage.' : 'Select the pipeline and entry stage. A new task is created for each matching current stage-entry event; superseded queued entries skip.'}</p>
+    <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open stages in the same pipeline.' : descriptor?.setup === 'initial-entry' ? 'Runs when a Deal is created in this pipeline’s open Lead stage.' : descriptor?.setup === 'reopen-entry' ? 'Only never-Won Deals with verified history can reopen from Lost to an open Qualified stage.' : descriptor?.setup === 'won-entry' || descriptor?.setup === 'lost-entry' ? 'Creates a task after the Deal closes in this stage.' : 'Creates a task per matching stage entry. Outdated entries are skipped.'}</p>
     <div className="space-y-1"><p className="text-xs text-muted-foreground">Pipeline</p><p>{options.pipelines.find(pipeline => pipeline.id === binding.pipelineId)?.name ?? 'Sales Pipeline unavailable'}</p></div>
     {(routing || descriptor?.setup === 'reopen-entry') && stageSelect('sourceStageId', 'Template source stage')}
     {stageSelect('targetStageId', routing ? 'Template target stage' : 'Template entry stage')}
-    {descriptor?.setup === 'related-deal-routing' && <p className="text-xs text-[var(--muted-foreground)]">The default moves one matching related open Deal. Multiple matches need more filters or an explicit All matching selection.</p>}
-    {!!stages.find(stage => stage.id === binding.targetStageId)?.requiredFields?.length && <p className="text-xs text-[var(--muted-foreground)]">Required stage evidence: {stages.find(stage => stage.id === binding.targetStageId)!.requiredFields!.join(', ')}. The normal transition must satisfy these requirements.</p>}
+    {descriptor?.setup === 'related-deal-routing' && <p className="text-xs text-[var(--muted-foreground)]">Moves one matching Deal by default. Refine filters or choose All matching.</p>}
+    {!!stages.find(stage => stage.id === binding.targetStageId)?.requiredFields?.length && <p className="text-xs text-[var(--muted-foreground)]">Stage requirements: {stages.find(stage => stage.id === binding.targetStageId)!.requiredFields!.join(', ')}.</p>}
     <Button type="button" variant="link" className="h-auto px-0 text-xs" onClick={onDetach}>Customize without linked template setup</Button>
   </fieldset>;
 }
@@ -104,7 +104,6 @@ function UpdateFieldFields({ action, options, entity, onChange }: {
     </label>
     {!!action.config.field && !field && <p role="status" className="text-sm text-[var(--muted-foreground)]">This field is no longer available. Choose a supported field, disable the action, or remove it before activating.</p>}
     {entity === 'lead' && !!action.config.otherDetails && <div role="status" className="text-sm text-[var(--muted-foreground)]">Additional Product details are retired for Leads. Saved setting: {String(action.config.otherDetails)} <Button type="button" variant="outline" onClick={() => { const { otherDetails: _retired, ...config } = action.config; onChange(config); }}>Remove retired setting</Button></div>}
-    {entity === 'deal' && <p className="text-xs text-[var(--muted-foreground)]">A Deal keeps its original Product and value. Create a new Deal for a new opportunity.</p>}
     {field && !field.required && <label className="flex items-center gap-2"><input type="checkbox" checked={!!action.config.clear} onChange={(event) => change({ clear: event.target.checked })} />Clear this field</label>}
     {field && !action.config.clear && <div className="space-y-2">
       {multiple ? <fieldset className="space-y-2"><legend className="mb-2">New value</legend><div className="max-h-56 overflow-auto rounded-lg border border-[var(--border)] p-2">
@@ -287,16 +286,14 @@ export function ActionFields({
   if (action.type === 'update_field') return <UpdateFieldFields action={action} options={options} entity={entity} onChange={onChange} />;
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-[var(--muted-foreground)]">{definition?.description}</p>
       {['create_task', 'assign_owner'].includes(action.type) && <WorkflowAssignmentFields action={action} entity={entity} options={options} className={workflowControl} onChange={onChange} />}
       {action.type === 'create_task' && <WorkflowTaskAssociations action={action} entity={entity} options={options} onChange={onChange} />}
-      {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Email uses the triggering record’s assigned agent and their authorized Gmail connection. For a Deal, select its primary Lead or Contact; the agent must also have permission to email that recipient.</p>}
-      {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
+      {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Sends through the record agent’s Gmail.</p>}
       {action.type === 'move_deal_stage' && stageSetup}
       {action.type === 'move_deal_stage' && !stageSetup && <div className="space-y-1">
         <p className="text-xs text-muted-foreground">Pipeline</p>
         <p>{(savedPipeline ?? defaultPipeline)?.name ?? 'Sales Pipeline unavailable'}</p>
-        <p className="text-xs text-muted-foreground">The Deal must meet the selected stage’s entry requirements, including configured custom fields.</p>
+        <p className="text-xs text-muted-foreground">The Deal must meet this stage’s entry requirements.</p>
       </div>}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
         if (action.type === 'move_deal_stage' && ['includeLossReason', 'lostReason'].includes(key)) return null;
@@ -381,12 +378,12 @@ export function ActionFields({
             </label>
             {choices?.length === 0 && (
               <p className="text-xs text-[var(--muted-foreground)]">
-                No available {field.label.toLowerCase()} options.
+                {key === 'templateId' ? 'No email templates available.' : 'No options available.'}
               </p>
             )}
             {key === 'dueDaysFromNow' && (
               <p className="text-xs text-[var(--muted-foreground)]">
-                Leave empty for 3 elapsed days. Use 0 for the execution time or 1 for 24 hours later. Task dates display in Asia/Manila.
+                Use 0 for execution time. Each day adds 24 hours; dates display in Asia/Manila.
               </p>
             )}
             {variable && (

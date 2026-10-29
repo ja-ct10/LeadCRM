@@ -146,7 +146,7 @@ function NodeCard({
             />
           )}
         </span>
-        {!compact && (
+        {!compact && summary.length > 0 && (
           <span className="mt-3 block space-y-1 border-t border-[var(--border)] pt-3">
             {summary.map((line, index) => (
               <span
@@ -362,7 +362,7 @@ export function WorkflowCanvas({
               <NodeCard
                 kind="trigger"
                 label={trigger?.label ?? 'Choose a trigger'}
-                summary={['A matching CRM event starts this workflow.']}
+                summary={[]}
                 selected={selected === 'trigger'}
                 compact={compact}
                 issues={issueFor('trigger')}
@@ -387,7 +387,7 @@ export function WorkflowCanvas({
                     ? document.draft.conditions.conditions.map((rule) =>
                         conditionSummary(rule, trigger, options),
                       )
-                    : ['Optional: filter records before actions run.']
+                    : []
                 }
                 selected={selected === 'conditions'}
                 compact={compact}

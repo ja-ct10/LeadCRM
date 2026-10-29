@@ -1,5 +1,18 @@
 import { expect, it, vi } from 'vitest';
-import { assignmentCandidates, assignmentOptions, assignmentWorkloads } from '../../assignment/workflow-assignment.repository';
+import { assignmentCandidates, assignmentOptions, assignmentPool, assignmentWorkloads } from '../../assignment/workflow-assignment.repository';
+
+it('excludes the Client Admin role from Workflow options and direct pool lookups only', async () => {
+  const admin = { id: 'admin-role', name: 'Client Admin', userRoles: [{ userId: 'staff' }] };
+  const support = { id: 'support-role', name: 'Support', userRoles: [] };
+  const db = { user: { findMany: vi.fn().mockResolvedValue([]) }, roleDefinition: {
+    findMany: vi.fn().mockResolvedValue([admin, support]), findFirst: vi.fn().mockResolvedValue(admin),
+  } };
+  const options = await assignmentOptions(db as never, 'tenant', { users: false, roles: true, groups: false });
+  expect(options.roles.map(role => role.name)).toEqual(['Support']);
+  expect(await assignmentPool(db as never, 'tenant', { type: 'role', id: admin.id, strategy: 'round_robin' })).toBeNull();
+  db.roleDefinition.findFirst.mockResolvedValue(support);
+  expect(await assignmentPool(db as never, 'tenant', { type: 'role', id: support.id, strategy: 'round_robin' })).toEqual({ name: 'Support', memberIds: [] });
+});
 
 it('excludes Client Admin task targets and permits staff granted Tasks access through another role', async () => {
   const tenantId = 'tenant';

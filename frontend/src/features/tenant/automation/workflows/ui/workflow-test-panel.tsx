@@ -126,10 +126,8 @@ export function WorkflowTestPanel({
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--muted-foreground)]">
-        Check the saved workflow against a real{' '}
-        {trigger.entity}. No
-        actions are executed and no messages are sent. Recorded transitions are
-        checked against current record values; this does not perform a future transition.
+        Check the saved workflow against a {trigger.entity}. No actions run or messages are sent.
+        Recorded transitions use current record values.
       </p>
       <Input
         aria-label="Search test records"

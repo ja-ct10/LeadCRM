@@ -36,8 +36,8 @@ export function WorkflowAssignmentFields({ action, options, className, entity, o
       </select>
     </label>}
     {target.type !== 'record_owner' && target.id && !selected && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">This assignment target is unavailable. Choose another before activating.</p>}
-    {selected?.eligibleMemberCounts && <p className="text-xs text-[var(--muted-foreground)]">{selected.memberCount} members · {selected.eligibleMemberCounts[action.type === 'create_task' ? 'task_assignee' : 'crm_owner']} eligible</p>}
+    {selected?.eligibleMemberCounts && <p className="text-xs text-[var(--muted-foreground)]">{selected.memberCount} {selected.memberCount === 1 ? 'member' : 'members'} · {selected.eligibleMemberCounts[action.type === 'create_task' ? 'task_assignee' : 'crm_owner']} eligible</p>}
     {pool && <WorkflowAssignmentSettings target={target} entity={entity} task={action.type === 'create_task'} className={className} onChange={change} members={(selected?.members ?? []).filter(member => member.purposes.includes(action.type === 'create_task' ? 'task_assignee' : 'crm_owner'))} />}
-    {target.type === 'record_owner' && <p className="text-xs text-[var(--muted-foreground)]">{entity === 'account' ? 'Choose a user, role or group to assign this Account follow-up task.' : 'The current record agent must be active and have Tasks access when this action runs.'}</p>}
+    {target.type === 'record_owner' && <p className="text-xs text-[var(--muted-foreground)]">{entity === 'account' ? 'Choose a user, role or group for this task.' : 'Requires an active record agent with Tasks access.'}</p>}
   </fieldset>;
 }

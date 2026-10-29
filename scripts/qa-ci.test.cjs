@@ -76,10 +76,12 @@ test('Local fixture previews stay outside database acceptance while undeclared b
   } finally { fs.rmSync(directory, { recursive: true }); }
 });
 
-test('The real repository inventory includes the native Workflow Policy browser suite', () => {
+test('The real repository inventory includes the native Workflow browser suites', () => {
   const inventory = ci.discovery(path.resolve(__dirname, '..'));
-  assert.equal(inventory.browser.find(suite => suite.id === 'backend/scripts/verify-workflow-policy-browser.mjs')?.database, 'native');
-  assert.ok(ci.owners(inventory).some(owner => owner.suiteIds.includes('backend/scripts/verify-workflow-policy-browser.mjs')));
+  for (const id of ['backend/scripts/verify-workflow-policy-browser.mjs', 'backend/scripts/verify-workflow-polish-browser.mjs']) {
+    assert.equal(inventory.browser.find(suite => suite.id === id)?.database, 'native');
+    assert.equal(ci.owners(inventory).filter(owner => owner.suiteIds.includes(id)).length, 1);
+  }
 });
 test('CI selection rejects reduced coverage, malformed shards, missing owners and unsupported modes', () => {
   const inventory = manifest();

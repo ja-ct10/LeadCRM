@@ -42,6 +42,16 @@ it('shows the supported starters and excludes hidden recipes from search', () =>
   });
 });
 
+it('shows one template description and keeps optional execution notes expandable', () => {
+  setup();
+  const { recipe } = WORKFLOW_STARTER_TEMPLATES[0];
+  fireEvent.click(screen.getByRole('button', { name: `Preview ${recipe.name}` }));
+  expect(screen.getAllByText(recipe.description!)).toHaveLength(1);
+  const details = screen.getByText('Execution details').closest('details')!;
+  expect(details.open).toBe(false);
+  expect(screen.getByRole('region', { name: 'Template setup requirements' })).toBeTruthy();
+});
+
 it('searches multiple template words with extra whitespace', () => {
   setup();
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  EMAIL   new   LEAD ' } });
@@ -146,7 +156,8 @@ it('offers one configurable stage template after loading pipeline options', asyn
   expect(document.querySelector('[data-template-id^="stage:"]')).toBeNull();
   expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   fireEvent.click(preview);
-  expect(screen.getByRole('region', { name: 'Template behavior' }).textContent).toContain('Superseded queued entries are skipped');
+  fireEvent.click(screen.getByText('Execution details'));
+  expect(screen.getByRole('group', { name: 'Template behavior' }).textContent).toContain('Superseded queued entries are skipped');
   expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('Choose the pipeline and entry stage');
   fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
   await waitFor(() => expect(onChoose).toHaveBeenCalledExactlyOnceWith(25));

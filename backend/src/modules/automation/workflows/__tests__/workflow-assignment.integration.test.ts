@@ -13,7 +13,7 @@ const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('workflow assignment and history on disposable PostgreSQL', { timeout: 30000 }, () => {
   let tenantId: string, foreignTenant: string, actorId: string, leadId: string, dealId: string, taskUserId: string, salesUserId: string, secondSalesId: string;
-  let groupId: string, salesRoleId: string, taskRoleId: string, foreignGroupId: string, foreignRoleId: string, foreignUserId: string, restrictedId: string;
+  let groupId: string, salesRoleId: string, taskRoleId: string, adminRoleId: string, foreignGroupId: string, foreignRoleId: string, foreignUserId: string, restrictedId: string;
   const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const target = (type: 'role' | 'group', id: string): Extract<WorkflowAssignmentTarget, { type: 'role' | 'group' }> => ({ type, id, strategy: 'round_robin' });
   const task = (assignmentTarget?: WorkflowAssignmentTarget): WorkflowAction => ({ type: 'create_task', config: { title: 'Pool follow-up', ...(assignmentTarget ? { assignmentTarget } : {}) } });
@@ -33,6 +33,7 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     await scope(async () => {
       const role = (name: string) => prisma.roleDefinition.create({ data: { tenantId, name } });
       salesRoleId = (await role('Sales')).id; taskRoleId = (await role('Task staff')).id;
+      adminRoleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } })).id;
       await prisma.rolePermission.createMany({ data: [
         ...['leads', 'deals', 'tasks'].map(module => ({ tenantId, roleId: salesRoleId, module, canView: true, canEdit: true })),
         { tenantId, roleId: taskRoleId, module: 'tasks', canView: true },
@@ -72,9 +73,44 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     const options = await scope(() => workflows.getOptions(tenantId, actorId));
     expect(options.users.map(user => user.id)).not.toContain(taskUserId);
     expect(options.taskAssignees.map(user => user.id)).toContain(taskUserId);
+    expect(options.roles.map(role => role.id)).not.toContain(adminRoleId);
+    expect(options.roles.map(role => role.id)).toContain(salesRoleId);
     expect(options.groups.find(group => group.id === groupId)).toMatchObject({ memberCount: 4, eligibleMemberCounts: { task_assignee: 3, crm_owner: 2 } });
     const hidden = await scope(() => workflows.getOptions(tenantId, restrictedId));
     expect([hidden.users, hidden.taskAssignees, hidden.groups, hidden.roles]).toEqual([[], [], [], []]);
+  });
+  it.each(['create_task', 'assign_owner'] as const)('rejects Client Admin %s targets on create, update, draft save, publish and activation', async type => {
+    const actions: WorkflowAction[] = [{ type, config: { ...(type === 'create_task' ? { title: 'Protected assignment' } : {}), assignmentTarget: target('role', adminRoleId) } }];
+    for (const isActive of [false, true]) await expect(scope(() => workflows.createWorkflow(tenantId, actorId, {
+      name: `Forbidden ${randomUUID()}`, trigger: 'deal.created', isActive, actions,
+    }))).rejects.toThrow(/role.*available/);
+    const saved = await create([task(target('role', salesRoleId))]);
+    await expect(scope(() => workflows.updateWorkflow(saved.id, tenantId, actorId, { actions, isActive: false }))).rejects.toThrow(/role.*available/);
+    const draft = { name: saved.name, trigger: saved.trigger, isActive: false, actions };
+    const input = { draft, expectedVersion: saved.version, expectedDraftRevision: saved.draftRevision };
+    await expect(scope(() => workflows.saveWorkflowDraft(saved.id, tenantId, actorId, input))).rejects.toThrow('Client Admin cannot be assigned');
+    await expect(scope(() => workflows.publishWorkflowDraft(saved.id, tenantId, actorId, input))).rejects.toThrow(/role.*available/);
+    // Simulate a saved legacy definition without bypassing any public write validation.
+    await prisma.workflow.update({ where: { id: saved.id }, data: { actions: actions as unknown as Prisma.InputJsonValue, isActive: false, status: 'PAUSED' } });
+    await expect(scope(() => workflows.toggleWorkflow(saved.id, tenantId, actorId, true))).rejects.toThrow(/role.*available/);
+    expect((await scope(() => workflows.getWorkflowById(saved.id, tenantId))).actions).toEqual(actions);
+    expect(await prisma.roleDefinition.findUnique({ where: { id: adminRoleId } })).toMatchObject({ name: 'Client Admin', isSystemRole: true, isArchived: false });
+    const repaired = await scope(() => workflows.saveWorkflowDraft(saved.id, tenantId, actorId, { ...input, draft: { ...draft, actions: [task(target('role', salesRoleId))] } }));
+    expect(repaired.actions[0].config.assignmentTarget).toEqual(target('role', salesRoleId));
+  });
+  it('blocks legacy Client Admin pools before any action runs, even with an otherwise eligible member', async () => {
+    const membership = await prisma.userRole.create({ data: { tenantId, userId: salesUserId, roleId: adminRoleId } });
+    try {
+      const saved = await create([{ type: 'update_field', config: { field: 'priority', value: 'HIGH' } }]);
+      const actions: WorkflowAction[] = [{ type: 'update_field', config: { field: 'priority', value: 'HIGH' } }, { type: 'assign_owner', config: { assignmentTarget: target('role', adminRoleId) } }];
+      await prisma.workflow.update({ where: { id: saved.id }, data: { actions: actions as unknown as Prisma.InputJsonValue } });
+      const before = await prisma.deal.findUniqueOrThrow({ where: { id: dealId } });
+      const preview = await scope(() => workflows.testWorkflow(saved.id, tenantId, dealId, actorId));
+      expect(preview.valid).toBe(false);
+      await fire();
+      expect((await runs(saved.id))[0].status).toBe('failed');
+      expect(await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).toMatchObject({ priority: before.priority, assignedUserId: before.assignedUserId });
+    } finally { await prisma.userRole.delete({ where: { id: membership.id } }); }
   });
   it('uses batch-added Group memberships for Task assignment while preserving module permission requirements', async () => {
     const group = await scope(() => prisma.tenantGroup.create({ data: { tenantId, name: 'Batch Task pool' } }));
