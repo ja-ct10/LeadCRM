@@ -37,6 +37,26 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it.each(['mailbox', 'tenant', 'managed-groups'] as const)('reconciles missed revisions for %s history without a reload', async scope => {
+  vi.useFakeTimers();
+  try {
+    mocks.activityReadScope = scope;
+    const hook = renderHook(() => useRecordActivities('deals', 'record'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(hook.result.current.activities).toHaveLength(1);
+    mocks.getAll.mockResolvedValue(response([email('Received'), note]));
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_100); });
+    expect(hook.result.current.activities.map(row => row.id)).toEqual(['Received', 'note']);
+    const reads = mocks.getAll.mock.calls.length;
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.getAll).toHaveBeenCalledTimes(reads);
+    hook.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.getAll).toHaveBeenCalledTimes(reads);
+  } finally { vi.useRealTimers(); }
+});
+
 it.each(['tenant', 'managed-groups'] as const)('reads %s history without querying or requiring personal Gmail', async scope => {
   mocks.activityReadScope = scope;
   mocks.status.mockResolvedValue({ isConnected: false, syncError: 'No personal mailbox' });

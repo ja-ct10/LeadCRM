@@ -148,7 +148,6 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
   let account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account?.isActive) throw new AppError('Connect your work Gmail account first.', 409);
   if (account.syncRetryAt && account.syncRetryAt > started) return { syncing: false, hasMore: true, retryAt: account.syncRetryAt.toISOString() };
-  if (account.syncPausedAt && trigger === 'worker') return { syncing: false, hasMore: true, paused: true };
   const scope = await resolveMailboxScope(account, permissions);
   let changedScope = scope.hash !== account.syncScopeHash;
   const pollDue = !account.lastSyncAt || +started - +account.lastSyncAt >= mailboxSyncIntervalMs();
@@ -212,6 +211,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
       // JSON strips undefined; persisting before ingestion makes interrupted pages replayable.
       await checkpoint({ syncBatch: JSON.parse(JSON.stringify(batch)) });
     }
+    const mailboxChanges = batch.ids.length > 0 || batch.deleted.length > 0 || !!account.syncError || !!account.syncPausedAt;
     if (batch.deleted.length) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, tenantId, providerMessageId: { in: batch.deleted } }, data: { labels: ['DELETED'] } });
     let processed = 0, examined = 0;
     for (const id of batch.ids.slice(0, 20)) {
@@ -264,7 +264,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
     batch.ids = batch.ids.slice(examined); batch.deleted = [];
     const queriesDone = batch.history || batch.nextIndex >= reconciliationQueries(scope).length;
     const hasMore = !!batch.ids.length || !!batch.nextPage || !queriesDone;
-    await checkpoint({ syncError: null, syncRetryAt: null, syncFailureCount: 0, syncPausedAt: null, mailboxVersion: { increment: 1 },
+    await checkpoint({ syncError: null, syncRetryAt: null, syncFailureCount: 0, syncPausedAt: null, ...(mailboxChanges ? { mailboxVersion: { increment: 1 } } : {}),
       ...(batch.ids.length ? { syncBatch: JSON.parse(JSON.stringify(batch)) } : {
         syncBatch: Prisma.DbNull, syncPageToken: batch.nextPage ?? null, syncQueryIndex: batch.nextIndex,
         ...(!hasMore ? { syncCursor: batch.historyId, syncBaselineHistoryId: null, syncQueryIndex: 0, lastSyncAt: started } : {}),
@@ -294,10 +294,11 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
   } catch (error) {
     const scopeChanged = error instanceof AppError && error.code === 'MAILBOX_SCOPE_CHANGED';
     const failures = scopeChanged ? account.syncFailureCount : account.syncFailureCount + 1;
-    const paused = !scopeChanged && failures >= 5;
     const retryAt = scopeChanged ? new Date() : error instanceof AppError && error.retryAt ? new Date(error.retryAt) : new Date(Date.now() + Math.min(15 * 60000, 60000 * 2 ** Math.min(failures, 4)) + Math.random() * 5000);
-    await checkpoint({ syncRetryAt: retryAt, syncFailureCount: failures, syncPausedAt: paused ? new Date() : null,
-      syncRequestedAt: new Date(), mailboxVersion: { increment: 1 }, syncError: paused ? 'Email updates paused after repeated failures. Saved history is preserved. Review the connection, then use Sync now to resume the unfinished page.' : error instanceof AppError && error.code === 'GMAIL_RATE_LIMITED' ? 'Gmail updates are temporarily paused. Saved emails remain available.' : 'Email updates are delayed. Reconnect if Gmail access was revoked.' }).catch(() => undefined);
+    // Persisted backoff bounds provider traffic without permanently abandoning
+    // active mailboxes after a temporary outage. Revoked OAuth remains inactive.
+    await checkpoint({ syncRetryAt: retryAt, syncFailureCount: failures, syncPausedAt: null,
+      syncRequestedAt: new Date(), mailboxVersion: { increment: 1 }, syncError: error instanceof AppError && error.code === 'GMAIL_RATE_LIMITED' ? 'Gmail updates are temporarily paused. Saved emails remain available.' : 'Email updates are delayed and will retry automatically. Reconnect if Gmail access was revoked.' }).catch(() => undefined);
     console.warn('[mailbox-sync]', { accountId: account.id, trigger, category: error instanceof AppError ? error.code : 'SYNC_FAILED', durationMs: Date.now() - +started });
     throw error;
   } finally {
@@ -321,7 +322,7 @@ export function startMailboxScheduler() {
     if (running || stopped) return;
     running = true;
     try {
-      const accounts = await prisma.emailAccount.findMany({ where: { provider: 'gmail', isActive: true, syncPausedAt: null, tenantId: { not: 'system' }, OR: [{ syncRetryAt: null }, { syncRetryAt: { lte: new Date() } }] }, orderBy: { syncCheckedAt: { sort: 'asc', nulls: 'first' } }, take: 20, select: { id: true, tenantId: true, userId: true } });
+      const accounts = await prisma.emailAccount.findMany({ where: { provider: 'gmail', isActive: true, tenantId: { not: 'system' }, OR: [{ syncRetryAt: null }, { syncRetryAt: { lte: new Date() } }] }, orderBy: { syncCheckedAt: { sort: 'asc', nulls: 'first' } }, take: 20, select: { id: true, tenantId: true, userId: true } });
       for (let index = 0; index < accounts.length && !stopped; index += 3) await Promise.all(accounts.slice(index, index + 3).map(async account => {
         try { await tenantContext.run({ tenantId: account.tenantId }, () => syncMailbox(account.tenantId, account.userId, 'worker')); }
         catch { await prisma.emailAccount.updateMany({ where: { id: account.id }, data: { syncCheckedAt: new Date() } }); }

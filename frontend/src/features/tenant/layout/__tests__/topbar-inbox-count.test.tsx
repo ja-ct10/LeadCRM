@@ -15,7 +15,7 @@ vi.mock('../user-profile-dropdown', () => ({ UserProfileDropdown: () => null }))
 import Topbar from '../topbar';
 
 beforeEach(() => { vi.resetAllMocks(); mocks.identity.user.id = 'user-a'; mocks.status.mockResolvedValue({ isConnected: true }); });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const flush = async () => { await act(async () => { await Promise.resolve(); }); };
 const props = { onOpenSidebar: vi.fn(), onOpenInbox: vi.fn() };
 
@@ -37,4 +37,33 @@ it('resets and refetches the count on identity changes and rejects the previous 
   mocks.identity.user.id = 'user-b'; view.rerender(<Topbar {...props} />); await flush();
   await act(async () => finish({ unreadCount: 9 }));
   expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('3');
+});
+
+it('updates the badge outside Inbox from mailbox revisions and reconnects, with coalesced reads', async () => {
+  vi.useFakeTimers();
+  const streams: EventTarget[] = [];
+  vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+  mocks.count.mockResolvedValue({ unreadCount: 1 });
+  render(<Topbar {...props} />); await flush();
+  mocks.count.mockResolvedValue({ unreadCount: 2 });
+  streams[0]?.dispatchEvent(new Event('mailbox-change')); streams[0]?.dispatchEvent(new Event('mailbox-change'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('2');
+  expect(mocks.count).toHaveBeenCalledTimes(2);
+  mocks.count.mockResolvedValue({ unreadCount: 3 });
+  streams[0].dispatchEvent(new Event('open'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('3');
+});
+
+it('refreshes the badge without EventSource and clears it on disconnect', async () => {
+  vi.useFakeTimers(); vi.stubGlobal('EventSource', undefined);
+  mocks.count.mockResolvedValue({ unreadCount: 1 });
+  render(<Topbar {...props} />); await flush();
+  mocks.count.mockResolvedValue({ unreadCount: 4 });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_250); });
+  expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('4');
+  mocks.status.mockResolvedValue({ isConnected: false });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_250); });
+  expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('');
 });

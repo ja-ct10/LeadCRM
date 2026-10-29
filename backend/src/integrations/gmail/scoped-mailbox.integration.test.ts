@@ -1188,7 +1188,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/emails')).body.emails.map((row: GmailEmail) => row.id)).toEqual(['customer']);
     expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBe('110');
   });
-  it('pauses an HTTP 5xx sync episode after five provider attempts without multiplying read retries', async () => {
+  it('keeps retrying an HTTP 5xx sync episode with one provider attempt per due pass', async () => {
     const resolved = await resolveMailboxScope(account, permissions);
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: resolved.hash, syncCursor: '100', syncRequestedAt: new Date() } });
     const provider = vi.fn(async () => Response.json({}, { status: 503 })); vi.stubGlobal('fetch', provider);
@@ -1196,9 +1196,9 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
       await scope(() => syncMailbox(tenantId, userId, 'worker')).catch(() => undefined);
       await prisma.emailAccount.update({ where: { id: account.id }, data: { syncRetryAt: new Date(0) } });
     }
-    expect(provider).toHaveBeenCalledTimes(5);
+    expect(provider).toHaveBeenCalledTimes(7);
     const state = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
-    expect(state.syncFailureCount).toBe(5); expect(state.syncPausedAt).not.toBeNull(); expect(state.syncError).toContain('paused'); expect(state.syncCursor).toBe('100');
+    expect(state.syncFailureCount).toBe(7); expect(state.syncPausedAt).toBeNull(); expect(state.syncError).toContain('retry automatically'); expect(state.syncCursor).toBe('100');
   });
   it('persists Retry-After across calls and reloads continue reading saved mail', async () => {
     await scope(() => ingestMailboxMessages(account, [mail(leadEmail)], permissions));

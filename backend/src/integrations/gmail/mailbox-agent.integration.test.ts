@@ -18,7 +18,7 @@ const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$
 describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
   type Agent = { id: string; account: EmailAccount; access: string; token?: string; leadId: string; contactId: string; dealId: string; email: string; contactEmail: string };
   let tenantId: string, roleId: string, agents: Agent[], server: Server, base: string;
-  let messages: Map<string, Map<string, GmailEmail>>, reads: { userId: string; path: string }[], writes: number, loseAcknowledgement: boolean, failReads: boolean, historyDelayMs: number;
+  let messages: Map<string, Map<string, GmailEmail>>, reads: { userId: string; path: string }[], writes: number, loseAcknowledgement: boolean, failReads: boolean, historyDelayMs: number, readFailureStatus: number;
   const realFetch = globalThis.fetch;
   const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const permissions = { leadsView: true, contactsView: true, dealsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true };
@@ -44,7 +44,7 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
     roleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', crmAssignmentRestricted: true } })).id;
     await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId, module, canView: true, canViewMy: true, canEdit: true, canCreate: true })) });
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    agents = []; messages = new Map(); reads = []; writes = 0; loseAcknowledgement = false; failReads = false; historyDelayMs = 0;
+    agents = []; messages = new Map(); reads = []; writes = 0; loseAcknowledgement = false; failReads = false; historyDelayMs = 0; readFailureStatus = 400;
     for (const name of ['A', 'B']) {
       const user = await prisma.user.create({ data: { tenantId, email: `sales-${name}-${randomUUID()}@camxian.com`, firstName: name, lastName: 'Agent', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
       await prisma.userRole.create({ data: { tenantId, userId: user.id, roleId } });
@@ -78,7 +78,7 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
         return Response.json({ id: email.id, threadId: email.threadId });
       }
       reads.push({ userId: agent.id, path: endpoint.pathname + endpoint.search });
-      if (failReads) return Response.json({ error: { message: 'Fixture failure' } }, { status: 400 });
+      if (failReads) return Response.json({ error: { message: 'Fixture failure' } }, { status: readFailureStatus });
       if (endpoint.pathname.endsWith('/profile')) return Response.json({ historyId: 'baseline-' + agent.id });
       if (endpoint.pathname.endsWith('/drafts')) return Response.json({ drafts: [] });
       if (endpoint.pathname.endsWith('/history')) {
@@ -208,6 +208,48 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
     vi.stubEnv('GMAIL_SYNC_INTERVAL_SECONDS', '60');
     vi.setSystemTime(started + 20000); await scope(() => syncMailbox(tenantId, b.id, 'worker'));
     expect(reads.filter(read => read.path.includes('/history'))).toHaveLength(2);
+  });
+
+  it('recovers automatically after more than five temporary failures without losing or duplicating email', async () => {
+    const b = agents[1], reply = mail(b);
+    messages.get(b.id)!.set(reply.id, reply);
+    await prisma.emailAccount.update({ where: { id: b.account.id }, data: { tokenExpiresAt: new Date(Date.now() + 86400000) } });
+    vi.useFakeTimers({ toFake: ['Date'] }); failReads = true; readFailureStatus = 503;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await expect(scope(() => syncMailbox(tenantId, b.id, 'worker'))).rejects.toThrow();
+      const saved = await prisma.emailAccount.findUniqueOrThrow({ where: { id: b.account.id } });
+      expect(saved.syncPausedAt).toBeNull(); expect(saved.syncRetryAt!.getTime()).toBeGreaterThan(Date.now());
+      const count = reads.length;
+      await scope(() => syncMailbox(tenantId, b.id, 'worker'));
+      expect(reads).toHaveLength(count);
+      vi.setSystemTime(saved.syncRetryAt!);
+    }
+    failReads = false;
+    await scope(() => syncMailbox(tenantId, b.id, 'worker'));
+    const recovered = await prisma.emailAccount.findUniqueOrThrow({ where: { id: b.account.id } });
+    expect(recovered.syncError).toBeNull(); expect(recovered.syncFailureCount).toBe(0); expect(recovered.syncRetryAt).toBeNull();
+    const notificationCount = await prisma.notificationEvent.count({ where: { tenantId } });
+    await prisma.emailAccount.update({ where: { id: b.account.id }, data: { syncRequestedAt: new Date() } });
+    await scope(() => syncMailbox(tenantId, b.id, 'worker'));
+    expect(await prisma.mailboxMessage.count({ where: { accountId: b.account.id, providerMessageId: reply.id } })).toBe(1);
+    expect(await prisma.activity.count({ where: { tenantId, leadId: b.leadId, type: 'email' } })).toBe(1);
+    expect(await prisma.notificationEvent.count({ where: { tenantId } })).toBe(notificationCount);
+  });
+
+  it('does not publish a mailbox change for an empty successful History poll', async () => {
+    const b = agents[1];
+    await scope(() => syncMailbox(tenantId, b.id, 'worker'));
+    expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: b.account.id } })).mailboxVersion).toBe(b.account.mailboxVersion);
+  });
+
+  it('automatically resumes a previously paused active mailbox when its persisted retry is due', async () => {
+    const b = agents[1], reply = mail(b); messages.get(b.id)!.set(reply.id, reply);
+    await prisma.emailAccount.update({ where: { id: b.account.id }, data: { syncPausedAt: new Date(), syncFailureCount: 5, syncRetryAt: new Date(Date.now() - 1000) } });
+    const stop = startMailboxScheduler();
+    try {
+      await vi.waitFor(async () => expect(await prisma.activity.count({ where: { tenantId, createdById: b.id, type: 'email' } })).toBe(1), { timeout: 10000 });
+      await vi.waitFor(async () => expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: b.account.id } })).syncPausedAt).toBeNull(), { timeout: 10000 });
+    } finally { await stop(); }
   });
 
   it('processes B in the existing scheduler even when A has invalid mailbox ownership', async () => {

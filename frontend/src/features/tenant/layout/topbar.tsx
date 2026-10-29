@@ -12,6 +12,7 @@ import { GlobalOmnibox } from '@/shared/components/global-omnibox';
 import { MobileSearchOverlay } from '@/shared/components/mobile-search-overlay';
 import { UserProfileDropdown } from './user-profile-dropdown';
 import { cn } from '@/lib/utils';
+import { subscribeMailboxEvents, type MailboxSubscription } from '@/shared/services/mailbox-events';
 
 // -- Types ---------------------------------------------------------------------
 
@@ -38,26 +39,56 @@ export default function Topbar({ onOpenSidebar, onOpenInbox, sidebarOpen = false
 
   // Fetch unread email count for inbox badge
   useEffect(() => {
-    let isMounted = true;
-    let changed = false;
+    if (!tenant?.id || !user?.id) { setInboxCount(0); return; }
+    let active = true, generation = 0, retryAfter = 0;
+    let controller: AbortController | undefined, timer: ReturnType<typeof setTimeout> | undefined;
+    let subscription: MailboxSubscription | undefined;
     setInboxCount(0);
-    const unreadChanged = (event: Event) => { const count = (event as CustomEvent<number>).detail; if (isMounted && Number.isSafeInteger(count) && count >= 0) { changed = true; setInboxCount(count); } };
+    const refresh = async () => {
+      if (!active || Date.now() < retryAfter) return;
+      controller?.abort(); controller = new AbortController();
+      const signal = controller.signal, request = ++generation;
+      const current = () => active && request === generation && !signal.aborted;
+      try {
+        const status = await getGmailStatus(signal);
+        if (!current()) return;
+        if (!status.isConnected) { subscription?.close(); subscription = undefined; setInboxCount(0); return; }
+        subscription ??= subscribeMailboxEvents(tenant.id, user.id, {
+          onChange: schedule, onOpen: schedule, onFallback: schedule,
+          onAccessChanged: () => {
+            generation++; controller?.abort(); setInboxCount(0);
+            void refresh();
+          },
+        });
+        const result = await fetchGmailUnreadCount(signal);
+        if (current()) setInboxCount(result.unreadCount);
+      } catch (error) {
+        if (!current()) return;
+        const failure = error as { status?: number; retryAt?: string };
+        if (failure.status === 429) retryAfter = Math.max(Date.now() + 60_000, Date.parse(failure.retryAt ?? '') || 0);
+        if ([401, 403, 409].includes(failure.status ?? 0)) { subscription?.close(); subscription = undefined; setInboxCount(0); }
+      }
+    };
+    function schedule() {
+      if (!active || document.visibilityState === 'hidden') return;
+      clearTimeout(timer); timer = setTimeout(() => void refresh(), 250);
+    }
+    const unreadChanged = (event: Event) => {
+      const count = (event as CustomEvent<number>).detail;
+      if (active && Number.isSafeInteger(count) && count >= 0) {
+        generation++; controller?.abort(); clearTimeout(timer); setInboxCount(count);
+      }
+    };
     window.addEventListener('mailbox-unread-change', unreadChanged);
-    getGmailStatus()
-      .then((status) => {
-        if (status.isConnected) {
-          return fetchGmailUnreadCount();
-        }
-        return null;
-      })
-      .then((result) => {
-        if (isMounted && !changed && result) {
-          setInboxCount(result.unreadCount);
-        }
-      })
-      .catch(() => { /* silently ignore � Gmail may not be connected */ });
-
-    return () => { isMounted = false; window.removeEventListener('mailbox-unread-change', unreadChanged); };
+    document.addEventListener('visibilitychange', schedule);
+    window.addEventListener('online', schedule);
+    void refresh();
+    const poll = setInterval(() => { if (!subscription) schedule(); }, 60_000);
+    return () => {
+      active = false; controller?.abort(); subscription?.close(); clearTimeout(timer); clearInterval(poll);
+      window.removeEventListener('mailbox-unread-change', unreadChanged);
+      document.removeEventListener('visibilitychange', schedule); window.removeEventListener('online', schedule);
+    };
   }, [tenant?.id, user?.id]);
 
   // Listen for settings tab changes to update breadcrumb

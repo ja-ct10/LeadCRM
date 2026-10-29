@@ -64,7 +64,7 @@ const record = (label, detail = {}) => { checks.push({ label, ...detail }); cons
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Mailbox Activity Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales', crmAssignmentRestricted: true } });
-  await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'accounts', 'tasks'].map(module => ({ tenantId: tenant.id, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
+  await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'accounts', 'tasks'].map(module => ({ tenantId: tenant.id, roleId: role.id, module, canView: true, canViewMy: true, canEdit: true, canCreate: true })) });
   const agents = [];
   for (const name of ['B', 'A']) {
     const user = await prisma.user.create({ data: { tenantId: tenant.id, email: `mailbox-activity-${name}@camxian.com`, firstName: name, lastName: 'Sales', role: 'Sales', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });

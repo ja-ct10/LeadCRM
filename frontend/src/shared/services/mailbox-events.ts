@@ -5,6 +5,7 @@ interface MailboxListeners {
   onAccessChanged: () => void;
   onOpen?: () => void;
   onError?: () => void;
+  onFallback?: () => void;
 }
 
 export interface MailboxSubscription { close: () => void }
@@ -19,7 +20,7 @@ interface MailboxObserver {
 const observers = new Map<string, MailboxObserver>();
 
 export function subscribeMailboxEvents(tenantId: string, userId: string, listener: MailboxListeners): MailboxSubscription {
-  if (!tenantId || !userId || typeof EventSource === 'undefined') return { close: () => {} };
+  if (!tenantId || !userId) return { close: () => {} };
   const key = JSON.stringify([tenantId, userId]);
   let observer = observers.get(key);
   if (!observer) {
@@ -28,7 +29,7 @@ export function subscribeMailboxEvents(tenantId: string, userId: string, listene
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
       reconnect = undefined;
-      if (!listeners.size) return;
+      if (!listeners.size || typeof EventSource === 'undefined') return;
       const source = new EventSource('/api/proxy/integrations/gmail/events');
       const changed = () => [...listeners].forEach(item => item.onChange());
       const accessChanged = () => [...listeners].forEach(item => item.onAccessChanged());
@@ -52,7 +53,11 @@ export function subscribeMailboxEvents(tenantId: string, userId: string, listene
         source.close();
       };
     };
-    observer = { listeners, stop: () => { disconnect?.(); clearTimeout(reconnect); } };
+    // Catch missed events and unsupported/quiet streams using persisted reads only.
+    const fallback = setInterval(() => {
+      if (document.visibilityState !== 'hidden') [...listeners].forEach(item => item.onFallback?.());
+    }, 60_000);
+    observer = { listeners, stop: () => { disconnect?.(); clearTimeout(reconnect); clearInterval(fallback); } };
     observers.set(key, observer);
     listeners.add(listener);
     connect();
