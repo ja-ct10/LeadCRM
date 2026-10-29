@@ -146,7 +146,10 @@ describe.skipIf(!disposable)('role visibility through authenticated HTTP and rea
   });
   it('scopes workflow counts and preserves tenant-scoped internal discovery', async () => {
     const res = await call(b, '/automation/workflows?sort=name:asc');
-    expect(res.status, JSON.stringify(res.body)).toBe(200); expect(res.body.meta.total).toBe(1); expect(res.body.data[0].id).toBe(wb.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.meta.total).toBe(await prisma.workflow.count({ where: { tenantId, isArchived: false } }));
+    expect(res.body.data.map((record: { id: string }) => record.id)).toEqual(expect.arrayContaining([wa.id, wb.id]));
+    expect(res.body.data.map((record: { id: string }) => record.id)).not.toContain(wf.id);
     await scope(() => prisma.workflow.update({ where: { id: wb.id }, data: { isActive: true, status: 'ACTIVE' } }));
     const internal = await as(a, () => activeWorkflows(tenantId, 'lead.created'));
     expect(internal.map(r => r.id)).toContain(wb.id);
@@ -158,14 +161,14 @@ describe.skipIf(!disposable)('role visibility through authenticated HTTP and rea
     const body = suffix === '/toggle' ? { isActive: false } : suffix === '/test' ? { entityId: randomUUID() }
       : ['/draft', '/publish'].includes(suffix) ? { draft: { name: 'Attempt', trigger: 'lead.created', actions: [], isActive: false }, expectedVersion: 1, expectedDraftRevision: 0 }
       : suffix === '/versions/1/restore' ? { expectedVersion: 1, expectedDraftRevision: 0 } : method === 'POST' ? {} : undefined;
-    for (const [actor, record] of [[a, wb], [a, wf], [admin, wf]]) {
+    for (const [actor, record] of [[a, wf], [admin, wf]]) {
       const res = await call(actor, '/automation/workflows/' + record.id + suffix, method, body);
       expect(res.status, JSON.stringify(res.body)).toBe(404);
     }
   });
   it('guards workflow validation IDs and update IDs', async () => {
-    expect((await call(a, '/automation/workflows/validate', 'POST', { name: 'Attempt', trigger: 'lead.created', actions: [], isActive: false, workflowId: wb.id })).status).toBe(404);
-    expect((await call(a, '/automation/workflows/' + wb.id, 'PUT', { name: 'Attempt' })).status).toBe(404);
+    expect((await call(a, '/automation/workflows/validate', 'POST', { name: 'Attempt', trigger: 'lead.created', actions: [], isActive: false, workflowId: wf.id })).status).toBe(404);
+    expect((await call(a, '/automation/workflows/' + wf.id, 'PUT', { name: 'Attempt' })).status).toBe(404);
     expect((await call(a, '/marketing/campaigns/' + cb.id, 'PUT', { name: 'Attempt' })).status).toBe(404);
   });
   it('filters Groups by actual membership without creating membership or granting writes', async () => {
@@ -262,9 +265,9 @@ describe.skipIf(!disposable)('role visibility through authenticated HTTP and rea
     expect((await call(a, '/administration/users/' + other.id, 'PUT', { status: 'ACTIVE' })).status).toBe(404);
     expect((await call(a, '/administration/users/bulk-update', 'POST', { ids: [other.id], status: 'ACTIVE' })).status).toBe(404);
   });
-  it('keeps unknown creators admin-only and does not replace archive ownership on repeated archive attempts', async () => {
+  it('shares active tenant workflows without creator metadata and preserves archive ownership on repeated attempts', async () => {
     const legacy = await scope(() => prisma.workflow.create({ data: { tenantId, name: 'Unknown creator', trigger: 'lead.created', actions: [] } }));
-    expect((await call(a, '/automation/workflows/' + legacy.id)).status).toBe(404);
+    expect((await call(a, '/automation/workflows/' + legacy.id)).status).toBe(200);
     expect((await call(admin, '/automation/workflows/' + legacy.id)).status).toBe(200);
     const row = archives.get('Account')!.other;
     expect((await call(a, '/crm/accounts/' + row.id + '/archive', 'PATCH')).status).toBe(404);

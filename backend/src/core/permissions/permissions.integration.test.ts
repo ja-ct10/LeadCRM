@@ -50,7 +50,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     await prisma.rolePermission.update({ where: { roleId_module: { roleId: viewer.roleId, module: 'users' } }, data: { canView: false } });
     expect((await call('/administration/users', viewer.token)).status).toBe(403);
   });
-  it('enforces each of the 86 grants independently and requires its module View', async () => {
+  it('enforces every catalog grant independently and requires its module View', async () => {
     const actor = await roleUser('Catalog QA', []);
     let count = 0;
     for (const module of PERMISSION_MODULES) {
@@ -64,7 +64,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
         await prisma.rolePermission.delete({ where: { id: row.id } }); count++;
       }
     }
-    expect(count).toBe(86);
+    expect(count).toBe(PERMISSION_MODULES.reduce((total, module) => total + module.actions.length, 0));
     for (const key of ['roles.manage','settings.create','settings.delete','reports.view','billing.view','leads.delete']) {
       await expect(assertPermissions({ ...actor.user, role: 'Client Admin' }, [key as PermissionKey])).rejects.toMatchObject({ statusCode: 403 });
     }
@@ -86,12 +86,18 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     expect((await call(`/marketing/campaigns/${draft.body.data.id}`, actor.token, 'PUT', { name: 'Edited draft' })).status).toBe(200);
     for (const [method,path] of [['PATCH','/marketing/campaigns/missing/send'],['POST','/marketing/campaigns/missing/duplicate'],['GET','/marketing/campaigns/missing/report'],['GET','/marketing/campaigns/metrics']]) expect((await call(path, actor.token, method, method === 'GET' ? undefined : {})).status).toBe(403);
   });
-  it('Sales Manager needs an explicit stage-management grant independently of editing deals', async () => {
+  it('does not delegate legacy pipeline management through custom role flags', async () => {
     const actor = await roleUser('Sales Manager', [{ module: 'deals', canView: true, canCreate: true, canEdit: true, canArchive: true }]);
     expect((await call('/crm/pipelines/missing', actor.token, 'PUT', { name: 'Updated pipeline' })).status).toBe(403);
     await prisma.rolePermission.update({ where: { roleId_module: { roleId: actor.roleId, module: 'deals' } }, data: { canManageStages: true } });
-    await expect(assertPermissions(actor.user, ['deals.manage_stages'])).resolves.toBeUndefined();
-    expect((await call('/crm/pipelines/missing', actor.token, 'PUT', { name: 'Updated pipeline' })).status).toBe(404);
+    await expect(assertPermissions(actor.user, ['deals.manage_stages'])).rejects.toMatchObject({ statusCode: 403 });
+    for (const [method, path] of [
+      ['POST', '/crm/pipelines'], ['PUT', '/crm/pipelines/missing'], ['PATCH', '/crm/pipelines/missing/archive'],
+      ['DELETE', '/crm/pipelines/missing'], ['POST', '/crm/stages'], ['PUT', '/crm/stages/missing'],
+      ['DELETE', '/crm/stages/missing'], ['PATCH', '/crm/pipelines/missing/stages/reorder'],
+    ]) expect((await call(path, actor.token, method, {})).status, path).toBe(403);
+    expect((await call('/crm/pipelines/missing', adminToken, 'PUT', { name: 'Updated pipeline' })).status).toBe(404);
+    expect((await call('/administration/roles', adminToken, 'POST', { name: 'Retired stage grant', permissions: [{ ...EMPTY_PERMISSION_FLAGS, module: 'deals', canView: true, canManageStages: true }] })).status).toBe(400);
   });
   it('blocks direct endpoints and generic task/user mutation bypasses', async () => {
     const actor = await roleUser('Restricted QA', []);
@@ -133,7 +139,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
       expect((await call('/administration/roles', adminToken, 'POST', { name: 'Bad permission', permissions: [{ ...EMPTY_PERMISSION_FLAGS, ...permission }] })).status).toBe(400);
     }
     const admin = await prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: 'Client Admin' } }, include: { permissions: true } });
-    expect(admin.permissions.reduce((sum, row) => sum + PERMISSION_MODULES.find(m => m.key === row.module)!.actions.filter(action => row[action]).length, 0)).toBe(86);
+    expect(admin.permissions.reduce((sum, row) => sum + PERMISSION_MODULES.find(m => m.key === row.module)!.actions.filter(action => row[action]).length, 0)).toBe(PERMISSION_MODULES.reduce((total, module) => total + module.actions.length, 0));
     expect((await call(`/administration/roles/${admin.id}`, adminToken, 'PUT', { permissions: [] })).status).toBe(403);
     expect((await call(`/administration/roles/${admin.id}/archive`, adminToken, 'PATCH')).status).toBe(403);
   });

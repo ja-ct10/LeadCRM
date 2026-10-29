@@ -26,7 +26,7 @@ Add Group beside the field form's selector creates the section in the same modul
 
 The drawer and full page share `CrmRecordView`. Details combines native and custom fields in the saved module sections and order. Existing staff create/edit forms retain their original input controls and business validation while a small layout helper arranges those controls alongside custom fields. Column label overrides reuse the same configuration without adding custom table columns or changing saved column IDs.
 
-Ordinary custom Details rows use the same `InlineEditRows` interaction as native fields. Active visible definitions appear even without a stored value, using “—”; click the value to edit and Save/Cancel within that row. The shared typed controls support Text, Long Text, Number, Date, Dropdown and authorized File Upload. Each write supplies only that canonical field ID, with null for an optional clear. Hidden-in-forms and saved disabled/retired values stay read only. One custom-state query serves the record; no standalone bulk Details editor remains. `DealClosingRequirements` keeps its specialized evidence controls, progress, validation and governed closing behavior.
+Ordinary custom Details rows use the same `InlineEditRows` interaction as native fields. Active visible definitions appear even without a stored value, using “—”; click the value to edit and Save/Cancel within that row. The shared typed controls support Text, Long Text, Number, Date, Dropdown and authorized File Upload. Each write supplies only that canonical field ID, with null for an optional clear. Saved disabled/retired values stay read only. An active field visible only in Details remains editable by an authorized record editor. One custom-state query serves the record; no standalone bulk Details editor remains. `DealClosingRequirements` keeps its specialized evidence controls, progress, validation and governed closing behavior.
 
 Loaded custom values and closing evidence remain visible when a background refresh temporarily fails. An inline error offers Retry, and an open editor keeps its draft. When the existing cache clears unavailable or unauthorized data, these components remove the old values as well. Successful saves use the existing automatic cache invalidation without an additional manual refresh.
 
@@ -49,7 +49,7 @@ Paths below are relative to `/api/v1`; authenticated tenant scope and workspace 
 | `GET /administration/closing-requirements` | Current definitions, including disabled/hidden fields | `custom_fields.view` |
 | `POST /administration/closing-requirements` | Create a definition with a stable ID | `custom_fields.create` |
 | `PATCH /administration/closing-requirements/:id` | Governed definition/presentation changes | `custom_fields.edit`; active changes also require `custom_fields.disable` |
-| `PATCH /administration/closing-requirements/:id` with only `{ "active": false }` | Disable a definition | `custom_fields.disable` |
+| `PATCH /administration/closing-requirements/:id` with only `active` plus optional version/revision tokens | Enable/disable a definition independently of editing | `custom_fields.disable` |
 | `DELETE /administration/closing-requirements/:id` | Dependency-checked retirement | `custom_fields.delete` |
 | `GET /administration/closing-requirements/layout/:module` | Typed layout and resolved System/Custom catalog | `custom_fields.view` |
 | `PATCH /administration/closing-requirements/layout/:module` | Add/rename/reorder sections or change field presentation/order | `custom_fields.edit` |

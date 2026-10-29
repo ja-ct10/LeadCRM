@@ -18,6 +18,8 @@ export const PERMISSION_ACTION_KEYS = {
   "canDuplicate": "duplicate",
   "canViewReports": "view_reports",
   "canActivate": "activate",
+  "canPause": "pause",
+  "canExecute": "execute",
   "canViewRuns": "view_runs",
   "canPublish": "publish",
   "canViewSubmissions": "view_submissions",
@@ -41,7 +43,9 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   "canSend": "Send",
   "canDuplicate": "Duplicate",
   "canViewReports": "View Campaign Reports",
-  "canActivate": "Activate / Pause",
+  "canActivate": "Activate",
+  "canPause": "Pause / Resume",
+  "canExecute": "Execute / Run Check",
   "canViewRuns": "View Workflow Runs",
   "canPublish": "Publish / Unpublish",
   "canViewSubmissions": "View Form Submissions",
@@ -67,6 +71,8 @@ export const EMPTY_PERMISSION_FLAGS: PermissionFlags = {
   "canDuplicate": false,
   "canViewReports": false,
   "canActivate": false,
+  "canPause": false,
+  "canExecute": false,
   "canViewRuns": false,
   "canPublish": false,
   "canViewSubmissions": false,
@@ -132,8 +138,7 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canEdit",
       "canArchive",
       "canViewAll",
-      "canViewMy",
-      "canManageStages"
+      "canViewMy"
     ]
   },
   {
@@ -170,8 +175,10 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canCreate",
       "canEdit",
       "canActivate",
+      "canPause",
+      "canExecute",
       "canDuplicate",
-      "canArchive",
+      "canDelete",
       "canViewRuns"
     ]
   },
@@ -280,6 +287,7 @@ export const PERMISSION_GROUPS = [
 ];
 
 export function permissionLabel(module: PermissionModuleDefinition, action: PermissionAction): string {
+  if (module.key === 'workflows' && action === 'canActivate') return 'Activate Workflows';
   if (module.key === 'tasks' && action === 'canViewAll') return 'Group Tasks';
   if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {
     return PERMISSION_ACTION_LABELS[action] + ' ' + (action === 'canViewActive' && module.key === 'leads' ? 'Lead' : module.label);

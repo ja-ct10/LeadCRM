@@ -66,6 +66,8 @@ function setup(
     save?: (draft: WorkflowDraft) => Promise<void>;
     readOnly?: boolean;
     canActivate?: boolean;
+    canPause?: boolean;
+    canExecute?: boolean;
     initial?: WorkflowDraft;
   } = {},
 ) {
@@ -77,6 +79,8 @@ function setup(
       triggers={WORKFLOW_TRIGGERS}
       actions={getAvailableActions()}
       canActivate={options.canActivate ?? true}
+      canPause={options.canPause ?? true}
+      canExecute={options.canExecute ?? true}
       readOnly={options.readOnly}
       onSave={save}
       onClose={close}
@@ -90,6 +94,28 @@ function unloadPrevented() {
   window.dispatchEvent(event);
   return event.defaultPrevented;
 }
+it('shows run checks to read-only operators independently of management and hides them after revocation', () => {
+  const props = { initial: structuredClone(initial), workflowId: 'rbac-workflow', triggers: WORKFLOW_TRIGGERS,
+    actions: getAvailableActions(), readOnly: true, canActivate: false, canPause: false, canExecute: true,
+    onSave: vi.fn(), onClose: vi.fn() };
+  const view = render(<WorkflowBuilder {...props} />);
+  expect(button('Test draft')).toHaveProperty('disabled', false);
+  for (const name of ['Save draft', 'Publish workflow', 'Pause']) expect(screen.queryByRole('button', { name })).toBeNull();
+  view.rerender(<WorkflowBuilder {...props} canExecute={false} />);
+  expect(screen.queryByRole('button', { name: 'Test draft' })).toBeNull();
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it('does not use activation permission to grant pause control', () => {
+  const props = { initial: { ...structuredClone(initial), isActive: true }, workflowId: 'active-rbac-workflow', initialStatus: 'ACTIVE' as const,
+    triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions(), canActivate: true, canPause: false, canExecute: false,
+    onPause: vi.fn().mockResolvedValue({ ...initial, id: 'active-rbac-workflow', isActive: false, status: 'PAUSED' }), onSave: vi.fn(), onClose: vi.fn() };
+  const view = render(<WorkflowBuilder {...props} />);
+  expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+  view.rerender(<WorkflowBuilder {...props} canActivate={false} canPause readOnly />);
+  fireEvent.click(button('Pause'));
+  expect(props.onPause).toHaveBeenCalledOnce();
+});
 function editTask(title = 'Unsaved task') {
   fireEvent.click(button(/Configure action: 1. Create Task/));
   fireEvent.change(screen.getByLabelText('Task title'), { target: { value: title } });

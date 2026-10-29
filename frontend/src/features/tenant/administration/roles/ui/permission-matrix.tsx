@@ -17,7 +17,7 @@ interface PermissionMatrixProps {
 
 const ACTION_LABELS = PERMISSION_ACTION_LABELS;
 
-const ACTIONS = PERMISSION_ACTIONS;
+const ACTIONS = PERMISSION_ACTIONS.filter(action => PERMISSION_MODULES.some(module => module.actions.includes(action)));
 
 export function PermissionMatrix({ value, readOnly = false, onChange }: PermissionMatrixProps): React.ReactElement {
   const handleToggle = useCallback((module: string, action: PermissionAction, current: boolean) => {

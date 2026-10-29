@@ -8,6 +8,7 @@ exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
 exports.normalizeSavedWorkflowAssignment = normalizeSavedWorkflowAssignment;
 exports.workflowOperators = workflowOperators;
+exports.workflowStateAction = workflowStateAction;
 const zod_1 = require("zod");
 const condition_operators_1 = require("./condition-operators");
 exports.WorkflowConditionOperatorSchema = zod_1.z.enum([
@@ -146,3 +147,7 @@ function workflowOperators(type) {
 exports.WorkflowTestInputSchema = zod_1.z.object({ entityId: zod_1.z.string().uuid(), stageHistoryId: zod_1.z.string().uuid().optional(), useDraft: zod_1.z.boolean().optional() }).strict();
 exports.WorkflowRevisionWriteSchema = zod_1.z.object({ draft: exports.WorkflowDraftSchema, expectedDraftRevision: zod_1.z.number().int().min(0), expectedVersion: zod_1.z.number().int().min(1) }).strict();
 exports.WorkflowRevisionTokenSchema = exports.WorkflowRevisionWriteSchema.omit({ draft: true });
+/** Initial activation and controlling a published workflow are separate grants. */
+function workflowStateAction(workflow, isActive) {
+    return !isActive || workflow.status === 'PAUSED' ? 'canPause' : 'canActivate';
+}

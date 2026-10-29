@@ -8,7 +8,7 @@ vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), warning: vi.
 const push = vi.fn();
 const permissions = vi.hoisted(() => ({ denied: [] as string[] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: (module: string) => !permissions.denied.includes(module) }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: (module: string, action: string) => !permissions.denied.includes(module) && !permissions.denied.includes(`${module}.${action}`) }) }));
 vi.mock('@/shared/services/workflows.api', () => ({ workflowsApi: { get: vi.fn(), getExecutions: vi.fn(), toggle: vi.fn(), duplicate: vi.fn(), archive: vi.fn() } }));
 const run = { id: 'run', status: 'completed', startedAt: '2026-10-01T12:00:00Z', completedAt: '2026-10-01T12:01:00Z', entityType: 'lead', trigger: { payload: { recordName: 'Ada Lovelace' }, triggerType: 'lead_created' }, steps: [{ id: 'step', stepIndex: 0, actionType: 'create_task', status: 'completed' }] };
 const workflow = { id: 'wf', name: 'Follow up', isActive: true, status: 'ACTIVE' };
@@ -41,6 +41,16 @@ it('hides output destinations when the viewer lacks their module permissions', a
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 const mount = (close = vi.fn(), updated = vi.fn()) => render(<WorkflowExecutionLogModal workflowId="wf" name="Follow up" status="Active" onClose={close} onUpdated={updated} />);
 const settled = () => waitFor(() => expect((screen.getByLabelText('Refresh workflow activity') as HTMLButtonElement).disabled).toBe(false));
+it('offers the read-only definition without inheriting Pause from Activate', async () => {
+  permissions.denied = ['workflows.canPause', 'workflows.canEdit', 'workflows.canDelete', 'workflows.canDuplicate'];
+  mount(); await settled();
+  fireEvent.click(screen.getByLabelText('Workflow actions'));
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent?.trim())).toEqual(['View definition']);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'View definition' }));
+  expect(push).toHaveBeenCalledWith('/automation/workflows/wf/edit?view=true');
+  expect(workflowsApi.toggle).not.toHaveBeenCalled();
+});
+
 it('reports one refresh warning after a successful mutation instead of a false failure', async () => {
   const updated = vi.fn().mockRejectedValue(new Error('List unavailable'));
   mount(vi.fn(), updated); await settled();
@@ -119,7 +129,7 @@ it('orders header actions and toggles, dismisses and executes the existing workf
   const updated = vi.fn(), close = vi.fn(); mount(close, updated); await settled();
   expect(Array.from(screen.getByRole('dialog').querySelectorAll('header button')).map(b => b.getAttribute('aria-label'))).toEqual(['Refresh workflow activity', 'Workflow actions', 'Close workflow details']);
   const menu = () => fireEvent.click(screen.getByLabelText('Workflow actions'));
-  menu(); expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Edit', 'Pause', 'Duplicate', 'Archive']);
+  menu(); expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View definition', 'Edit', 'Pause', 'Duplicate', 'Archive']);
   menu(); expect(screen.queryByRole('menu')).toBeNull();
   menu(); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
   menu(); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull(); expect(close).not.toHaveBeenCalled();

@@ -279,6 +279,11 @@ and a Manila-date filename. No tenant/security/database identifiers are exported
 | `DELETE` | `/crm/stages/:id` | Remove an unused, unprotected stage |
 | `PATCH` | `/crm/pipelines/:id/stages/reorder` | Reorder all stages in that pipeline |
 
+The legacy pipeline/stage configuration APIs are Client Admin-only. The retired
+`deals.manage_stages` flag cannot be assigned through RBAC and grants no custom-role
+access, even if an old stored row still contains it. Moving a Deal between its
+existing stages continues to require `deals.edit`.
+
 Pipeline transfer accepts only `{ pipelineId, stageId }`. Both targets must belong to the authenticated tenant; the pipeline must be active and the stage nonterminal, with its entry requirements satisfied. Archived, deleted, Won and Lost Deals cannot transfer. Pipeline and stage commit together with history, activity and audit; Product/value snapshots, assignment, closing evidence and child relationships are preserved. A replay at the same destination succeeds without duplicate history or workflow triggers. Ordinary stage changes remain within the Deal's current pipeline.
 
 Stage removal rejects default/won/lost stages and stages referenced by any Deal
@@ -471,7 +476,24 @@ See the [workflow production report](workflows/workflow-production-report.md#c-a
 | `GET` | `/automation/triggers` | Supported event and condition metadata |
 | `GET` | `/automation/actions` | Supported action metadata |
 
-Duplicate uses `POST /automation/workflows/:id/duplicate` to create an inactive draft copy. Removal uses archive; there is no workflow DELETE endpoint.
+Duplicate uses `POST /automation/workflows/:id/duplicate` to create an inactive draft copy. Removal uses archive with `workflows.delete`; there is no workflow DELETE endpoint.
+
+Workflow grants are independent: `view`, `create`, `edit`, `activate`, `pause`,
+`execute`, `view_runs`, `delete`, and the existing `duplicate`. View remains a
+prerequisite. Initial activation and publishing require Activate; pausing and
+resuming the unchanged published definition require Pause / Resume. Updating a
+definition also requires Edit, including through the legacy PUT endpoint.
+Validate and Test require Execute and retain their existing action/record checks;
+they are dry runs and never execute actions. Automatic event processing continues
+to recheck the approved publisher's current permissions. Resume preserves that
+publisher. Non-archived workflows are shared within the tenant according to these grants;
+archive recovery retains its existing creator/archiver restrictions.
+
+Apply `20261230000000_workflow_capabilities` before starting the matching backend.
+It adds persisted Pause/Execute flags, maps prior Workflow activation/archive grants
+to the separated capabilities, and sets Workflow-only defaults on existing active
+Sales Admin/Sales Associate custom roles. New role templates expose those defaults;
+subsequent saved RBAC changes remain authoritative, including after role renames.
 
 Validation accepts the shared workflow draft plus an optional `workflowId`. The
 server resolves that ID within the current tenant to preserve unchanged literal

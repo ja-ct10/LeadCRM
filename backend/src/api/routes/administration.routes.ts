@@ -6,7 +6,7 @@ import * as closingRequirements from '../../modules/crm/closing-requirements/clo
 import { listFields } from '../../modules/crm/closing-requirements/closing-requirements.service';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
-import { authorize, authorizeAll, authorizeAny } from '../middleware/rbac.middleware';
+import { authorize, authorizeAll, authorizeAny, authorizeClientAdmin } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { UpdateOrganizationSettingsSchema } from '@leadcrm/shared';
 import * as organizationSettings from '../../modules/administration/organization-settings/organization-settings.controller';
@@ -94,11 +94,6 @@ router.patch( '/groups/:id/head',            authorizeClientAdmin, authorize('gr
 router.post(  '/groups/:id/members',         authorizeClientAdmin, authorize('groups.edit'), validate(GroupMemberSchema), groupController.addMember);
 router.delete('/groups/:id/members/:userId', authorizeClientAdmin, authorize('groups.edit'), groupController.removeMember);
 
-function authorizeClientAdmin(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
-  if (req.user?.role === 'Client Admin') return next();
-  next(new ForbiddenError('Only Client Admin users can perform this administrative operation.'));
-}
-
 
 async function authorizeUserChanges(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
   try {
@@ -117,7 +112,9 @@ async function authorizeUserChanges(req: import('express').Request, _res: import
 }
 async function authorizeFieldChanges(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
   try {
-    const onlyDisable = Object.keys(req.body).length === 1 && req.body.active === false;
+    const input = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const fields = Object.keys(input).filter(key => !['expectedVersion', 'expectedRevision'].includes(key));
+    const onlyDisable = fields.length === 1 && fields[0] === 'active' && typeof input.active === 'boolean';
     await assertPermissions(req.user!, [onlyDisable ? 'custom_fields.disable' : 'custom_fields.edit']);
     if (!onlyDisable && typeof req.body.active === 'boolean') {
       const current = (await listFields(req.user!.tenantId)).find(field => field.id === req.params.id);

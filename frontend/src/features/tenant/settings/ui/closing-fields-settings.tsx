@@ -32,6 +32,7 @@ const empty = (): FieldDraft => ({ name: '', type: 'Text', module: '', group: ''
 function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: ClosingField; initialLayout: FieldLayout; onSaved: () => void; onClose: () => void }) {
   const groupId = useId(), newGroupNameId = useId(), moduleErrorId = useId(), technicalKeyNoteId = useId();
   const canDisable = useHasPermission('custom_fields.disable');
+  const canEditGroups = useHasPermission('custom_fields.edit');
   const moduleInput = useRef<HTMLSelectElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const nameErrorId = useId();
@@ -68,7 +69,7 @@ function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: Closing
   const technicalKey = field ? customFieldTechnicalKey(field) : aliasBase ? customFieldTechnicalKey({ id: '', technicalAlias: aliasBase }) : '';
   const update = <K extends keyof FieldDraft>(key: K, value: FieldDraft[K]) => setForm(previous => ({ ...previous, [key]: value }));
   const addGroup = async () => {
-    if (busy || !moduleReady || !savedLayout || !groupName.trim()) return; setBusy(true); setError('');
+    if (!canEditGroups || busy || !moduleReady || !savedLayout || !groupName.trim()) return; setBusy(true); setError('');
     try { const result = (await apiClient.patch<{ data: LayoutResponse }>(`${endpoint}/layout/${form.module}`, { action: 'add', label: groupName, expectedRevision: savedLayout.revision ?? 0 })).data; const added = result.layout.groups.find(group => !savedLayout.groups.some(previous => previous.id === group.id))!; setSavedLayout(result.layout); setForm(previous => ({ ...previous, groupId: added.id, group: added.label })); setAddingGroup(false); setGroupName(''); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to add group.'); } finally { setBusy(false); }
   };
@@ -109,11 +110,11 @@ function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: Closing
         <label htmlFor={groupId} className={`block ${responsiveTypography.control}`}>Group</label>
         <div className="flex items-center gap-2">
           <select id={groupId} required className={panelInputClass + ' flex-1'} value={form.groupId ?? ''} disabled={busy || !moduleReady || !!field && isClosedWonField(field)} onChange={event => { const group = layout!.groups.find(group => group.id === event.target.value)!; setForm(previous => ({ ...previous, groupId: group.id, group: group.label })); }}>{(layout?.groups ?? []).filter(group => !field || (group.id === CLOSED_WON_GROUP_ID) === isClosedWonField(field)).map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</select>
-          <Button type="button" className="h-[42px] shrink-0" disabled={busy || !moduleReady} onClick={() => setAddingGroup(true)}><Plus aria-hidden="true" />Add</Button>
+          {canEditGroups && <Button type="button" className="h-[42px] shrink-0" disabled={busy || !moduleReady} onClick={() => setAddingGroup(true)}><Plus aria-hidden="true" />Add</Button>}
         </div>
         {layoutLoading && form.module && <p role="status" className="text-xs text-muted-foreground">Loading field groups…</p>}
         {layoutError && <p role="alert" className="text-sm text-destructive">{layoutError} <Button type="button" variant="ghost" onClick={() => setLayoutAttempt(previous => previous + 1)}>Retry</Button></p>}
-        {addingGroup && <div className="space-y-2">
+        {canEditGroups && addingGroup && <div className="space-y-2">
           <label htmlFor={newGroupNameId} className={`block ${responsiveTypography.control}`}>Add a new group name</label>
           <div className="flex flex-wrap items-center gap-2">
             <Input id={newGroupNameId} placeholder="New group name" maxLength={100} value={groupName} disabled={busy} className={panelInputClass + ' w-auto flex-1 basis-24'} onChange={event => setGroupName(event.target.value)} />
@@ -148,11 +149,17 @@ function NativeFieldForm({ field, layout, onSaved, onClose }: { field: CrmFieldC
 
 export function ClosingFieldsSettings() {
   const canEdit = useHasPermission('custom_fields.edit'), canCreate = useHasPermission('custom_fields.create'), canDelete = useHasPermission('custom_fields.delete');
+  const canDisable = useHasPermission('custom_fields.disable');
   const [module, setModule] = useState<CustomFieldModule>('leads'), [search, setSearch] = useState('');
   const [panel, setPanel] = useState<'new' | CrmFieldCatalogEntry | null>(null), [manageGroups, setManageGroups] = useState(false), [pending, setPending] = useState(false);
   const [optimistic, setOptimistic] = useState<LayoutResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CrmFieldCatalogEntry | null>(null);
   const saving = useRef(false);
+  useEffect(() => {
+    if (panel === 'new' ? !canCreate : panel !== null && !canEdit) setPanel(null);
+    if (!canEdit && !canDelete) setManageGroups(false);
+    if (!canDelete) setDeleteTarget(null);
+  }, [panel, canCreate, canEdit, canDelete]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const query = useCachedPage<{ definitions: ClosingField[]; layout: FieldLayout }>({ module: 'settings', params: { fieldLayout: module }, revalidateOnInvalidation: true, fetchFn: async signal => {
     const [fields, layout] = await Promise.all([apiClient.get<{ data: ClosingField[] }>(endpoint, { signal }), apiClient.get<{ data: LayoutResponse }>(`${endpoint}/layout/${module}`, { signal })]);
@@ -184,6 +191,16 @@ export function ClosingFieldsSettings() {
     saving.current = true; setPending(true);
     try { await apiClient.delete(`${endpoint}/${deleteTarget.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted.'); }
     catch (error) { throw error; }
+    finally { saving.current = false; setPending(false); }
+  };
+  const toggleField = async (field: CrmFieldCatalogEntry) => {
+    const definition = data?.definitions.find(candidate => candidate.id === field.customFieldId);
+    if (!canDisable || !definition || saving.current || !ready) return;
+    saving.current = true; setPending(true);
+    try {
+      await apiClient.patch(`${endpoint}/${definition.id}`, { active: !definition.active, expectedVersion: definition.version, expectedRevision: savedLayout.revision ?? 0 });
+      await query.refetch(); toast.success(definition.active ? 'Field disabled.' : 'Field enabled.');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to update field availability.'); }
     finally { saving.current = false; setPending(false); }
   };
   const mutateLayout = async (input: FieldLayoutAction): Promise<boolean> => {
@@ -228,7 +245,7 @@ export function ClosingFieldsSettings() {
           {filtered.filter(field => field.groupId === group.id).map(field => <SortableFieldLayoutItem row key={field.canonicalTechnicalKey ?? field.technicalKey} id={field.canonicalTechnicalKey ?? field.technicalKey} groupId={field.groupId} label={field.label} disabled={!canEdit || pending || !ready || !!term || !sortableGroups.has(group.id)} disabledReason={!sortableGroups.has(group.id) ? 'Sorting is unavailable while this group uses canonical field placement.' : undefined}>
             <td className="p-3 font-medium">{field.label}{!field.active && <span className="block text-muted-foreground">Disabled</span>}</td><td className="p-3">{field.kind}</td><td className="p-3">{field.type}</td><td className="max-w-64 break-all p-3 font-mono">{field.technicalKey}</td><td className="p-3">{field.group}</td><td className="p-3">{field.required ? 'Yes' : 'No'}</td>
             {(['visibleInForm', 'visibleInDetails'] as const).map(key => <td key={key} className="p-3"><input aria-label={`${key === 'visibleInForm' ? 'Show in Forms' : 'Show in Details'}: ${field.label}`} type="checkbox" checked={field[key]} disabled={!canEdit || pending || (key === 'visibleInForm' && field.mandatory)} onChange={event => void mutateLayout({ action: 'field', technicalKey: field.technicalKey, [key]: event.target.checked })} /></td>)}
-            <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={() => { if (!saving.current) setDeleteTarget(field); }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
+            <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDisable && field.customFieldId && <Button variant="outline" size="sm" aria-label={`${field.active ? 'Disable' : 'Enable'} ${field.label}`} disabled={pending || !ready} onClick={() => void toggleField(field)}>{field.active ? 'Disable' : 'Enable'}</Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={() => { if (!saving.current) setDeleteTarget(field); }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
           </SortableFieldLayoutItem>)}
         </SortableContext>)}
       </tbody></table>{!filtered.length && <p className="p-5 text-sm text-muted-foreground">No fields match your search.</p>}</div>

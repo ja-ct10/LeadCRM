@@ -7,7 +7,15 @@ const permissions = (modules: string[], edit = false): Record<string, Permission
     canCreate: edit && m.actions.includes('canCreate'), canEdit: edit && m.actions.includes('canEdit') }]),
 );
 export const ROLE_TEMPLATES: RoleTemplate[] = [
-  { key: 'sales-manager', name: 'Sales Manager', description: 'CRM editing. Pipeline configuration and other privileged actions require explicit grants.', permissions: permissions(['dashboard','leads','contacts','accounts','deals','tasks'], true) },
+  { key: 'sales-admin', name: 'Sales Admin', description: 'CRM editing and Workflow management. Other privileged actions require explicit grants.', permissions: {
+    ...permissions(['dashboard','leads','contacts','accounts','deals','tasks'], true),
+    workflows: { ...EMPTY_PERMISSION_FLAGS, ...Object.fromEntries(PERMISSION_MODULES.find(module => module.key === 'workflows')!.actions.map(action => [action, true])) },
+  } },
+  { key: 'sales-associate', name: 'Sales Associate', description: 'CRM editing, Workflow viewing, run checks and execution history.', permissions: {
+    ...permissions(['dashboard','leads','contacts','accounts','deals','tasks'], true),
+    workflows: { ...EMPTY_PERMISSION_FLAGS, canView: true, canExecute: true, canViewRuns: true },
+  } },
+  { key: 'sales-manager', name: 'Sales Manager', description: 'CRM editing. Other privileged actions require explicit grants.', permissions: permissions(['dashboard','leads','contacts','accounts','deals','tasks'], true) },
   { key: 'sales-representative', name: 'Sales Representative', description: 'CRM read and write access.', permissions: permissions(['dashboard','leads','contacts','accounts','deals','tasks'], true) },
   { key: 'viewer', name: 'Viewer', description: 'Read-only CRM access.', permissions: permissions(['dashboard','leads','contacts','accounts','deals','tasks']) },
 ];

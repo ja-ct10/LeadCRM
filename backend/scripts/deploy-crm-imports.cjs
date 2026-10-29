@@ -177,6 +177,9 @@ function deploymentPlan(records, localNames) {
     '20261229000000_deal_manual_status_checkpoint',
     // Additive source metadata and tenant-scoped intake; no deferred relationships are referenced.
     '20261229000000_source_attribution',
+    // Workflow grants use existing role tables only; stop old permission writers
+    // before applying the capability split and one-time configurable defaults.
+    '20261230000000_workflow_capabilities',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

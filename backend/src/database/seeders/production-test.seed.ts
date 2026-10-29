@@ -126,7 +126,7 @@ async function seedProductionTestData() {
               { module: 'contacts', canView: true, canCreate: true, canEdit: true, canDelete: false, canArchive: true },
               { module: 'campaigns', canView: true, canCreate: true, canEdit: true, canDelete: false, canArchive: true },
               { module: 'deals', canView: true, canCreate: true, canEdit: true, canDelete: false, canArchive: true },
-              { module: 'workflows', canView: true, canCreate: true, canEdit: true, canDelete: false, canArchive: true },
+              { module: 'workflows', canView: true, canCreate: true, canEdit: true, canDelete: true, canArchive: false },
               { module: 'users', canView: true, canCreate: true, canEdit: true, canDelete: false, canArchive: true },
               { module: 'settings', canView: true, canCreate: false, canEdit: true, canDelete: false },
             ],

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { toast } from '@/shared/utils/toast';
 import type { Workflow, WorkflowExecutionRun, WorkflowOptions } from '@leadcrm/shared';
 import { WorkflowDefinitionSummary, emptySnapshotOptions } from './workflow-definition-summary';
-import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';
+import { workflowStateAction, WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';
 import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
@@ -26,7 +26,7 @@ import {
   panelSurfaceClass,
   panelTitleClass,
 } from '@/shared/components/side-panel-styles';
-import { ChevronRight, X, MoreHorizontal, Edit, Pause, Play, Copy, Archive } from 'lucide-react';
+import { ChevronRight, X, MoreHorizontal, Eye, Edit, Pause, Play, Copy, Archive } from 'lucide-react';
 // Historical runs retain the method that actually executed, including retired methods.
 const executionAssignmentMethods = new Map<string, string>(Object.entries({
   ...WORKFLOW_ASSIGNMENT_METHODS, least_workload: 'Least workload', random: 'Random',
@@ -49,6 +49,7 @@ export function WorkflowExecutionLogModal({
   const router = useRouter();
   const { userCan } = useAuth();
   const canViewRuns = userCan('workflows', 'canViewRuns');
+  const canDelete = userCan('workflows', 'canDelete');
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,7 @@ export function WorkflowExecutionLogModal({
   const [busy, setBusy] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const lock = useRef(false);
+  useEffect(() => { if (!canDelete) setArchiveOpen(false); }, [canDelete]);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError('');
@@ -93,12 +95,13 @@ export function WorkflowExecutionLogModal({
             <RefreshButton label="Refresh workflow activity" refreshing={loading || runsLoading} disabled={busy} onClick={refresh} />
             <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Workflow actions" title="Workflow actions"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger>
               <DropdownMenuContent aria-label="Workflow actions menu">
+                <DropdownMenuItem disabled={unavailable} onSelect={() => router.push(`/automation/workflows/${workflowId}/edit?view=true`)}><Eye size={16} />View definition</DropdownMenuItem>
                 {userCan('workflows', 'canEdit') && <DropdownMenuItem disabled={unavailable} onSelect={() => router.push(`/automation/workflows/${workflowId}/edit`)}><Edit size={16} />Edit</DropdownMenuItem>}
-                {userCan('workflows', 'canActivate') && <DropdownMenuItem disabled={unavailable || (!workflow?.isActive && !!workflow?.repairReason)} onSelect={() => void mutate(() => workflowsApi.toggle(workflowId, !workflow!.isActive), workflow?.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
-                  {workflow?.isActive ? <Pause size={16} /> : <Play size={16} />}{workflow?.isActive ? 'Pause' : 'Resume'}
+                {workflow && userCan('workflows', workflowStateAction(workflow, !workflow.isActive)) && <DropdownMenuItem disabled={unavailable || (!workflow?.isActive && !!workflow?.repairReason)} onSelect={() => void mutate(() => workflowsApi.toggle(workflowId, !workflow!.isActive), workflow?.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
+                  {workflow?.isActive ? <Pause size={16} /> : <Play size={16} />}{workflow?.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate'}
                 </DropdownMenuItem>}
                 {userCan('workflows', 'canDuplicate') && <DropdownMenuItem disabled={busy || loading || !workflow} onSelect={() => void mutate(() => workflowsApi.duplicate(workflowId), 'Workflow duplicated as a draft.')}><Copy size={16} />Duplicate</DropdownMenuItem>}
-                {userCan('workflows', 'canArchive') && <DropdownMenuItem disabled={unavailable} destructive onSelect={() => setArchiveOpen(true)}><Archive size={16} />Archive</DropdownMenuItem>}
+                {canDelete && <DropdownMenuItem disabled={unavailable} destructive onSelect={() => setArchiveOpen(true)}><Archive size={16} />Archive</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
             <Button variant="ghost" size="icon" className={panelCloseClass} onClick={onClose} aria-label="Close workflow details"><X size={16} /></Button>
@@ -109,7 +112,7 @@ export function WorkflowExecutionLogModal({
         {workflow?.description && <p className="px-4 pt-4 text-sm text-muted-foreground [overflow-wrap:anywhere] sm:px-6">{workflow.description}</p>}
         {canViewRuns ? <WorkflowRuns key={workflowId} workflowId={workflowId} layout="panel" refreshVersion={revision} onLoadingChange={setRunsLoading} /> : <p className="p-4 text-sm text-muted-foreground">Run history requires permission to view workflow runs.</p>}
         <ConfirmActionDialog open={archiveOpen} onOpenChange={setArchiveOpen} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" isLoading={busy}
-          onConfirm={() => mutate(() => workflowsApi.archive(workflowId), 'Workflow archived.', true)} />
+          confirmDisabled={!canDelete} onConfirm={() => canDelete ? mutate(() => workflowsApi.archive(workflowId), 'Workflow archived.', true) : Promise.resolve()} />
       </SheetContent>
     </Sheet>
   );

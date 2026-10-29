@@ -211,6 +211,8 @@ export default function WorkflowBuilderPage() {
       workflowId={id}
       onCheckName={async (name, excludeId) => (await workflowsApi.nameAvailability(name, excludeId)).data.available}
       canActivate={userCan('workflows', 'canActivate')}
+      canPause={userCan('workflows', 'canPause')}
+      canExecute={userCan('workflows', 'canExecute')}
       readOnly={!!id && (!canEdit || query.get('view') === 'true')}
       onClose={() => router.push('/automation/workflows')}
       onPause={id ? async () => (await workflowsApi.toggle(id, false)).data : undefined}

@@ -18,7 +18,7 @@ export async function findAllRoles(tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
+        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canPause: true, canExecute: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
       },
     },
   });
@@ -31,7 +31,7 @@ export async function findRoleById(id: string, tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
+        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canPause: true, canExecute: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
       },
       userRoles: {
         where: { tenantId },
@@ -80,7 +80,7 @@ export async function createRole(
     await audit?.(tx, role);
     return tx.roleDefinition.findUniqueOrThrow({
       where: { id: role.id },
-      include: { permissions: { select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true } }, _count: { select: { userRoles: true } } },
+      include: { permissions: { select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canPause: true, canExecute: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true } }, _count: { select: { userRoles: true } } },
     });
   });
 }
@@ -137,8 +137,8 @@ async function replacePermissions(tx: Prisma.TransactionClient, roleId: string, 
   await tx.rolePermission.deleteMany({ where: { roleId, tenantId, module: { notIn: incomingModules } } });
   for (const p of permissions) {
     // Legacy clients omit tab flags. Preserve stored grants, except when View is removed.
-    const { canViewAll: _all, canViewMy: _my, canViewActive: _active, ...legacyDefaults } = EMPTY_PERMISSION_FLAGS;
-    const tabs = Object.fromEntries(['canViewAll', 'canViewMy', 'canViewActive'].flatMap(key =>
+    const { canViewAll: _all, canViewMy: _my, canViewActive: _active, canPause: _pause, canExecute: _execute, ...legacyDefaults } = EMPTY_PERMISSION_FLAGS;
+    const tabs = Object.fromEntries(['canViewAll', 'canViewMy', 'canViewActive', 'canPause', 'canExecute'].flatMap(key =>
       !p.canView ? [[key, false]] : p[key as keyof PermissionFlags] === undefined ? [] : [[key, p[key as keyof PermissionFlags]] ]));
     await tx.rolePermission.upsert({
       where: { roleId_module: { roleId, module: p.module } },

@@ -19,6 +19,8 @@ const permissionRowSchema = z.object({
   canDuplicate: z.boolean().default(false),
   canViewReports: z.boolean().default(false),
   canActivate: z.boolean().default(false),
+  canPause: z.boolean().optional(),
+  canExecute: z.boolean().optional(),
   canViewRuns: z.boolean().default(false),
   canPublish: z.boolean().default(false),
   canViewSubmissions: z.boolean().default(false),
