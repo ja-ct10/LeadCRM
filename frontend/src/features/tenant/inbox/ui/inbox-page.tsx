@@ -298,9 +298,11 @@ function InboxMailbox(): React.ReactElement {
     let events: MailboxSubscription | null = null;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
-      if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfterRef.current || typeof EventSource === 'undefined') return;
+      if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfterRef.current) return;
       events = subscribeMailboxEvents(tenant?.id ?? '', user?.id ?? '', {
         onChange: refresh,
+        onOpen: refresh,
+        onFallback: refresh,
         onAccessChanged: () => {
           if (!active) return;
           if (timer) clearTimeout(timer);

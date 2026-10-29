@@ -8,7 +8,7 @@ import type { MailboxMessageContent } from '@leadcrm/shared';
 import type { RecordEmailAttachmentContext } from '@leadcrm/shared';
 import type { MailboxBulkActionResult } from '@leadcrm/shared';
 
-export const fetchGmailUnreadCount = () => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count');
+export const fetchGmailUnreadCount = (signal?: AbortSignal) => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count', { signal });
 export const fetchGmailMessageContent = (messageId: string, signal?: AbortSignal) => apiClient.get<MailboxMessageContent>(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/content`, { signal });
 export const fetchGmailAttachment = (messageId: string, attachmentId: string, signal?: AbortSignal, recordContext?: RecordEmailAttachmentContext) =>
   apiClient.download(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${recordContext ? '?' + new URLSearchParams(recordContext).toString() : ''}`, undefined, signal);

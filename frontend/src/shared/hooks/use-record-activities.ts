@@ -76,6 +76,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     };
     const subscription = subscribeMailboxEvents(tenant.id, user.id, {
       onChange: refresh,
+      onFallback: refresh,
       onOpen: () => { if (!scopeRetry.current) invalidatePageCache('activities', tenant.id); },
       onAccessChanged: () => {
         refresh();
@@ -85,6 +86,15 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     });
     return () => subscription.close();
   }, [canRead, readsHistory, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity, mailboxStatus.data?.isConnected, mailboxStatus.refetch]);
+  useEffect(() => {
+    if (USE_MOCK_DATA || !readsHistory || !canRead || !id || providedActivities !== undefined || !tenant?.id) return;
+    // Tenant/managed history uses CRM revisions rather than a personal mailbox.
+    // Retain a bounded read fallback if that stream misses an event.
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'hidden') invalidatePageCache('activities', tenant.id);
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [canRead, readsHistory, id, providedActivities, tenant?.id]);
   const result = useCachedPage<ActivityPage>({
     module: 'activities',
     params: { recordModule: module, id, ...filters, pageCount, authorizationRevision, activityReadScope },

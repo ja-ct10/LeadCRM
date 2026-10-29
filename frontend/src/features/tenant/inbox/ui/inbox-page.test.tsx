@@ -347,6 +347,27 @@ describe('Persisted scoped Inbox', () => {
     await act(async () => resolve!({ emails: [email, { ...email, id: 'new', subject: 'New customer reply' }] }));
     expect(screen.getByText('New customer reply')).toBeTruthy(); expect(mocks.sync).not.toHaveBeenCalled();
   });
+  it('reconciles mail received between the initial read and stream connection, including reconnects', async () => {
+    const streams: EventTarget[] = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    render(<InboxPage />); await flush();
+    mocks.list.mockResolvedValue({ emails: [email, { ...email, id: 'arrival', subject: 'Arrived during connection' }] });
+    streams[0].dispatchEvent(new Event('open')); await advance(250);
+    expect(screen.getByText('Arrived during connection')).toBeTruthy();
+    streams[0].dispatchEvent(new Event('error')); await advance(5000); await advance(250);
+    mocks.list.mockResolvedValue({ emails: [email, { ...email, id: 'reconnected', subject: 'Arrived during reconnect' }] });
+    streams[1].dispatchEvent(new Event('open')); await advance(250);
+    expect(screen.getByText('Arrived during reconnect')).toBeTruthy();
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
+  it('reconciles persisted mail when a stream stays connected but misses a change event', async () => {
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); });
+    render(<InboxPage />); await flush();
+    mocks.list.mockResolvedValue({ emails: [email, { ...email, id: 'missed', subject: 'Missed stream event' }] });
+    await advance(60_250);
+    expect(screen.getByText('Missed stream event')).toBeTruthy();
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.sync).not.toHaveBeenCalled();
+  });
   it('keeps mail during provider limits and still allows persisted refresh', async () => {
     render(<InboxPage />); await flush(); mocks.sync.mockRejectedValueOnce(throttle(120));
     fireEvent.click(screen.getByText('Sync now')); await flush();

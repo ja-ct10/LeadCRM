@@ -172,7 +172,8 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect(await prisma.activity.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({ dealId: c.deals[1].id, leadId: c.lead.id });
     const timeline = await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`);
     expect(timeline.status).toBe(200); expect(timeline.body.data.map((row: { id: string }) => row.id)).toEqual([original.id]);
-    expect((await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`, 'GET', undefined, otherStaff)).body.data).toEqual([]);
+    // Another Client Admin can read canonical tenant history without owning this Inbox.
+    expect((await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`, 'GET', undefined, otherStaff)).body.data.map((row: { id: string }) => row.id)).toEqual([original.id]);
     expect(await prisma.activity.count({ where: { tenantId, dealId: c.deals[1].id, title: 'Email conversation associated with this Deal' } })).toBe(1);
     const associated = await call(`/integrations/gmail/threads/${c.thread}`);
     expect(associated.body.emails[0].dealId).toBe(c.deals[1].id);

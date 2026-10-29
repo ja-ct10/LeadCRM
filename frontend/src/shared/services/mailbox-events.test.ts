@@ -8,7 +8,7 @@ class FakeSource extends EventTarget {
 }
 const subscriptions: { close: () => void }[] = [];
 const listen = (tenant = 'tenant', user = 'user') => {
-  const callbacks = { onChange: vi.fn(), onAccessChanged: vi.fn(), onOpen: vi.fn(), onError: vi.fn() };
+  const callbacks = { onChange: vi.fn(), onAccessChanged: vi.fn(), onOpen: vi.fn(), onError: vi.fn(), onFallback: vi.fn() };
   const subscription = subscribeMailboxEvents(tenant, user, callbacks);
   subscriptions.push(subscription);
   return { ...subscription, ...callbacks };
@@ -54,4 +54,14 @@ it('does not connect without a complete identity or EventSource support', () => 
   listen('', 'user'); listen('tenant', '');
   vi.stubGlobal('EventSource', undefined); listen();
   expect(streams).toHaveLength(0);
+});
+it.each([true, false])('reconciles missed events once per minute with EventSource support %s', supported => {
+  if (!supported) vi.stubGlobal('EventSource', undefined);
+  const subscriber = listen();
+  vi.advanceTimersByTime(59_999); expect(subscriber.onFallback).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(1); expect(subscriber.onFallback).toHaveBeenCalledOnce();
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  vi.advanceTimersByTime(60_000); expect(subscriber.onFallback).toHaveBeenCalledOnce();
+  visibility.mockRestore(); subscriber.close();
+  vi.advanceTimersByTime(60_000); expect(subscriber.onFallback).toHaveBeenCalledOnce();
 });

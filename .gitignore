@@ -113,5 +113,8 @@ data/outputs/retired-features-*.json
 /data/outputs/scoped-cleanup/
 /data/outputs/scoped-cleanup-tests.json
 /data/outputs/scoped-cleanup-final-retests.json
+
+# Local Gmail acceptance captures and session-specific runtime URLs.
+/data/outputs/gmail-incoming-2026-10-29/
 __pycache__/
 *.pyc
