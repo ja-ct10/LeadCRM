@@ -9,7 +9,7 @@ import { notificationTestPostgres } from './notification-test-postgres.mjs';
 import { acceptanceGateway, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(root, 'data/outputs/workflow-rbac-fields/browser');
+const output = resolve(process.env.LEADCRM_BROWSER_OUTPUT || resolve(root, 'data/outputs/workflow-rbac-fields/browser'));
 mkdirSync(output, { recursive: true });
 const pg = await notificationTestPostgres();
 let gateway, api, frontend, browser, prisma, page, log;

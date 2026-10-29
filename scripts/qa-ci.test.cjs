@@ -78,7 +78,7 @@ test('Local fixture previews stay outside database acceptance while undeclared b
 
 test('The real repository inventory includes the native Workflow browser suites', () => {
   const inventory = ci.discovery(path.resolve(__dirname, '..'));
-  for (const id of ['backend/scripts/verify-workflow-policy-browser.mjs', 'backend/scripts/verify-workflow-polish-browser.mjs']) {
+  for (const id of ['backend/scripts/verify-workflow-policy-browser.mjs', 'backend/scripts/verify-workflow-polish-browser.mjs', 'backend/scripts/verify-workflow-rbac-fields-browser.mjs']) {
     assert.equal(inventory.browser.find(suite => suite.id === id)?.database, 'native');
     assert.equal(ci.owners(inventory).filter(owner => owner.suiteIds.includes(id)).length, 1);
   }
