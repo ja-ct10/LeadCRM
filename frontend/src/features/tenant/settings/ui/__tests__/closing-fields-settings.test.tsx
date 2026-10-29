@@ -39,6 +39,36 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it('allows field availability maintenance without exposing general editing', async () => {
+  mocks.permissions = new Set(['custom_fields.view', 'custom_fields.disable']);
+  render(<ClosingFieldsSettings />);
+  expect(screen.queryByRole('button', { name: 'Edit Project Budget' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Add Field' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Disable Project Budget' }));
+  await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/administration/closing-requirements/lead-budget', {
+    active: false, expectedVersion: budget.version, expectedRevision: 0,
+  }));
+  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+});
+
+it('does not offer section creation to a field creator without layout editing', async () => {
+  mocks.permissions = new Set(['custom_fields.view', 'custom_fields.create']);
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field');
+  fireEvent.change(form.getByLabelText('Module'), { target: { value: 'leads' } });
+  await waitFor(() => expect(form.getByLabelText('Group')).toHaveProperty('disabled', false));
+  expect(form.queryByRole('button', { name: 'Add' })).toBeNull();
+});
+
+it('closes configuration editors after their grant is revoked', () => {
+  const view = render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Project Budget' }));
+  expect(screen.getByRole('region', { name: 'Edit Field' })).toBeTruthy();
+  mocks.permissions.delete('custom_fields.edit'); view.rerender(<ClosingFieldsSettings />);
+  expect(screen.queryByRole('region', { name: 'Edit Field' })).toBeNull();
+});
+
 it('requires an initially empty drawer Module above Display label independently of the page filter', () => {
   render(<ClosingFieldsSettings />);
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'accounts' } });

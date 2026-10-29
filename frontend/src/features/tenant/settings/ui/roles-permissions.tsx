@@ -122,7 +122,7 @@ function RolePermissionTable({ allPerms, activePermIds, onToggle, onGroupToggle,
         const permissions = row.permissions.filter(permission => !TABLE_ACTIONS.includes(permission.action));
         const crm = ['leads', 'contacts', 'accounts', 'deals'].includes(row.id);
         return <div className={cn('w-full gap-x-3 gap-y-1 py-2', crm ? 'grid grid-cols-2' : 'flex flex-col gap-1')}>{permissions.length ? permissions.map(permission =>
-          <div key={permission.id} className={crm && permission.action === 'canManageStages' ? 'col-span-2' : undefined}>{permissionControl(permission, permission.name)}</div>) : <span className="text-center text-slate-400">—</span>}</div>;
+          <div key={permission.id}>{permissionControl(permission, permission.name)}</div>) : <span className="text-center text-slate-400">—</span>}</div>;
       } },
     { id: 'enabled', header: 'Enabled', accessor: countEnabled, width: 80, minWidth: 80, truncate: false,
       cell: (_, row) => <div className="flex w-full justify-center"><Badge variant="secondary">{countEnabled(row)}/{row.permissions.length}</Badge></div> },

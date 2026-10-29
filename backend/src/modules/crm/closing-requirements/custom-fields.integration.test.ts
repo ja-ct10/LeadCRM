@@ -161,6 +161,24 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     expect((await call(`/crm/leads/${record.id}/custom-fields`)).status).toBe(404);
   });
 
+  it('allows versioned availability changes independently of field editing and rejects mixed or stale changes', async () => {
+    const custom = await field('leads', 'Availability control');
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Field availability staff',
+      permissions: { create: { module: 'custom_fields', canView: true, canDisable: true } } } });
+    const user = await prisma.user.create({ data: { tenantId, role: role.name, firstName: 'Field', lastName: 'Maintenance',
+      email: `${randomUUID()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date(),
+      userRoles: { create: { roleId: role.id } } } });
+    const auth = (await issueAuthSession(user)).token;
+    const layout = (await call('/administration/closing-requirements/layout/leads')).body.data.layout;
+    const patch = { active: false, expectedVersion: custom.version, expectedRevision: layout.revision };
+    const disabled = await call(`/administration/closing-requirements/${custom.id}`, 'PATCH', patch, auth);
+    expect(disabled.status, JSON.stringify(disabled.body)).toBe(200); expect(disabled.body.data.active).toBe(false);
+    expect((await call(`/administration/closing-requirements/${custom.id}`, 'PATCH', patch, auth)).status).toBe(409);
+    expect((await call(`/administration/closing-requirements/${custom.id}`, 'PATCH', { active: true, name: 'Unauthorized rename' }, auth)).status).toBe(403);
+    const enabled = await call(`/administration/closing-requirements/${custom.id}`, 'PATCH', { active: true, expectedVersion: disabled.body.data.version }, auth);
+    expect(enabled.status, JSON.stringify(enabled.body)).toBe(200); expect(enabled.body.data.active).toBe(true);
+    expect((await call('/administration/closing-requirements')).body.data.find((item: ClosingField) => item.id === custom.id)).toMatchObject({ name: custom.name, active: true });
+  });
   it('uses secure upload validation and claims only uploader-owned module files', async () => {
     const document = await field('accounts', 'Site plan', { type: 'File Upload', required: true });
     const { createPrivateStorageFixture } = await import('../../../tests/private-storage-fixture');

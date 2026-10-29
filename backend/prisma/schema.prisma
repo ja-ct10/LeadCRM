@@ -274,6 +274,8 @@ model RolePermission {
   canDuplicate Boolean @default(false)
   canViewReports Boolean @default(false)
   canActivate Boolean @default(false)
+  canPause Boolean @default(false)
+  canExecute Boolean @default(false)
   canViewRuns Boolean @default(false)
   canPublish Boolean @default(false)
   canViewSubmissions Boolean @default(false)

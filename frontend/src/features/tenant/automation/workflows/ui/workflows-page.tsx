@@ -9,7 +9,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/shared/utils/toast';
-import { workflowStatusLabel, type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
+import { workflowStateAction, workflowStatusLabel, type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
 import { Eye, Edit, Copy, Activity, Pause, Play, Archive, Workflow as WorkflowIcon } from 'lucide-react';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
@@ -40,8 +40,9 @@ export default function WorkflowsPage() {
   const router = useRouter();
   const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
   const canView = userCan('workflows', 'canView'), canCreate = userCan('workflows', 'canCreate');
-  const canEdit = userCan('workflows', 'canEdit'), canDelete = userCan('workflows', 'canArchive');
-  const canActivate = userCan('workflows', 'canActivate'), canDuplicate = userCan('workflows', 'canDuplicate'), canViewRuns = userCan('workflows', 'canViewRuns');
+  const canEdit = userCan('workflows', 'canEdit'), canDelete = userCan('workflows', 'canDelete');
+  const canDuplicate = userCan('workflows', 'canDuplicate'), canViewRuns = userCan('workflows', 'canViewRuns');
+  const canPause = userCan('workflows', 'canPause');
   const [metadata, setMetadata] = useState<{triggers:TriggerDefinition[];actions:ActionDefinition[]} | null>(null);
   const [metadataError, setMetadataError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -105,7 +106,7 @@ export default function WorkflowsPage() {
       cell: (_, workflow) => <div className="flex items-center gap-1">
         <TableIconButton touchFriendly label="View runs" disabled={!canViewRuns} onClick={() => setRuns(workflow)}><Activity size={14} /></TableIconButton>
         {canDuplicate && <TableIconButton touchFriendly label="Duplicate workflow" disabled={busy} onClick={() => duplicateWorkflow(workflow)}><Copy size={14} /></TableIconButton>}
-        {canActivate && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : workflow.status === 'PAUSED' ? 'Resume workflow' : 'Activate workflow'} disabled={busy} onClick={() => toggleWorkflow(workflow)}>{workflow.isActive ? <Pause size={14} /> : <Play size={14} />}</TableIconButton>}
+        {userCan('workflows', workflowStateAction(workflow, !workflow.isActive)) && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : workflow.status === 'PAUSED' ? 'Resume workflow' : 'Activate workflow'} disabled={busy} onClick={() => toggleWorkflow(workflow)}>{workflow.isActive ? <Pause size={14} /> : <Play size={14} />}</TableIconButton>}
       </div> },
   ];
   const tableColumns = useModuleTableColumns('workflows', WORKFLOWS_TABLE_COLUMNS, columns.filter(column => canViewRuns || !['lastRun', 'runs'].includes(column.id)));
@@ -120,7 +121,7 @@ export default function WorkflowsPage() {
     await workflowsApi.duplicate(workflow.id);
   }, 'Workflow duplicated as a draft.');
   const [activating, setActivating] = useState<Workflow | null>(null);
-  const toggleWorkflow = (workflow: Workflow) => { if (workflow.isActive) void mutate(() => workflowsApi.toggle(workflow.id, false), 'Workflow paused.'); else setActivating(workflow); };
+  const toggleWorkflow = (workflow: Workflow) => { if (!userCan('workflows', workflowStateAction(workflow, !workflow.isActive))) return; if (workflow.isActive) void mutate(() => workflowsApi.toggle(workflow.id, false), 'Workflow paused.'); else setActivating(workflow); };
   if (!canView) return <p className="p-6 text-[var(--text-primary)]">You do not have permission to view workflows.</p>;
   return <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-6 text-[var(--text-primary)]">
     <PageHeader title="Workflows" subtitle="Automate CRM actions based on triggers and conditions." actions={canCreate && <CreateButton label="Create Workflow" disabled={!metadata || busy} onClick={() => setCreateOpen(true)} />} />
@@ -150,12 +151,12 @@ export default function WorkflowsPage() {
               actionDisabled={!metadata || busy}
             />
           </TableRefreshContext.Provider>
-        ) : <DataGrid<Workflow> isRefreshing={isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canActivate || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+        ) : <DataGrid<Workflow> isRefreshing={isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canPause || canDelete} selectedIds={selected} onSelectionChange={setSelected}
           onRowClick={workflow => setRuns(workflow)} rowActions={workflow => [
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setRuns(workflow) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),
             ...(canDuplicate ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy, onClick: () => duplicateWorkflow(workflow) }] : []),
-            ...(canActivate ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy || (!workflow.isActive && !!workflow.repairReason), onClick: () => toggleWorkflow(workflow) }] : []),
+            ...(userCan('workflows', workflowStateAction(workflow, !workflow.isActive)) ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy || (!workflow.isActive && !!workflow.repairReason), onClick: () => toggleWorkflow(workflow) }] : []),
             ...(canDelete ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiving(workflow) }] : []),
           ]} enableColumnMenu ariaLabel="Workflows table"
           summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match.'} />}
@@ -164,15 +165,15 @@ export default function WorkflowsPage() {
     </div>
     <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
       actions={[
-        ...(canActivate ? [{ id: 'pause', label: 'Pause', destructive: false, onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, async id => { const current = (await workflowsApi.get(id)).data; if (current.isActive) await workflowsApi.toggle(id, false); }); await refreshWorkflows(); return result; } }] : []),
+        ...(canPause ? [{ id: 'pause', label: 'Pause', destructive: false, onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, async id => { const current = (await workflowsApi.get(id)).data; if (current.isActive) await workflowsApi.toggle(id, false); }); await refreshWorkflows(); return result; } }] : []),
         ...(canDelete ? [{ id: 'archive', label: 'Archive', destructive: true, entityName: 'workflow', onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, workflowsApi.archive); await refreshWorkflows(); return result; } }] : []),
       ]} />
     {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} loadOptions={async () => (await withWorkflowTimeout(workflowsApi.options())).data} onClose={() => setCreateOpen(false)} onChoose={identity => { router.push(identity === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${encodeURIComponent(identity)}`); setCreateOpen(false); }} />}
     {runs && <WorkflowExecutionLogModal key={runs.id} workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onUpdated={refreshWorkflows} onClose={() => setRuns(null)} />}
     <ConfirmActionDialog open={!!activating} onOpenChange={open => { if (!open) setActivating(null); }}
       title="Activate workflow?" description="This workflow will run when its trigger and conditions match. Its enabled actions may update records, create tasks, or send messages."
-      warning="Already dispatched actions cannot be recalled." confirmLabel="Activate workflow" isLoading={busy} confirmDisabled={!canActivate}
-      onConfirm={async () => { if (!activating) return false; await mutate(() => workflowsApi.toggle(activating.id, true), 'Workflow activated.', true); setActivating(null); }} />
-    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.', true); }} />
+      warning="Already dispatched actions cannot be recalled." confirmLabel="Activate workflow" isLoading={busy} confirmDisabled={!activating || !userCan('workflows', workflowStateAction(activating, true))}
+      onConfirm={async () => { if (!activating || !userCan('workflows', workflowStateAction(activating, true))) return false; await mutate(() => workflowsApi.toggle(activating.id, true), 'Workflow activated.', true); setActivating(null); }} />
+    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" confirmDisabled={!canDelete} onConfirm={async () => { if (archiving && canDelete) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.', true); }} />
   </div>;
 }

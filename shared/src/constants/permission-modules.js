@@ -24,6 +24,8 @@ exports.PERMISSION_ACTION_KEYS = {
     "canDuplicate": "duplicate",
     "canViewReports": "view_reports",
     "canActivate": "activate",
+    "canPause": "pause",
+    "canExecute": "execute",
     "canViewRuns": "view_runs",
     "canPublish": "publish",
     "canViewSubmissions": "view_submissions",
@@ -47,7 +49,9 @@ exports.PERMISSION_ACTION_LABELS = {
     "canSend": "Send",
     "canDuplicate": "Duplicate",
     "canViewReports": "View Campaign Reports",
-    "canActivate": "Activate / Pause",
+    "canActivate": "Activate",
+    "canPause": "Pause / Resume",
+    "canExecute": "Execute / Run Check",
     "canViewRuns": "View Workflow Runs",
     "canPublish": "Publish / Unpublish",
     "canViewSubmissions": "View Form Submissions",
@@ -73,6 +77,8 @@ exports.EMPTY_PERMISSION_FLAGS = {
     "canDuplicate": false,
     "canViewReports": false,
     "canActivate": false,
+    "canPause": false,
+    "canExecute": false,
     "canViewRuns": false,
     "canPublish": false,
     "canViewSubmissions": false,
@@ -137,8 +143,7 @@ exports.PERMISSION_MODULES = [
             "canEdit",
             "canArchive",
             "canViewAll",
-            "canViewMy",
-            "canManageStages"
+            "canViewMy"
         ]
     },
     {
@@ -175,8 +180,10 @@ exports.PERMISSION_MODULES = [
             "canCreate",
             "canEdit",
             "canActivate",
+            "canPause",
+            "canExecute",
             "canDuplicate",
-            "canArchive",
+            "canDelete",
             "canViewRuns"
         ]
     },
@@ -283,6 +290,8 @@ exports.PERMISSION_GROUPS = [
     { id: 'settings', label: 'Organization Settings', modules: ["settings"], description: '' },
 ];
 function permissionLabel(module, action) {
+    if (module.key === 'workflows' && action === 'canActivate')
+        return 'Activate Workflows';
     if (module.key === 'tasks' && action === 'canViewAll')
         return 'Group Tasks';
     if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {

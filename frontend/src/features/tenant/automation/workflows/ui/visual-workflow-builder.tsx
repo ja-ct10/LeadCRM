@@ -83,6 +83,8 @@ interface Props {
   existingWorkflows?: Array<{ id: string; name: string }>;
   onCheckName?: (name: string, excludeId?: string) => Promise<boolean>;
   canActivate: boolean;
+  canPause?: boolean;
+  canExecute?: boolean;
   readOnly?: boolean;
   onSave: (draft: WorkflowDraft) => Promise<Workflow | void>;
   onPause?: () => Promise<Workflow>;
@@ -107,6 +109,8 @@ export default function WorkflowBuilder({
   existingWorkflows = [],
   onCheckName,
   canActivate,
+  canPause = false,
+  canExecute = false,
   readOnly,
   onSave,
   onPause,
@@ -435,7 +439,7 @@ export default function WorkflowBuilder({
     setError(message);
   }
   async function submit(activate: boolean, validateOnly = false, confirmed = false) {
-    if (operation.current || readOnly || (activate && !canActivate)) return;
+    if (operation.current || readOnly || (activate && !canActivate) || (validateOnly && !canExecute)) return;
     setError('');
     setMessage('');
     if (nameIssue) {
@@ -514,7 +518,7 @@ export default function WorkflowBuilder({
     }
   }
   async function pause() {
-    if (!onPause || operation.current || !canActivate) return;
+    if (!onPause || operation.current || !canPause) return;
     operation.current = true;
     setBusy(true);
     setError('');
@@ -755,17 +759,17 @@ export default function WorkflowBuilder({
             </div>
           </div>
           {savedId && <WorkflowVersionHistory workflowId={savedId} version={savedVersion} dirty={dirty} options={options} onRestore={readOnly ? undefined : onRestoreVersion} />}
-          {!readOnly && (
+          {(!readOnly || canPause && saved.isActive) && (
             <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-              <Button
+              {!readOnly && canExecute && <Button
                 variant="outline"
                 size="sm"
                 disabled={busy}
                 onClick={() => void submit(false, true)}
               >
                 Validate
-              </Button>
-              {saved.isActive && onPause ? (
+              </Button>}
+              {canPause && saved.isActive && onPause ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -776,15 +780,15 @@ export default function WorkflowBuilder({
                   Pause
                 </Button>
               ) : null}
-              <Button
+              {!readOnly && <Button
                 variant="outline"
                 size="sm"
                 disabled={busy}
                 onClick={() => void submit(false)}
               >
                 Save draft
-              </Button>
-              {canActivate && (
+              </Button>}
+              {!readOnly && canActivate && (
                 <Button
                   size="sm"
                   className="col-span-2"
@@ -852,7 +856,7 @@ export default function WorkflowBuilder({
             >
               <Redo2 size={16} />
             </Button>
-            <Button
+            {canExecute && <Button
               size="sm"
               variant="outline"
               className="ml-auto shrink-0 sm:ml-0"
@@ -866,7 +870,7 @@ export default function WorkflowBuilder({
             >
               <FlaskConical size={15} />
               Test draft
-            </Button>
+            </Button>}
           </div>
         </div>
       </header>
@@ -1040,7 +1044,7 @@ export default function WorkflowBuilder({
           {inspector}
         </WorkflowDialog>
       )}
-      {showTest && savedId && trigger && !dirty && (
+      {canExecute && showTest && savedId && trigger && !dirty && (
         <WorkflowDialog
           title="Test saved draft"
           onClose={() => setShowTest(false)}

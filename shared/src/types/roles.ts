@@ -20,6 +20,8 @@ export interface PermissionFlags {
   canDuplicate?: boolean;
   canViewReports?: boolean;
   canActivate?: boolean;
+  canPause?: boolean;
+  canExecute?: boolean;
   canViewRuns?: boolean;
   canPublish?: boolean;
   canViewSubmissions?: boolean;

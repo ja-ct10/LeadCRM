@@ -90,6 +90,21 @@ async function openDelete(userCount = 0) {
   return screen.getByRole('alertdialog');
 }
 
+it('saves and reloads independent Workflow capabilities without changing Lead grants', async () => {
+  const view = await openEdit(['leads.canView', 'leads.canEdit', 'workflows.canView', 'workflows.canExecute', 'workflows.canViewRuns']);
+  expect(screen.getByRole('checkbox', { name: 'Activate Workflows' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('checkbox', { name: 'Execute / Run Check Workflows' })).toHaveProperty('checked', true);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pause / Resume Workflows' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(puts()).toHaveLength(1));
+  await screen.findByRole('button', { name: 'Actions for Staff' });
+  const submitted = JSON.parse(String(puts()[0][1]?.body));
+  expect(submitted.permissions.find((permission: { module: string }) => permission.module === 'leads')).toEqual({ ...EMPTY_PERMISSION_FLAGS, module: 'leads', canView: true, canEdit: true });
+  view.unmount(); mount(); await enterEdit();
+  for (const name of ['Pause / Resume Workflows', 'Execute / Run Check Workflows', 'View Workflow Runs']) expect(screen.getByRole('checkbox', { name })).toHaveProperty('checked', true);
+  for (const name of ['Activate Workflows', 'Create Workflows', 'Edit Workflows', 'Delete Workflows']) expect(screen.getByRole('checkbox', { name })).toHaveProperty('checked', false);
+});
+
 it('links RBAC guidance to the existing Roles & Permissions Help Center category in the same tab', () => {
   mount();
   const link = screen.getByRole('link', { name: 'Learn more about RBAC' });
@@ -237,7 +252,7 @@ it.each(['create', 'edit'] as const)('configures CRM tab grants independently in
   fireEvent.click(screen.getByRole('checkbox', { name: 'View Leads' }));
   expect(screen.getByRole('checkbox', { name: 'My Leads' })).toHaveProperty('checked', false);
   expect(screen.getByRole('checkbox', { name: 'Active Lead' })).toHaveProperty('checked', false);
-  expect(screen.getByRole('checkbox', { name: 'Manage Pipeline Stages' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: 'Manage Pipeline Stages' })).toBeNull();
 });
 async function filterModules(label: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Filter modules' }));
@@ -436,7 +451,7 @@ it('saves the complete edited permission payload once, including hidden and addi
   fireEvent.change(screen.getByLabelText('Description — Optional'), { target: { value: ' Updated description ' } });
   fireEvent.click(screen.getByRole('checkbox', { name: 'View Leads' }));
   fireEvent.click(selectModule('Contacts'));
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Manage Pipeline Stages' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'View Workflow Runs' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Delete Groups' }));
   expect(screen.getByRole('checkbox', { name: 'View Groups' })).toHaveProperty('checked', true);
   expect(screen.getByRole('checkbox', { name: 'View Users' })).toHaveProperty('checked', false);
@@ -460,7 +475,7 @@ it('saves the complete edited permission payload once, including hidden and addi
   expect(body.permissions).toEqual(expect.arrayContaining([
     { ...EMPTY_PERMISSION_FLAGS, module: 'contacts', canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canArchive: true, canImport: true },
     { ...EMPTY_PERMISSION_FLAGS, module: 'roles', canView: true, canEdit: true },
-    { ...EMPTY_PERMISSION_FLAGS, module: 'deals', canView: true, canManageStages: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'workflows', canView: true, canViewRuns: true },
     { ...EMPTY_PERMISSION_FLAGS, module: 'groups', canView: true, canDelete: true },
   ]));
   await act(async () => finish());

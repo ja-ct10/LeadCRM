@@ -25,8 +25,9 @@ export function WorkflowTestPanel({
   workflowId,
   trigger,
 }: WorkflowTestPanelProps) {
-  const { user } = useAuth();
-  const identity = `${user?.tenantId ?? ''}:${user?.id ?? ''}:${workflowId}:${trigger.type}`;
+  const { user, userCan, permissions } = useAuth();
+  const canExecute = userCan('workflows', 'canExecute');
+  const identity = `${user?.tenantId ?? ''}:${user?.id ?? ''}:${workflowId}:${trigger.type}:${JSON.stringify(permissions ?? {})}`;
   const generation = useRef(0);
   const stageEvent = ['deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'].includes(trigger.type);
   const [histories, setHistories] = useState<StageHistory[]>([]);
@@ -54,6 +55,7 @@ export function WorkflowTestPanel({
     setResult(null);
     setTesting(false);
     generation.current++;
+    if (!canExecute) { setLoading(false); return; }
     const timer = setTimeout(async () => {
       try {
         const query = { page, limit: 25, search, archived: false };
@@ -93,11 +95,11 @@ export function WorkflowTestPanel({
       generation.current++;
       clearTimeout(timer);
     };
-  }, [identity, trigger.entity, search, page, retry]);
+  }, [identity, canExecute, trigger.entity, search, page, retry]);
   useEffect(() => {
     let cancelled = false;
     setHistories([]); setStageHistoryId(''); setHistoryError(''); setHistoryLoading(false);
-    if (!stageEvent || !selected) return;
+    if (!canExecute || !stageEvent || !selected) return;
     setHistoryLoading(true);
     withWorkflowTimeout(dealsApi.get(selected)).then(response => {
       if (!cancelled) setHistories((response.data.stageHistories ?? []).filter(history => history.previousStage && history.previousStage.id !== history.newStage.id));
@@ -105,9 +107,9 @@ export function WorkflowTestPanel({
       if (!cancelled) setHistoryError(failure instanceof Error ? failure.message : 'Unable to load recorded stage transitions.');
     }).finally(() => { if (!cancelled) setHistoryLoading(false); });
     return () => { cancelled = true; };
-  }, [identity, selected, stageEvent, retry]);
+  }, [identity, canExecute, selected, stageEvent, retry]);
   async function test() {
-    if (testing) return;
+    if (testing || !canExecute) return;
     const current = ++generation.current;
     setTesting(true);
     setError('');
@@ -123,6 +125,7 @@ export function WorkflowTestPanel({
       if (generation.current === current) setTesting(false);
     }
   }
+  if (!canExecute) return <p className="text-sm">You do not have permission to run workflow checks.</p>;
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--muted-foreground)]">

@@ -15,7 +15,7 @@ export async function visibilityActor(tenantId: string, db: Prisma.TransactionCl
 }
 export async function creatorWhere(tenantId: string, db: Prisma.TransactionClient = prisma, type: ArchiveEntity = 'Campaign'): Promise<{ tenantId: string; createdById?: string } & Record<string, any>> {
   const actor = await visibilityActor(tenantId, db);
-  return { tenantId, ...(actor && !actor.clientAdmin ? { createdById: actor.userId, ...await archiveReadWhere(db, type, actor) } : {}) };
+  return { tenantId, ...(actor && !actor.clientAdmin ? { ...(type === 'Workflow' ? {} : { createdById: actor.userId }), ...await archiveReadWhere(db, type, actor) } : {}) };
 }
 export async function recipientWhere(tenantId: string, db: Prisma.TransactionClient = prisma) {
   const actor = await visibilityActor(tenantId, db);

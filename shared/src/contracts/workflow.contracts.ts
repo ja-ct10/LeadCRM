@@ -218,3 +218,8 @@ export const WorkflowRevisionWriteSchema = z.object({ draft: WorkflowDraftSchema
 export const WorkflowRevisionTokenSchema = WorkflowRevisionWriteSchema.omit({ draft: true });
 export type WorkflowRevisionWrite = z.infer<typeof WorkflowRevisionWriteSchema>;
 export type WorkflowRevisionToken = z.infer<typeof WorkflowRevisionTokenSchema>;
+
+/** Initial activation and controlling a published workflow are separate grants. */
+export function workflowStateAction(workflow: { status?: string; isActive?: boolean }, isActive: boolean): 'canActivate' | 'canPause' {
+  return !isActive || workflow.status === 'PAUSED' ? 'canPause' : 'canActivate';
+}

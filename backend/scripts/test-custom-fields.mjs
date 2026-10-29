@@ -9,7 +9,7 @@ import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const migration = '20261105000000_module_custom_fields';
 const deferred = await PGlite.create();
 try {
-  await replayCrmMigrations(deferred, { exclude: ['20261102000000_retire_relationship_compatibility'] });
+  await replayCrmMigrations(deferred, { before: '20261106000000', exclude: ['20261102000000_retire_relationship_compatibility'] });
   assert.equal((await deferred.query(`SELECT to_regclass('public."CustomFieldValue"') IS NOT NULL AS ready`)).rows[0].ready, true);
   console.log('Migration also verified with relationship compatibility retirement deferred.');
 } finally { await deferred.close(); }

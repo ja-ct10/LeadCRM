@@ -15,7 +15,7 @@ import { Router } from 'express';
 import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
-import { authorize, authorizeAll, authorizeAny, authorizeArchivedQuery } from '../middleware/rbac.middleware';
+import { authorize, authorizeAll, authorizeAny, authorizeArchivedQuery, authorizeClientAdmin } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 // Controllers
@@ -164,14 +164,14 @@ router.get(   '/deals/:id/relationships', authorize('deals.view'), relationships
 router.get(    '/pipeline-templates',              authorize('deals.view'),   pipelineController.getPipelineTemplates);
 router.get(    '/pipelines',                       authorize('deals.view'),   pipelineController.getPipelines);
 router.get(    '/pipelines/:id',                   authorize('deals.view'),   pipelineController.getPipelineById);
-router.post(   '/pipelines',                       authorize('deals.manage_stages'), validate(CreatePipelineSchema), pipelineController.createPipeline);
-router.put(    '/pipelines/:id',                   authorize('deals.manage_stages'),   validate(UpdatePipelineSchema), pipelineController.updatePipeline);
-router.patch(  '/pipelines/:id/archive',           authorize('deals.manage_stages'), pipelineController.archivePipeline);
-router.delete( '/pipelines/:id',                   authorize('deals.manage_stages'), pipelineController.deletePipeline);
-router.post(   '/stages',                          authorize('deals.manage_stages'), validate(CreateStageSchema),    pipelineController.createStage);
-router.put(    '/stages/:id',                      authorize('deals.manage_stages'),   validate(UpdateStageSchema),    pipelineController.updateStage);
-router.delete( '/stages/:id',                      authorize('deals.manage_stages'), pipelineController.deleteStage);
-router.patch(  '/pipelines/:id/stages/reorder',    authorize('deals.manage_stages'),   validate(ReorderStagesSchema),  pipelineController.reorderStages);
+router.post(   '/pipelines',                       authorizeClientAdmin, validate(CreatePipelineSchema), pipelineController.createPipeline);
+router.put(    '/pipelines/:id',                   authorizeClientAdmin,   validate(UpdatePipelineSchema), pipelineController.updatePipeline);
+router.patch(  '/pipelines/:id/archive',           authorizeClientAdmin, pipelineController.archivePipeline);
+router.delete( '/pipelines/:id',                   authorizeClientAdmin, pipelineController.deletePipeline);
+router.post(   '/stages',                          authorizeClientAdmin, validate(CreateStageSchema),    pipelineController.createStage);
+router.put(    '/stages/:id',                      authorizeClientAdmin,   validate(UpdateStageSchema),    pipelineController.updateStage);
+router.delete( '/stages/:id',                      authorizeClientAdmin, pipelineController.deleteStage);
+router.patch(  '/pipelines/:id/stages/reorder',    authorizeClientAdmin,   validate(ReorderStagesSchema),  pipelineController.reorderStages);
 router.patch(  '/pipelines/:id/deals/reorder',     authorize('deals.edit'),   validate(ReorderDealsSchema),   pipelineController.reorderDeals);
 
 // ── Activities ─────────────────────────────────────────────────────────────

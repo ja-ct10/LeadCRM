@@ -8,6 +8,12 @@ export function authorize(permission: PermissionKey) {
   return authorizeAll(permission);
 }
 
+/** Protected compatibility operations cannot be delegated through custom roles. */
+export function authorizeClientAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role === 'Client Admin') return next();
+  next(new AppError('Only Client Admin users can perform this administrative operation.', 403));
+}
+
 export function authorizeAll(...permissions: PermissionKey[]) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) return next(new AppError('Authentication required', 401));
