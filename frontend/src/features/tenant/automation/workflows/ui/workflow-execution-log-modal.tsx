@@ -69,7 +69,12 @@ export function WorkflowExecutionLogModal({
   const mutate = async (action: () => Promise<unknown>, message: string, propagateError = false) => {
     if (lock.current) return;
     lock.current = true; setBusy(true);
-    try { await action(); setArchiveOpen(false); await onUpdated?.(); refresh(); toast.success(message); }
+    try {
+      await action(); setArchiveOpen(false);
+      try { await onUpdated?.(); toast.success(message); }
+      catch { toast.warning(`${message} Refresh the list to see the changes.`); }
+      refresh();
+    }
     catch (reason) { if (propagateError) throw reason; toast.error(reason instanceof Error ? reason.message : 'Unable to update workflow.'); }
     finally { lock.current = false; setBusy(false); }
   };
@@ -187,7 +192,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
         ) : (
           runs.map((run) => (
             <details key={run.id} className="group min-w-0 rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900">
-              <summary className="flex cursor-pointer list-none items-start gap-3 rounded-xl p-4 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:hover:bg-slate-800/50 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-start gap-3 rounded-xl p-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                 <ChevronRight aria-hidden="true" size={16} className="mt-1 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
                 <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
                   <span className={'rounded-full px-2.5 py-1 text-xs font-semibold capitalize ' + runStatusClass(run.status)}>{run.status}</span>
@@ -209,7 +214,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                 {run.entityId && ['lead', 'contact', 'account', 'deal'].includes(run.entityType) && userCan(`${run.entityType}s`, 'canView') && <Link className="inline-flex rounded text-sm text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" href={`/crm/${run.entityType}s/${encodeURIComponent(run.entityId)}`}>Open {run.entityType}</Link>}
                 {run.errorMessage && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{run.errorMessage}</p>}
                 {run.definitionSnapshot ? <details className="min-w-0 text-sm">
-                  <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">Definition used in this run{run.workflowVersion != null ? ` · v${run.workflowVersion}` : ''}</summary>
+                  <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Definition used in this run{run.workflowVersion != null ? ` · v${run.workflowVersion}` : ''}</summary>
                   <WorkflowDefinitionSummary definition={run.definitionSnapshot} options={options} />
                 </details> : <p className="text-xs text-muted-foreground">Definition snapshot unavailable for this older run.</p>}
                 <ol className="space-y-2">

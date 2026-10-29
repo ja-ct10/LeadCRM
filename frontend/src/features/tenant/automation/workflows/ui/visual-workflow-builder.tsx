@@ -634,19 +634,11 @@ export default function WorkflowBuilder({
                 ))}
               </select>
             </label>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              A real CRM event starts this workflow on the server. It continues
-              when you close the editor.
-            </p>
           </>
         )}
         {selected === 'conditions' && (
           <>
             {linkedTemplate && <WorkflowTemplateFields draft={draft} templateIdentity={linkedTemplate.id} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.id, options, patch))} onDetach={() => setTemplateDetached(true)} />}
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Check these rules before any action runs. Records that do not
-              match exit the workflow.
-            </p>
             <ConditionFields
               value={draft.conditions ?? { operator: 'AND', conditions: [] }}
               trigger={trigger}
@@ -705,9 +697,6 @@ export default function WorkflowBuilder({
             ))}
         </ul>
       )}
-      <p className="text-xs text-[var(--muted-foreground)]">
-        Changes update the canvas immediately. Save a draft, then publish when ready.
-      </p>
       <Button onClick={closeInspector}>
         Done
       </Button>
@@ -899,7 +888,7 @@ export default function WorkflowBuilder({
       )}
       {saved.isActive && dirty && (
         <p className="border-b border-[var(--border)] px-5 py-2 text-xs text-[var(--muted-foreground)]">
-          The published version is still active. Save your draft while editing, then publish changes when ready.
+          The published version stays active until you publish these changes.
         </p>
       )}
       {(pending || insertAt !== null) && (

@@ -1,6 +1,6 @@
 import { groupWhere } from '../../crm/access/record-visibility';
 import type { Prisma } from '@prisma/client';
-import type { WorkflowAssignmentPurpose, WorkflowAssignmentTarget, WorkflowAssignmentPoolOption, WorkflowEntity } from '@leadcrm/shared';
+import { Role, type WorkflowAssignmentPurpose, type WorkflowAssignmentTarget, type WorkflowAssignmentPoolOption, type WorkflowEntity } from '@leadcrm/shared';
 import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 
 type Client = Prisma.TransactionClient;
@@ -16,7 +16,7 @@ export async function assignmentPool(client: Client, tenantId: string, target: E
   if (target.type === 'role') {
     const role = await client.roleDefinition.findFirst({ where: { id: target.id, tenantId, isArchived: false },
       select: { name: true, userRoles: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } });
-    return role ? { name: role.name, memberIds: role.userRoles.map(member => member.userId) } : null;
+    return role && role.name !== Role.CLIENT_ADMIN ? { name: role.name, memberIds: role.userRoles.map(member => member.userId) } : null;
   }
   const group = await client.tenantGroup.findFirst({ where: { id: target.id, tenantId },
     select: { name: true, members: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } });
@@ -49,7 +49,7 @@ export async function assignmentOptions(client: Client, tenantId: string, access
   });
   const people = (users: typeof owners) => users.map(user => ({ id: user.id, name: `${user.firstName} ${user.lastName}` }));
   return { users: access.users ? people(owners) : [], taskAssignees: access.users ? people(assignees) : [],
-    roles: roles.map(({ userRoles, ...role }) => option(role, userRoles)), groups: groups.map(({ members, ...group }) => option(group, members)) };
+    roles: roles.filter(role => role.name !== Role.CLIENT_ADMIN).map(({ userRoles, ...role }) => option(role, userRoles)), groups: groups.map(({ members, ...group }) => option(group, members)) };
 }
 
 /** Match the record this action adds to an assignee's workload; completed/archived work is excluded. */

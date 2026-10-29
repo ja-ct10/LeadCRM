@@ -1,4 +1,4 @@
-import { workflowAssignmentTarget, normalizeSavedWorkflowAssignment, WorkflowAssignmentTargetSchema, WorkflowAssignmentStrategySchema, WORKFLOW_ASSIGNMENT_METHODS, type WorkflowAction, type WorkflowAssignmentTarget, type WorkflowOptions, type WorkflowAssignmentPoolOption } from '@leadcrm/shared';
+import { Role, workflowAssignmentTarget, normalizeSavedWorkflowAssignment, WorkflowAssignmentTargetSchema, WorkflowAssignmentStrategySchema, WORKFLOW_ASSIGNMENT_METHODS, type WorkflowAction, type WorkflowAssignmentTarget, type WorkflowOptions, type WorkflowAssignmentPoolOption } from '@leadcrm/shared';
 
 export function assignmentSelection(action: WorkflowAction): WorkflowAssignmentTarget {
   const target = workflowAssignmentTarget(normalizeSavedWorkflowAssignment(action));
@@ -12,7 +12,7 @@ export function assignmentSelection(action: WorkflowAction): WorkflowAssignmentT
 }
 export function assignmentChoices(action: WorkflowAction, options: WorkflowOptions): Array<{ id: string; name: string; memberCount?: number; eligibleMemberCounts?: WorkflowAssignmentPoolOption['eligibleMemberCounts']; members?: WorkflowAssignmentPoolOption['members'] }> {
   const target = assignmentSelection(action);
-  return target.type === 'role' ? options.roles ?? [] : target.type === 'group' ? options.groups ?? []
+  return target.type === 'role' ? (options.roles ?? []).filter(role => role.name !== Role.CLIENT_ADMIN) : target.type === 'group' ? options.groups ?? []
     : action.type === 'create_task' ? options.taskAssignees ?? options.users : options.users;
 }
 export function assignmentSummary(action: WorkflowAction, options: WorkflowOptions) {

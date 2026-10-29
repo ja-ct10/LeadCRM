@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { WorkflowExecutionLogModal } from './workflow-execution-log-modal';
 import { workflowsApi } from '@/shared/services/workflows.api';
+import { toast } from '@/shared/utils/toast';
+vi.mock('@/shared/utils/toast', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 const push = vi.fn();
 const permissions = vi.hoisted(() => ({ denied: [] as string[] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -39,6 +41,28 @@ it('hides output destinations when the viewer lacks their module permissions', a
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 const mount = (close = vi.fn(), updated = vi.fn()) => render(<WorkflowExecutionLogModal workflowId="wf" name="Follow up" status="Active" onClose={close} onUpdated={updated} />);
 const settled = () => waitFor(() => expect((screen.getByLabelText('Refresh workflow activity') as HTMLButtonElement).disabled).toBe(false));
+it('reports one refresh warning after a successful mutation instead of a false failure', async () => {
+  const updated = vi.fn().mockRejectedValue(new Error('List unavailable'));
+  mount(vi.fn(), updated); await settled();
+  fireEvent.click(screen.getByLabelText('Workflow actions'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
+  await waitFor(() => expect(updated).toHaveBeenCalledOnce());
+  await waitFor(() => expect(toast.warning).toHaveBeenCalledExactlyOnceWith('Workflow paused. Refresh the list to see the changes.'));
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(workflowsApi.toggle).toHaveBeenCalledExactlyOnceWith('wf', false);
+  await waitFor(() => expect(workflowsApi.get).toHaveBeenCalledTimes(2));
+});
+
+it('shows one error for a rejected mutation and does not refresh or announce success', async () => {
+  vi.mocked(workflowsApi.toggle).mockRejectedValue(new Error('Assignment target unavailable.'));
+  const updated = vi.fn(); mount(vi.fn(), updated); await settled();
+  fireEvent.click(screen.getByLabelText('Workflow actions'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledExactlyOnceWith('Assignment target unavailable.'));
+  expect(toast.warning).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled();
+  expect(updated).not.toHaveBeenCalled(); expect(workflowsApi.get).toHaveBeenCalledOnce();
+});
 it('shows the executed version, snapshot and resolved assignee independently of the current definition', async () => {
   vi.mocked(workflowsApi.get).mockResolvedValue({ data: { ...workflow, version: 4 } } as never);
   vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, workflowVersion: 2,

@@ -67,6 +67,6 @@ export function WorkflowTaskAssociations({ action, entity, options, onChange }: 
       onChange(next);
     }}>Remove unsupported filters</Button></div>}
     {(!!config.dealId || entity === 'account') && <SavedDealSelection value={String(config.dealId ?? '')} onChange={value => change('dealId', value)} />}
-    <p className="text-xs text-muted-foreground">{mode === 'all_matching' ? 'Creates one task linked to every matching related deal, up to 50. No deals are silently excluded.' : entity === 'deal' ? 'Uses the deal that triggered this workflow.' : 'Exactly one related deal must match. Use filters to narrow multiple matches.'}</p>
+    {entity !== 'deal' && <p className="text-xs text-muted-foreground">{mode === 'all_matching' ? 'Links one task to all matching Deals (max. 50).' : 'One Deal must match. Refine filters if needed.'}</p>}
   </fieldset>;
 }

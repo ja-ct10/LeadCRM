@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { getAvailableActions, type WorkflowAction, type WorkflowOptions } from '@leadcrm/shared';
 import { ActionFields } from './workflow-fields';
+import { WorkflowAssignmentFields } from './workflow-assignment-fields';
 import { actionIssues, actionSummary, toDraft } from '../services/workflow-editor';
 
 const userId = '00000000-0000-4000-8000-000000000001';
@@ -18,6 +19,23 @@ function Editor({ initial, entity = initial.type === 'create_task' ? 'deal' : 'l
 }
 afterEach(cleanup);
 describe('workflow assignment editor', () => {
+  it.each(['create_task', 'assign_owner'] as const)('hides Client Admin for %s and preserves a saved target for repair', type => {
+    const adminId = '00000000-0000-4000-8000-000000000003';
+    const action: WorkflowAction = { type, config: { assignmentTarget: { type: 'role', id: adminId, strategy: 'round_robin' } } };
+    const staleOptions: WorkflowOptions = { ...options, roles: [...options.roles!, { id: adminId, name: 'Client Admin', memberCount: 1, eligibleMemberCounts: { crm_owner: 1, task_assignee: 1 } }] };
+    const change = () => {};
+    render(<WorkflowAssignmentFields action={action} options={staleOptions} className="" onChange={change} />);
+    expect(screen.queryByRole('option', { name: 'Client Admin' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'Support' })).toBeTruthy();
+    expect((screen.getByLabelText('Assignment role') as HTMLSelectElement).value).toBe(adminId);
+    expect(screen.getByText(/This assignment target is unavailable/)).toBeTruthy();
+    expect(actionIssues(action, getAvailableActions().find(entry => entry.type === type), type === 'create_task' ? 'deal' : 'lead', staleOptions)).toContain('Assignment target unavailable. Choose an available selection.');
+  });
+  it('explains weighted assignment without describing simple rotation', () => {
+    render(<Editor initial={{ type: 'assign_owner', config: { assignmentTarget: { type: 'role', id: groupId, strategy: 'weighted_workload' } } }} />);
+    expect(screen.getByText(/lowest weighted Lead workload/i)).toBeTruthy();
+    expect(screen.queryByText(/^Rotate through/)).toBeNull();
+  });
   it('requires an explicit Account task assignee and offers no retired Account owner choice', () => {
     const initial: WorkflowAction = { type: 'create_task', config: { title: 'Follow up' } };
     render(<Editor initial={initial} entity="account" />);
@@ -40,7 +58,7 @@ describe('workflow assignment editor', () => {
     const method = screen.getByLabelText('Assignment method') as HTMLSelectElement;
     expect(Array.from(method.options).map(option => option.value)).toEqual(type === 'assign_owner' ? ['round_robin', 'weighted_workload'] : ['round_robin']);
     expect(method.value).toBe('round_robin');
-    expect(screen.getByText(/Inactive users are skipped/)).toBeTruthy();
+    expect(screen.getByText('Assigns each eligible member in turn.')).toBeTruthy();
     expect(screen.queryByLabelText('Sticky fallback method')).toBeNull();
     if (type === 'assign_owner') {
       fireEvent.change(method, { target: { value: 'weighted_workload' } });

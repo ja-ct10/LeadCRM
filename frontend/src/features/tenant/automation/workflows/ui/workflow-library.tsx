@@ -18,14 +18,12 @@ export const stepColors = {
 function LibraryCard({
   item,
   title,
-  description,
   disabled,
   dragEnabled,
   onChoose,
 }: {
   item: LibraryItem;
   title: string;
-  description?: string;
   disabled: boolean;
   dragEnabled: boolean;
   onChoose: (item: LibraryItem) => void;
@@ -53,11 +51,6 @@ function LibraryCard({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium">{title}</span>
-          {description && (
-            <span className="mt-1 block text-xs leading-relaxed text-[var(--muted-foreground)]">
-              {description}
-            </span>
-          )}
         </span>
       </button>
       {dragEnabled && <button
@@ -105,7 +98,6 @@ export function WorkflowLibrary({
   const entries: Array<{
     item: LibraryItem;
     title: string;
-    description?: string;
   }> =
     category === 'trigger'
       ? triggers
@@ -120,7 +112,6 @@ export function WorkflowLibrary({
             .map((entry) => ({
               item: { kind: 'condition', field: entry.field },
               title: entry.label,
-              description: 'Check a field before running actions',
             }))
         : actions
             .filter(
@@ -132,14 +123,13 @@ export function WorkflowLibrary({
             .map((entry) => ({
               item: { kind: 'action', type: entry.type },
               title: entry.label,
-              description: entry.description,
             }));
   return (
     <section aria-label="Builder library" className="space-y-4 p-4">
       <div>
         <h2 className="font-semibold">Builder library</h2>
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-          {dragEnabled ? 'Drag a step, or click to place it.' : 'Tap a step to place it. Drag and drop is unavailable on mobile.'}
+          {dragEnabled ? 'Drag a step, or click to place it.' : 'Tap a step to add it.'}
         </p>
       </div>
       <div className="relative">
@@ -176,13 +166,6 @@ export function WorkflowLibrary({
           </button>
         ))}
       </div>
-      <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
-        {category === 'trigger'
-          ? 'One event starts this workflow.'
-          : category === 'condition'
-            ? 'Use ALL or ANY rules in the condition gate. Unmatched records exit without running actions.'
-            : 'Actions run in order using your CRM services.'}
-      </p>
       <div className="space-y-2">
         {entries.map((entry) => (
           <LibraryCard

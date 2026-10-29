@@ -1,5 +1,5 @@
 import { creatorWhere } from '../../crm/access/record-visibility';
-import { WorkflowRevisionWriteSchema, WorkflowRevisionTokenSchema } from '@leadcrm/shared';
+import { WorkflowRevisionWriteSchema, WorkflowRevisionTokenSchema, WorkflowAssignmentTargetSchema, workflowAssignmentTarget, Role } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { Prisma } from '@prisma/client';
 import { ConflictError } from '../../../shared/errors/http-error';
@@ -291,6 +291,15 @@ export async function saveWorkflowDraft(id: string, tenantId: string, userId: st
   if (existing.isArchived) throw new ValidationError('Archived workflows cannot be edited.');
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
+  // Drafts may retain incomplete setup, but cannot introduce a protected role target.
+  const roleIds = draft.actions.flatMap(action => {
+    if (!['create_task', 'assign_owner'].includes(action.type)) return [];
+    const target = WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action));
+    return target.success && target.data.type === 'role' ? [target.data.id] : [];
+  });
+  if (roleIds.length && await prisma.roleDefinition.findFirst({ where: { tenantId, id: { in: roleIds }, name: Role.CLIENT_ADMIN }, select: { id: true } })) {
+    throw new ValidationError('Client Admin cannot be assigned by workflows. Choose another role.');
+  }
   const sanitized = sanitizeDraft({ ...draft, isActive: false }, existing.conditions);
   return prisma.$transaction(async tx => {
     const changed = await tx.workflow.updateMany({ where: { id, ...await creatorWhere(tenantId, tx, 'Workflow'), isArchived: false, draftRevision: expectedDraftRevision, version: expectedVersion },
