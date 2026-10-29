@@ -1,19 +1,23 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { TriggerDefinition, WorkflowTestResult } from '@leadcrm/shared';
 import { WorkflowTestPanel } from './workflow-test-panel';
 import { dealsApi } from '@/shared/services/deals.api';
 import { workflowsApi } from '@/shared/services/workflows.api';
 
-const auth = vi.hoisted(() => ({ id: 'agent', tenantId: 'tenant' }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { ...auth } }) }));
+const auth = vi.hoisted(() => ({ id: 'agent', tenantId: 'tenant', canExecute: true }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
+  user: { id: auth.id, tenantId: auth.tenantId },
+  permissions: { workflows: { canExecute: auth.canExecute } },
+  userCan: (module: string, action: string) => module === 'workflows' && action === 'canExecute' && auth.canExecute,
+}) }));
 vi.mock('@/shared/services/deals.api', () => ({ dealsApi: { list: vi.fn(), get: vi.fn() } }));
 vi.mock('@/shared/services/workflows.api', () => ({ workflowsApi: { test: vi.fn() }, withWorkflowTimeout: (request: Promise<unknown>) => request }));
 const trigger = { type: 'deal.stage_changed', entity: 'deal', label: 'Stage entry', fields: [] } as TriggerDefinition;
 const result: WorkflowTestResult = { valid: true, trigger: { matched: true, type: trigger.type, stageHistoryId: 'history' }, conditions: { matched: true, passed: 2, total: 2 }, actions: [{ type: 'create_task', valid: true, message: 'Ready. No changes made.', assignment: { resolvedUserId: 'agent', resolvedUserName: 'Ana', candidateCount: 1 }, taskPreview: { title: 'Follow up', description: 'Discuss proposal', priority: 'Medium', status: 'pending', dueDate: '2026-10-15T00:00:00Z', assignedUserId: 'agent', dealIds: ['deal'] } }] };
 beforeEach(() => {
-  auth.id = 'agent'; auth.tenantId = 'tenant';
+  auth.id = 'agent'; auth.tenantId = 'tenant'; auth.canExecute = true;
   vi.mocked(dealsApi.list).mockResolvedValue({ data: [{ id: 'deal', title: 'Example Deal' }], meta: { hasMore: false } } as never);
   vi.mocked(dealsApi.get).mockResolvedValue({ data: { id: 'deal', stageHistories: [{ id: 'history', movedAt: '2026-10-13T00:00:00Z', previousStage: { id: 'old', name: 'Lead' }, newStage: { id: 'new', name: 'Contacted' } }] } } as never);
   vi.mocked(workflowsApi.test).mockResolvedValue({ success: true, data: result });
@@ -84,4 +88,29 @@ it('shows rendered email and named multiple-Deal previews without execution cont
   expect(frame.getAttribute('srcdoc')).toContain('Hello Ada');
   expect(frame.getAttribute('srcdoc')).not.toContain('<script>');
   expect(screen.queryByRole('button', { name: /send|create task/i })).toBeNull();
+});
+
+it('does not load records or offer a check without Execute permission', () => {
+  auth.canExecute = false;
+  render(<WorkflowTestPanel workflowId="workflow" trigger={trigger} />);
+  expect(screen.getByText('You do not have permission to run workflow checks.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Run check' })).toBeNull();
+  expect(dealsApi.list).not.toHaveBeenCalled();
+  expect(workflowsApi.test).not.toHaveBeenCalled();
+});
+
+it('discards an in-flight check when Execute permission is revoked for the same user', async () => {
+  let resolveCheck!: (value: { success: boolean; data: WorkflowTestResult }) => void;
+  vi.mocked(workflowsApi.test).mockReturnValue(new Promise(done => { resolveCheck = done; }));
+  const view = render(<WorkflowTestPanel workflowId="workflow" trigger={trigger} />);
+  await chooseDeal();
+  fireEvent.click(screen.getByRole('button', { name: 'Run check' }));
+  await waitFor(() => expect(workflowsApi.test).toHaveBeenCalledOnce());
+  auth.canExecute = false;
+  view.rerender(<WorkflowTestPanel workflowId="workflow" trigger={trigger} />);
+  await act(async () => { resolveCheck({ success: true, data: result }); });
+  expect(screen.getByText('You do not have permission to run workflow checks.')).toBeTruthy();
+  expect(screen.queryByText('Follow up')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Run check' })).toBeNull();
+  expect(workflowsApi.test).toHaveBeenCalledOnce();
 });
