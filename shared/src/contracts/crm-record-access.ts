@@ -15,6 +15,7 @@ export interface CrmRecordAccessPolicy {
   tenantId: string;
   assignmentRestricted: boolean;
   clientAdmin: boolean;
+  activityReadScope?: 'tenant' | 'managed-groups' | 'mailbox';
   permissions?: ResolvedPermissions;
 }
 

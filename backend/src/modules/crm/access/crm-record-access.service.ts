@@ -7,7 +7,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
 
 export type CrmModule = 'leads' | 'contacts' | 'accounts' | 'deals';
-type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions; taskAssignmentRestricted: boolean; taskManager: boolean; taskTeamUserIds?: string[] };
+type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions; taskAssignmentRestricted: boolean; taskManager: boolean; taskTeamUserIds?: string[]; activityTeamUserIds?: string[] };
 type Actor = { userId: string; tenantId: string; readRecords?: boolean; readPolicy?: Promise<ReadPolicy> };
 type Tx = Prisma.TransactionClient;
 type Args = Record<string, any>;
@@ -50,7 +50,7 @@ export function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy> {
 }
 async function resolveActorPolicy(db: Tx, actor: Actor): Promise<ReadPolicy> {
   const user = await db.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId }, include: {
-    groupMemberships: { where: { tenantId: actor.tenantId }, select: { groupId: true } },
+    groupMemberships: { where: { tenantId: actor.tenantId }, select: { groupId: true, isHead: true } },
     tenant: { select: { status: true } }, userRoles: { where: { tenantId: actor.tenantId, role: { tenantId: actor.tenantId, isArchived: false } },
       include: { role: { include: { permissions: { where: { tenantId: actor.tenantId } } } } } },
   } });
@@ -72,7 +72,14 @@ async function resolveActorPolicy(db: Tx, actor: Actor): Promise<ReadPolicy> {
     // Inactive historical assignees remain manageable; new assignment separately checks eligibility.
     taskTeamUserIds = [...new Set([user.id, ...members.map(member => member.id)])];
   }
+  const headedGroupIds = (user.groupMemberships ?? []).filter(member => member.isHead).map(member => member.groupId);
+  const activityMembers = !clientAdmin && headedGroupIds.length ? await db.user.findMany({
+    where: { tenantId: user.tenantId, groupMemberships: { some: { tenantId: user.tenantId, groupId: { in: headedGroupIds } } } },
+    select: { id: true },
+  }) : [];
   return { userId: user.id, tenantId: user.tenantId, clientAdmin, permissions,
+    activityReadScope: clientAdmin ? 'tenant' : headedGroupIds.length ? 'managed-groups' : 'mailbox',
+    activityTeamUserIds: !clientAdmin && headedGroupIds.length ? [...new Set([user.id, ...activityMembers.map(member => member.id)])].sort() : undefined,
     taskAssignmentRestricted: !clientAdmin, taskManager, taskTeamUserIds,
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
 }

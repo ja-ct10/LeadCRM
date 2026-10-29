@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   db: {
     activity: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
     mailboxMessage: { findMany: vi.fn() },
+    dashboardRevision: { findUnique: vi.fn() },
     lead: { findFirst: vi.fn(), findMany: vi.fn() }, contact: { findFirst: vi.fn(), findMany: vi.fn() },
     account: { findFirst: vi.fn() }, deal: { findFirst: vi.fn(), findMany: vi.fn() },
     leadDeal: { findMany: vi.fn() }, contactDeal: { findMany: vi.fn() }, task: { findMany: vi.fn() },
@@ -38,7 +39,8 @@ const message = { id: 'canonical', leadId: null, contactId: 'contact', providerM
 
 beforeEach(() => {
   vi.resetAllMocks(); state.actor = { tenantId: 'tenant', userId: 'actor' };
-  state.policy.mockResolvedValue({ clientAdmin: true, permissions: {} });
+  state.policy.mockResolvedValue({ clientAdmin: false, activityReadScope: 'mailbox', permissions: { tasks: { canView: true } } });
+  state.db.dashboardRevision.findUnique.mockResolvedValue({ access: 1n, content: 1n });
   state.authorize.mockResolvedValue(access);
   state.db.activity.findMany.mockResolvedValue([]); state.db.activity.count.mockResolvedValue(0); state.db.activity.findFirst.mockResolvedValue(null);
   state.db.mailboxMessage.findMany.mockResolvedValue([]);
@@ -54,7 +56,7 @@ describe('Activity email authorization before reads', () => {
     expect(await withEmailContent('tenant', [email])).toEqual([]);
   });
 
-  it.each([401, 403, 404, 409])('does not let administrative identity bypass denied or unavailable mailbox access (%i)', async status => {
+  it.each([401, 403, 404, 409])('retains ordinary staff restrictions when mailbox access is denied or unavailable (%i)', async status => {
     state.authorize.mockRejectedValue(new AppError('Mailbox unavailable', status));
     expect(await emailActivityVisibility('tenant')).toEqual(nonEmail);
     await findAllActivities('tenant', { type: 'email', search: 'Private subject', page: 2, limit: 1 });
@@ -127,11 +129,33 @@ describe('Activity email authorization before reads', () => {
 
   it.each([
     ['lead', getLeadRelationships], ['contact', getContactRelationships], ['account', getAccountRelationships], ['deal', getDealRelationships],
-  ] as const)('gates %s relationship timeline before its limit and strips revoked email content', async (_kind, getRelationships) => {
-    state.authorize.mockResolvedValueOnce(access).mockRejectedValueOnce(new AppError('Revoked', 403));
+  ] as const)('gates %s relationship timeline before its limit and rejects revoked results', async (_kind, getRelationships) => {
+    state.authorize.mockReset().mockResolvedValueOnce(access).mockRejectedValue(new AppError('Revoked', 403));
     state.db.activity.findMany.mockResolvedValue([email, { id: 'note', type: 'note', title: 'Allowed note' }]);
-    const result = await getRelationships('record', 'tenant', 3);
+    await expect(getRelationships('record', 'tenant', 3)).rejects.toMatchObject({ statusCode: 409, code: 'MAILBOX_SCOPE_CHANGED' });
     expect(state.db.activity.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId: 'tenant', AND: expect.arrayContaining([mailboxGate()]) }, take: 3, select: { mailboxMessageId: true } });
-    expect(result.activities).toEqual([{ id: 'note', type: 'note', title: 'Allowed note' }]);
+  });
+
+  it('reads Client Admin history from the canonical same-tenant message without a personal mailbox', async () => {
+    state.policy.mockResolvedValue({ userId: 'actor', tenantId: 'tenant', clientAdmin: true, activityReadScope: 'tenant', permissions: {} });
+    state.authorize.mockRejectedValue(new AppError('No personal Gmail', 409));
+    state.db.activity.findFirst.mockResolvedValue(email);
+    state.db.mailboxMessage.findMany.mockResolvedValue([message]);
+    expect((await getActivity(email.id, 'tenant')).metadata).toMatchObject({ email: { body: 'Current body' } });
+    expect(state.db.mailboxMessage.findMany).toHaveBeenCalledWith({ where: { AND: [{ tenantId: 'tenant' }, { id: { in: ['canonical'] } }] } });
+    expect(state.authorize).not.toHaveBeenCalled();
+    expect(await withEmailContent('tenant', [{ ...email, mailboxMessageId: undefined }])).toEqual([]);
+    expect(await withEmailContent('tenant', [{ ...email, tenantId: 'other' }])).toEqual([]);
+  });
+
+  it('rejects elevated history when access or assignment revisions change during body hydration', async () => {
+    state.policy.mockResolvedValue({ userId: 'actor', tenantId: 'tenant', clientAdmin: true, activityReadScope: 'tenant', permissions: {} });
+    state.db.activity.findMany.mockResolvedValue([email]);
+    state.db.activity.count.mockResolvedValue(1);
+    state.db.mailboxMessage.findMany.mockImplementation(async () => {
+      state.db.dashboardRevision.findUnique.mockResolvedValue({ access: 1n, content: 2n });
+      return [message];
+    });
+    await expect(findAllActivities('tenant', { type: 'email' })).rejects.toMatchObject({ statusCode: 409, code: 'MAILBOX_SCOPE_CHANGED' });
   });
 });
