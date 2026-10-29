@@ -2,7 +2,7 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 import {taskContextWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
-import { presentActivities, activityRecordContext, emailActivityVisibility, dealActivityContext } from '../activities/activities.repository';
+import { findRecentActivities } from '../activities/activities.repository';
 
 const DEFAULT_LIMIT = 10;
 
@@ -44,12 +44,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
       },
     }),
     // Recent activities
-    prisma.activity.findMany({
-      where: { tenantId, AND: [await emailActivityVisibility(tenantId), activityRecordContext('lead', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
-      take: limit,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },
-    }),
+    findRecentActivities(tenantId, 'lead', id, limit, includeTasks),
     // Tasks
     includeTasks ? prisma.task.findMany({
       where: { tenantId, isArchived: false, ...taskContextWhere("lead",id,tenantId) },
@@ -64,7 +59,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     account,
     deals: leadDeals.slice(0, limit).map((ld) => ld.deal),
     hasMoreDeals: leadDeals.length > limit,
-    activities: await presentActivities(tenantId, activities),
+    activities,
     tasks,
   };
 }
@@ -106,12 +101,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
       select: { id: true, title: true, value: true, engagementStatus: true, priority: true, assignedUserId: true, stage: { select: { id: true, name: true, isWon: true, isLost: true } } },
     }),
     // Recent activities
-    prisma.activity.findMany({
-      where: { tenantId, AND: [await emailActivityVisibility(tenantId), activityRecordContext('contact', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
-      take: limit,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },
-    }),
+    findRecentActivities(tenantId, 'contact', id, limit, includeTasks),
     // Tasks
     includeTasks ? prisma.task.findMany({
       where: { tenantId, isArchived: false, ...taskContextWhere("contact",id,tenantId) },
@@ -126,7 +116,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     account,
     deals: contactDeals.slice(0, limit),
     hasMoreDeals: contactDeals.length > limit,
-    activities: (await presentActivities(tenantId, activities)).map(activity => {
+    activities: activities.map(activity => {
       // Normalize historical enum labels only in system-generated status events.
       const match = activity.type === 'stage_change' && /^Status changed from (INQUIRY|HOT|WARM|COLD|CLOSED|CANCELLED) to (INQUIRY|HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
       return match ? { ...activity, title: `Status changed from ${normalizeCrmStatus(match[1])} to ${normalizeCrmStatus(match[2])}` } : activity;
@@ -165,15 +155,10 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { id: true, title: true, value: true, engagementStatus: true, priority: true, stage: { select: { id: true, name: true, isWon: true, isLost: true } } },
     }),
-    prisma.activity.findMany({
-      where: { tenantId, AND: [await emailActivityVisibility(tenantId), activityRecordContext('account', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
-      take: limit,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },
-    }),
+    findRecentActivities(tenantId, 'account', id, limit, includeTasks),
   ]);
 
-  return { leads, contacts, deals: deals.slice(0, limit), hasMoreDeals: deals.length > limit, activities: await presentActivities(tenantId, activities) };
+  return { leads, contacts, deals: deals.slice(0, limit), hasMoreDeals: deals.length > limit, activities };
 }
 
 /**
@@ -215,12 +200,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
       },
     }),
     // Recent activities
-    prisma.activity.findMany({
-      where: { tenantId, AND: [await emailActivityVisibility(tenantId), await dealActivityContext(tenantId, id), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
-      take: limit,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },
-    }),
+    findRecentActivities(tenantId, 'deal', id, limit, includeTasks),
     // Tasks
     includeTasks ? prisma.task.findMany({
       where: { tenantId, isArchived: false, ...taskContextWhere("deal",id,tenantId) },
@@ -234,7 +214,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     account,
     leads: leadDeals.map((ld) => ld.lead),
     contacts: contactDeals.map((cd) => cd.contact),
-    activities: await presentActivities(tenantId, activities),
+    activities,
     tasks,
   };
 }

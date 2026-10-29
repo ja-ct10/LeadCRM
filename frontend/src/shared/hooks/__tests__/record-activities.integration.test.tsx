@@ -5,12 +5,13 @@ import { useRecordActivities, type ActivityModule, type TimelineActivity } from 
 
 const mocks = vi.hoisted(() => ({
   auth: { tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Sales', tenantId: 'tenant-a' }, isLoading: false, authError: null as string | null },
-  permission: true, mockMode: false, getAll: vi.fn(), status: vi.fn(),
+  permission: true, mockMode: false, getAll: vi.fn(), status: vi.fn(), activityReadScope: 'mailbox' as 'tenant' | 'managed-groups' | 'mailbox' | undefined,
 }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [] }) }));
 vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockMode; } }));
 vi.mock('../use-permissions', () => ({ useHasPermission: () => mocks.permission }));
+vi.mock('../use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ policy: { activityReadScope: mocks.activityReadScope } }) }));
 vi.mock('@/features/tenant/crm/activities/services/activities.service', () => ({ activitiesService: { getAll: mocks.getAll } }));
 vi.mock('@/features/tenant/inbox/services/gmail.service', () => ({ getGmailStatus: mocks.status }));
 
@@ -29,11 +30,52 @@ beforeEach(() => {
   clearPageCache(); streams.length = 0; vi.clearAllMocks();
   mocks.auth = { tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Sales', tenantId: 'tenant-a' }, isLoading: false, authError: null };
   mocks.permission = true; mocks.mockMode = false;
+  mocks.activityReadScope = 'mailbox';
   vi.stubGlobal('EventSource', FakeSource);
   mocks.getAll.mockResolvedValue(response([note]));
   mocks.status.mockResolvedValue({ isConnected: true });
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it.each(['tenant', 'managed-groups'] as const)('reads %s history without querying or requiring personal Gmail', async scope => {
+  mocks.activityReadScope = scope;
+  mocks.status.mockResolvedValue({ isConnected: false, syncError: 'No personal mailbox' });
+  mocks.getAll.mockResolvedValue(response([email('Sent'), email('Received'), note]));
+  const hook = renderHook(() => useRecordActivities('deals', 'record'));
+  await waitFor(() => expect(hook.result.current.activities).toHaveLength(3));
+  expect(hook.result.current.error).toBeFalsy();
+  expect(mocks.status).not.toHaveBeenCalled(); expect(streams).toHaveLength(0);
+  await act(async () => hook.result.current.refetch());
+  expect(mocks.status).not.toHaveBeenCalled();
+});
+
+it('clears elevated history when scope returns to mailbox and defaults absent scope to mailbox', async () => {
+  mocks.activityReadScope = 'managed-groups';
+  mocks.getAll.mockResolvedValue(response([email('Received')]));
+  const hook = renderHook(() => useRecordActivities('contacts', 'record'));
+  await waitFor(() => expect(hook.result.current.total).toBe(1));
+  mocks.activityReadScope = undefined;
+  mocks.status.mockResolvedValue({ isConnected: false });
+  mocks.getAll.mockResolvedValue(response([]));
+  hook.rerender();
+  expect(hook.result.current.activities).toEqual([]);
+  await waitFor(() => expect(hook.result.current.total).toBe(0));
+  await waitFor(() => expect(hook.result.current.error).toBe('Connect your work Gmail account first.'));
+});
+
+it('immediately clears a Group Head timeline and cursor after membership changes while hidden', async () => {
+  mocks.activityReadScope = 'managed-groups';
+  mocks.getAll.mockResolvedValue({ data: [email('Received')], total: 3, nextCursor: 'old-scope' });
+  const hook = renderHook(() => useRecordActivities('leads', 'record'));
+  await waitFor(() => expect(hook.result.current.total).toBe(3));
+  const fresh = deferred<ReturnType<typeof response>>(); mocks.getAll.mockReturnValue(fresh.promise);
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  act(() => window.dispatchEvent(new Event('leadcrm:groups-changed')));
+  expect(hook.result.current.activities).toEqual([]); expect(hook.result.current.total).toBeUndefined(); expect(hook.result.current.hasMore).toBe(false);
+  await act(async () => fresh.resolve(response([])));
+  await waitFor(() => expect(hook.result.current.total).toBe(0));
+  expect(mocks.getAll.mock.lastCall?.[0]).toMatchObject({ leadId: 'record', cursor: undefined });
+});
 
 it.each(['leads', 'contacts', 'deals'] as const)('updates mounted %s rows and totals on sent/received mailbox events without remounting', async module => {
   let server = [note];

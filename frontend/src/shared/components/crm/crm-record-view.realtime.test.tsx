@@ -12,7 +12,7 @@ vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: mocks.role, tenantId: 'tenant' }, isLoading: false, authError: null }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [], pipelines: [], deals: [], contacts: [], organizations: [] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key.endsWith('.view') || mocks.edit }));
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.edit, canReassign: false }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.edit, canReassign: false, policy: { activityReadScope: 'mailbox' } }) }));
 vi.mock('@/shared/hooks/use-record-relationships', () => ({ useRecordRelationships: () => ({ data: undefined }) }));
 vi.mock('@/shared/hooks/use-field-layout', async () => {
   const { defaultFieldLayout } = await import('@leadcrm/shared');

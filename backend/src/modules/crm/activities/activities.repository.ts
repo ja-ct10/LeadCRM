@@ -8,38 +8,12 @@ import { CreateActivityDto, UpdateActivityDto } from './activities.dto';
 import { AppError } from '../../../shared/errors/app-error';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
-import { scopedMessagesWhere } from '../../../integrations/gmail/mailbox-scope';
 import { mailboxDealMessageIds } from '../../../integrations/gmail/mailbox-conversations';
+import { activityReadAccess, recheckActivityReadAccess } from './activity-read-access';
 
 /** Apply before search/count/pagination so CRM timelines cannot reveal revoked email details. */
 export async function emailActivityVisibility(tenantId: string): Promise<Prisma.ActivityWhereInput> {
-  return (await emailActivityAccess(tenantId)).where;
-}
-
-async function emailActivityAccess(tenantId: string): Promise<{ where: Prisma.ActivityWhereInput; revision?: { userId: string; accountId: string; scopeHash: string } }> {
-  const actor = crmActor.getStore();
-  const nonEmail = { type: { not: 'email' } };
-  if (!actor || actor.tenantId !== tenantId) return { where: nonEmail };
-  try {
-    const { account, scope } = await authorizedMailbox(tenantId, actor.userId);
-    return { where: { OR: [nonEmail, { mailboxMessage: { is: scopedMessagesWhere(account, scope, true) } }] },
-      revision: { userId: actor.userId, accountId: account.id, scopeHash: scope.hash } };
-  } catch (error) {
-    if (error instanceof AppError && error.statusCode < 500) return { where: nonEmail };
-    throw error;
-  }
-}
-
-async function recheckEmailActivityAccess(tenantId: string, revision?: { userId: string; accountId: string; scopeHash: string }) {
-  if (!revision) return; // The original query excluded every email Activity.
-  const changed = () => new AppError('Mailbox access changed. Reload the activity list.', 409, 'MAILBOX_SCOPE_CHANGED');
-  try {
-    const current = await authorizedMailbox(tenantId, revision.userId);
-    if (current.account.id !== revision.accountId || current.scope.hash !== revision.scopeHash) throw changed();
-  } catch (error) {
-    if (error instanceof AppError && error.statusCode < 500) throw changed();
-    throw error;
-  }
+  return (await activityReadAccess(tenantId)).where;
 }
 
 async function taskVisibility(tenantId: string): Promise<Prisma.ActivityWhereInput> {
@@ -64,6 +38,8 @@ export async function dealActivityContext(tenantId: string, id: string): Promise
   const nonEmail: Prisma.ActivityWhereInput = { AND: [{ type: { not: 'email' } }, activityRecordContext('deal', id, tenantId)] };
   const actor = crmActor.getStore();
   if (!actor || actor.tenantId !== tenantId) return nonEmail;
+  const policy = await resolveCrmActor(prisma, actor);
+  if (policy.clientAdmin || policy.activityReadScope === 'managed-groups') return activityRecordContext('deal', id, tenantId);
   try {
     const { account, scope } = await authorizedMailbox(tenantId, actor.userId);
     return { OR: [nonEmail, { type: 'email', mailboxMessageId: { in: await mailboxDealMessageIds(account, scope, id, true) } }] };
@@ -103,7 +79,7 @@ export async function findAllActivities(
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
 
-  const emailAccess = await emailActivityAccess(tenantId);
+  const emailAccess = await activityReadAccess(tenantId, query);
   const where: Prisma.ActivityWhereInput = { tenantId, AND: [await taskVisibility(tenantId), emailAccess.where] };
 
   // ── Entity filters ──────────────────────────────────────────────────────────
@@ -162,7 +138,7 @@ export async function findAllActivities(
   const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString('base64url') : null;
   const hydrated = await presentActivities(tenantId, data);
   // Dropping revoked rows alone would still expose their old total or cursor.
-  await recheckEmailActivityAccess(tenantId, emailAccess.revision);
+  await recheckActivityReadAccess(tenantId, emailAccess);
   return { data: hydrated, total, page, limit, nextCursor };
 }
 
@@ -171,39 +147,57 @@ export async function presentActivities<T extends Parameters<typeof withEmailCon
 }
 
 /** Resolve provider content on read, including older email activities, without copying bodies into history. */
-export async function withEmailContent<T extends { type: string; mailboxMessageId?: string | null; metadata?: Prisma.JsonValue; leadId?: string | null; contactId?: string | null }>(tenantId: string, activities: T[]) {
-  const messageId = (activity: T) => activity.mailboxMessageId === undefined
-    ? (activity.metadata as { mailboxMessageId?: string } | null)?.mailboxMessageId : activity.mailboxMessageId;
+export async function withEmailContent<T extends { type: string; tenantId?: string; mailboxMessageId?: string | null; metadata?: Prisma.JsonValue; leadId?: string | null; contactId?: string | null }>(tenantId: string, activities: T[]) {
+  activities = activities.filter(activity => !activity.tenantId || activity.tenantId === tenantId);
+  const messageId = (activity: T) => activity.mailboxMessageId;
   const ids = [...new Set(activities.filter(a => a.type === 'email').map(messageId).filter((id): id is string => typeof id === 'string'))];
   if (!ids.length) return activities.filter(activity => activity.type !== 'email');
-  const actor = crmActor.getStore();
-  if (!actor || actor.tenantId !== tenantId) return activities.filter(activity => activity.type !== 'email');
-  let access: Awaited<ReturnType<typeof authorizedMailbox>>;
-  try { access = await authorizedMailbox(tenantId, actor.userId); }
-  catch (error) { if (error instanceof AppError && error.statusCode < 500) return activities.filter(activity => activity.type !== 'email'); throw error; }
-  const messages = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(access.account, access.scope, true), { id: { in: ids } }] } });
+  const access = await activityReadAccess(tenantId);
+  if (!access.messages) return activities.filter(activity => activity.type !== 'email');
+  const messages = await prisma.mailboxMessage.findMany({ where: { AND: [access.messages, { id: { in: ids } }] } });
   // A reassignment can commit while the body query is awaiting the database.
   try {
-    const current = await authorizedMailbox(tenantId, actor.userId);
-    if (current.account.id !== access.account.id || current.scope.hash !== access.scope.hash) return activities.filter(activity => activity.type !== 'email');
+    await recheckActivityReadAccess(tenantId, access);
   } catch (error) {
     if (error instanceof AppError && error.statusCode < 500) return activities.filter(activity => activity.type !== 'email');
     throw error;
   }
   return activities.flatMap(activity => {
     const metadata = activity.metadata as Record<string, Prisma.JsonValue> | null;
-    const message = activity.type === 'email' ? messages.find(m => m.id === messageId(activity) &&
-      (typeof activity.mailboxMessageId === 'string' || activity.leadId && m.leadId === activity.leadId || activity.contactId && m.contactId === activity.contactId)) : undefined;
+    const message = activity.type === 'email' ? messages.find(m => m.id === messageId(activity)) : undefined;
     if (activity.type === 'email' && !message) return [];
     return [message ? { ...activity, metadata: { ...metadata, mailboxMessageId: message.id, email: { id: message.id, providerMessageId: message.providerMessageId, threadId: message.threadId, accountId: message.accountId, direction: message.direction, from: message.from, to: message.recipients, subject: message.subject, sentAt: message.sentAt.toISOString(), body: message.body } } } : activity];
   });
 }
 
 export async function findActivityById(id: string, tenantId: string) {
-  return prisma.activity.findFirst({
-    where:   { id, tenantId, AND: [await taskVisibility(tenantId), await emailActivityVisibility(tenantId)] },
+  const access = await activityReadAccess(tenantId);
+  const activity = await prisma.activity.findFirst({
+    where:   { id, tenantId, AND: [await taskVisibility(tenantId), access.where] },
     include: ACTIVITY_INCLUDE,
   });
+  if (!activity) return null;
+  const [visible] = await presentActivities(tenantId, [activity]);
+  if (!visible) return null;
+  try { await recheckActivityReadAccess(tenantId, access); }
+  catch (error) { if (error instanceof AppError && error.statusCode < 500) return null; throw error; }
+  return visible ?? null;
+}
+
+/** Relationship previews share exactly the list's authorization and hydration boundaries. */
+export async function findRecentActivities(tenantId: string, kind: 'lead' | 'contact' | 'account' | 'deal', id: string, limit: number, includeTasks: boolean) {
+  const access = await activityReadAccess(tenantId, { [`${kind}Id`]: id });
+  const rows = await prisma.activity.findMany({
+    where: { tenantId, AND: [access.where, await taskVisibility(tenantId),
+      kind === 'deal' ? await dealActivityContext(tenantId, id) : activityRecordContext(kind, id, tenantId),
+      ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
+    take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { ...ACTIVITY_INCLUDE, id: true, tenantId: true, type: true, title: true, createdAt: true,
+      metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },
+  });
+  const activities = await presentActivities(tenantId, rows);
+  await recheckActivityReadAccess(tenantId, access);
+  return activities;
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

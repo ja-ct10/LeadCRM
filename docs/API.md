@@ -82,11 +82,19 @@ the verified connected mailbox self-address is excluded. Client Admin may contac
 available same-tenant customers regardless of assignment using their own connected
 mailbox. Sales retains the assignment restriction. Unavailable identities and
 outside recipients still veto access. Hidden Bcc that Gmail does not expose cannot be verified.
-Historical email activities are exposed only through the same current mailbox
-policy. Activity and relationship reads containing that history also use
-`no-store`. An Activity list whose mailbox authorization revision changes while
-loading returns 409 `MAILBOX_SCOPE_CHANGED`; retry under the current scope instead
-of reusing its previous count or cursor.
+CRM history has its own read boundary: Client Admin can read canonical stored
+activities throughout the tenant without a personal Gmail connection. Designated
+Group Heads can read history for records assigned to themselves or members of
+Groups they head, intersected with existing CRM and Task permissions. Group
+membership alone does not grant this access. Other staff retain the current
+mailbox policy for email history. The existing `/crm/record-access` response
+includes `activityReadScope` (`tenant`, `managed-groups`, or `mailbox`); absent
+values mean `mailbox`. Internal team identities are not exposed.
+Activity and relationship history reads use `no-store`. A list whose mailbox,
+role, Group, or record authorization changes while loading returns 409
+`MAILBOX_SCOPE_CHANGED`; retry without reusing the previous count or cursor.
+These CRM read rules do not grant access to another employee's Inbox or change
+Gmail sending, synchronization, or assignment permissions.
 Exact compose/reply/reply-all/forward draft context is server-owned;
 legacy drafts with unverified source evidence require explicit source selection.
 

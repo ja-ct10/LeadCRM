@@ -11,6 +11,7 @@ import { activitiesService, type ActivityRecord } from '@/features/tenant/crm/ac
 import { useCachedPage } from './use-cached-page';
 import { useHasPermission } from './use-permissions';
 import { matchesSearch } from '@/shared/utils/search';
+import { useCrmRecordAccess } from './use-crm-record-access';
 
 export type ActivityModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 export type TimelineActivity = Pick<ActivityRecord, 'id' | 'type' | 'title' | 'createdAt' | 'description' | 'metadata'> & { createdBy?: ActivityRecord['createdBy'] };
@@ -26,11 +27,14 @@ const accessResets = new Set<{ scope: string; reset: () => void }>();
 export function useRecordActivities(module: ActivityModule, id: string | undefined, enabled = true, providedActivities?: TimelineActivity[], filters: RecordActivityFilters = {}) {
   const { activities = [], users = [] } = useData();
   const { user, tenant, isLoading, authError } = useAuth();
+  const { policy } = useCrmRecordAccess(module);
+  const activityReadScope = policy?.activityReadScope ?? 'mailbox';
+  const readsHistory = activityReadScope !== 'mailbox';
   const [authorizationRevision, setAuthorizationRevision] = useState(0);
   const scopeRetry = useRef(false);
   const generation = getPageCacheGeneration();
   const scopeIdentity = JSON.stringify([user?.id, user?.role, tenant?.id, generation]);
-  const identity = JSON.stringify([user?.id, user?.role, tenant?.id, generation, authorizationRevision, module, id, filters.type, filters.search]);
+  const identity = JSON.stringify([user?.id, user?.role, tenant?.id, generation, authorizationRevision, activityReadScope, module, id, filters.type, filters.search]);
   const currentIdentity = useRef(identity);
   currentIdentity.current = identity;
   const [pagination, setPagination] = useState({ identity, count: 1 });
@@ -43,7 +47,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     module: 'activities',
     params: { purpose: 'gmail-status', authorizationRevision },
     revalidateOnInvalidation: true,
-    disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || module === 'accounts' ||
+    disabled: USE_MOCK_DATA || !policy || readsHistory || !canRead || !id || providedActivities !== undefined || module === 'accounts' ||
       !tenant?.id || !user?.id || !(canViewLeads || canViewContacts) || !!filters.type && !filters.type.split(',').includes('email'),
     fetchFn: getGmailStatus,
   });
@@ -55,10 +59,17 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       setAuthorizationRevision(value => value + 1);
     } };
     accessResets.add(accessReset);
-    return () => { accessResets.delete(accessReset); };
+    const groupsChanged = () => {
+      scopeRetry.current = false;
+      invalidatePageCache('crm-record-access', tenant.id, true, true);
+      invalidatePageCache('activities', tenant.id, false);
+      setAuthorizationRevision(value => value + 1);
+    };
+    window.addEventListener('leadcrm:groups-changed', groupsChanged);
+    return () => { accessResets.delete(accessReset); window.removeEventListener('leadcrm:groups-changed', groupsChanged); };
   }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity]);
   useEffect(() => {
-    if (USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || !tenant?.id || !user?.id || module === 'accounts' || !mailboxStatus.data?.isConnected) return;
+    if (USE_MOCK_DATA || readsHistory || !canRead || !id || providedActivities !== undefined || !tenant?.id || !user?.id || module === 'accounts' || !mailboxStatus.data?.isConnected) return;
     const refresh = () => {
       scopeRetry.current = false;
       invalidatePageCache('activities', tenant.id);
@@ -73,10 +84,10 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       onError: () => { void mailboxStatus.refetch(); },
     });
     return () => subscription.close();
-  }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity, mailboxStatus.data?.isConnected, mailboxStatus.refetch]);
+  }, [canRead, readsHistory, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity, mailboxStatus.data?.isConnected, mailboxStatus.refetch]);
   const result = useCachedPage<ActivityPage>({
     module: 'activities',
-    params: { recordModule: module, id, ...filters, pageCount, authorizationRevision },
+    params: { recordModule: module, id, ...filters, pageCount, authorizationRevision, activityReadScope },
     revalidateOnInvalidation: true,
     disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined,
     fetchFn: async signal => {
@@ -84,7 +95,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       const rows = new Map<string, TimelineActivity>();
       let total = 0, nextCursor: string | null | undefined;
       for (let page = 0; page < pageCount; page++) {
-        const params = { query: { recordModule: module, id, ...filters, cursor, authorizationRevision }, userId: user?.id, role: user?.role };
+        const params = { query: { recordModule: module, id, ...filters, cursor, authorizationRevision, activityReadScope }, userId: user?.id, role: user?.role };
         const cached = getPageCache<ActivityPage>('activities', tenant?.id ?? '', params);
         const response = cached && !cached.isStale ? cached.data : await requestPageCache<ActivityPage>('activities', tenant?.id ?? '', params,
           async requestSignal => {
@@ -109,12 +120,12 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       return { data: [...rows.values()], total, nextCursor };
     },
   });
-  const mailboxError = mailboxStatus.data?.syncError || (mailboxStatus.data?.isConnected === false ? 'Connect your work Gmail account first.' : mailboxStatus.error);
+  const mailboxError = readsHistory ? null : mailboxStatus.data?.syncError || (mailboxStatus.data?.isConnected === false ? 'Connect your work Gmail account first.' : mailboxStatus.error);
   const refetch = useCallback(async () => {
     // Explicit retry must also expire the per-cursor pages read inside the list.
     invalidatePageCache('activities', tenant?.id ?? '', false);
-    await Promise.all([result.refetch(), mailboxStatus.refetch()]);
-  }, [result.refetch, mailboxStatus.refetch, tenant?.id]);
+    await Promise.all([result.refetch(), ...(readsHistory ? [] : [mailboxStatus.refetch()])]);
+  }, [result.refetch, mailboxStatus.refetch, readsHistory, tenant?.id]);
   const relatedType = module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact';
   const loaded = useRef<{ identity: string; page?: ActivityPage }>({ identity });
   const unavailable = [401,403,404,409].includes(result.errorStatus ?? 0);
