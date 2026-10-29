@@ -35,6 +35,8 @@ Reproduce database acceptance with `node backend/scripts/test-workflow-rbac-fiel
 
 Stop old APIs/workers, apply `20261230000000_workflow_capabilities`, and deploy matching backend/frontend/shared builds. The migration adds Pause/Execute columns, preserves existing Workflow activation/archive capabilities through their new grants, and applies the requested named-role defaults without changing other module grants.
 
+The existing guarded deployment planner includes this migration independently of deferred CRM column retirements. Unknown migrations still fail its review gate, and deferred retirements remain excluded.
+
 Publisher permissions remain authoritative for automatic execution. Review active publishers when removing their grants; an authorized manager must republish a workflow if its publisher no longer has the required authorization. No publisher identity or execution history was silently reassigned.
 
 No remaining failure was found in the checked scope. Hosted deployment, production-data acceptance, and live email/SMS delivery remain unverified. Execute remains a dry run; manual live execution and per-field role rules were outside the confirmed scope. See the [API contract](../API.md) and [Customize Fields behavior](../custom-fields.md).
