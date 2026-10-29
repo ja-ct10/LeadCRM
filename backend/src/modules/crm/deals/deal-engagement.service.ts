@@ -7,6 +7,7 @@ import { salesContext } from '../leads/sales-context';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { acceptsStatusReply, isManualStatus, replyStatusCheckpoint, statusContext } from '../status-checkpoint';
 import { customerDealWhere, type CustomerLink } from '../engagement.service';
+import { isMailboxForward } from '../../../integrations/gmail/mailbox-engagement';
 
 /** Shared verified inputs for classification and manual-status checkpoints. */
 export async function readDealEngagementEvidence(tx: Prisma.TransactionClient, tenantId: string, dealId: string, now: Date) {
@@ -16,14 +17,18 @@ export async function readDealEngagementEvidence(tx: Prisma.TransactionClient, t
     tx.mailboxMessage.findMany({ where: { tenantId, dealId,
       NOT: [{ dealAttribution: { equals: Prisma.DbNull } }, { labels: { hasSome: ['DRAFT', 'SPAM', 'TRASH', 'DELETED'] } }],
       engagementRuleVersion: 2, participantPolicyVersion: 1, sentAt: { lte: now } },
-      orderBy: [{ sentAt: 'asc' }, { id: 'asc' }], select: { id: true, accountId: true, providerMessageId: true, direction: true, meaningful: true, sentAt: true,
+      orderBy: [{ sentAt: 'asc' }, { id: 'asc' }], select: { id: true, accountId: true, providerMessageId: true, rfcMessageId: true, direction: true, meaningful: true, sentAt: true,
         account: { select: { syncPageToken: true, syncBaselineHistoryId: true, syncError: true } } } }),
   ]);
-  const receipts = messages.length ? await tx.mailboxSendReceipt.findMany({ where: { tenantId, operation: { in: ['send', 'schedule'] }, status: 'sent',
-    OR: messages.filter(message => message.direction === 'outbound').map(message => ({ accountId: message.accountId, providerMessageId: message.providerMessageId })) },
-    select: { accountId: true, providerMessageId: true, authorizationContext: true } }) : [];
+  const allReceipts = messages.length ? await tx.mailboxSendReceipt.findMany({ where: { tenantId, operation: { in: ['send', 'schedule'] },
+    OR: messages.filter(message => message.direction === 'outbound').map(message => ({ accountId: message.accountId,
+      OR: [{ providerMessageId: message.providerMessageId }, ...(message.rfcMessageId ? [{ rfcMessageId: message.rfcMessageId }] : [])] })) },
+    select: { accountId: true, providerMessageId: true, rfcMessageId: true, status: true, authorizationContext: true } }) : [];
+  const engagementMessages = messages.filter(message => !allReceipts.some(receipt => receipt.accountId === message.accountId && isMailboxForward(receipt.authorizationContext) &&
+    (receipt.providerMessageId === message.providerMessageId || !!receipt.rfcMessageId && receipt.rfcMessageId === message.rfcMessageId)));
+  const receipts = allReceipts.filter(receipt => receipt.status === 'sent' && !isMailboxForward(receipt.authorizationContext));
   const events: DealEngagementEvent[] = qualifications.filter(row => row.previousStageId !== row.newStageId).map(row => ({ type: 'qualified', at: row.movedAt }));
-  for (const message of messages) {
+  for (const message of engagementMessages) {
     if (message.direction === 'inbound' && message.meaningful) events.push({ type: 'reply', at: message.sentAt });
     if (message.direction === 'outbound' && receipts.some(receipt => receipt.accountId === message.accountId && receipt.providerMessageId === message.providerMessageId)) events.push({ type: 'outreach', at: message.sentAt });
   }
@@ -38,7 +43,7 @@ export async function readDealEngagementEvidence(tx: Prisma.TransactionClient, t
     return receipt.accountId === message.accountId && receipt.providerMessageId === message.providerMessageId && draft.success && draft.data.dealId === dealId;
   })).reduce<Date | undefined>((latest, message) => !latest || message.sentAt > latest ? message.sentAt : latest, undefined) : undefined;
   return { qualifications, events, hasQuotation, quotationAt,
-    incomplete: messages.some(message => message.account.syncPageToken || message.account.syncBaselineHistoryId || message.account.syncError) };
+    incomplete: engagementMessages.some(message => message.account.syncPageToken || message.account.syncBaselineHistoryId || message.account.syncError) };
 }
 
 /** Evidence stays in the existing stage history and mailbox tables, not a second event store. */

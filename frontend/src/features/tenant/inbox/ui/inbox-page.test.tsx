@@ -263,7 +263,7 @@ describe('Persisted scoped Inbox', () => {
     for (const label of ['Work email', 'Sync now', 'Disconnect', '1 unread conversation']) expect(screen.getByText(label)).toBeTruthy();
     for (const label of ['Search email', 'Filter emails', 'Sort emails', 'Email list actions']) expect(screen.getByLabelText(label)).toBeTruthy();
     expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.sync).not.toHaveBeenCalled();
-    await act(async () => { if (fails) reject!(new Error('Refresh failed')); else resolve!({ emails: [{ ...email, snippet: 'Updated preview' }], unreadCount: 1 }); });
+    await act(async () => { if (fails) reject!(new Error('Refresh failed')); else resolve!({ emails: [{ ...email, snippet: 'Updated preview', body: '<p>Updated preview</p>' }], unreadCount: 1 }); });
     expect(screen.queryByRole('status', { name: 'Loading conversations' })).toBeNull();
     expect(screen.getByText('Saved customer email')).toBeTruthy(); expect(screen.queryByText('No emails found')).toBeNull();
     if (fails) { expect(screen.getByRole('alert').textContent).toContain('Refresh failed'); fireEvent.click(screen.getByLabelText('Refresh')); await flush(); expect(mocks.list).toHaveBeenCalledTimes(3); }

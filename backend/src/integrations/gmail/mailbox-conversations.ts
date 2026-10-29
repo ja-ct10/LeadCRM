@@ -11,7 +11,7 @@ type Options = ReturnType<typeof MailboxListSchema.parse>;
 type Summary = {
   conversationId: string; conversationKind: 'person' | 'group'; externalAddresses: string[];
   threadId: string; date: Date; unread: boolean; messageCount: number; authors: string[]; presentations: string[];
-  id: string; from: string; to: string[]; cc: string[]; subject: string; snippet: string;
+  id: string; from: string; to: string[]; cc: string[]; subject: string; snippet: string; body: string;
   labels: string[]; direction: GmailEmail['direction']; replyToAddress: string | null;
   effectiveDealId: string | null; effectiveDealTitle: string | null; isArchived: boolean; canArchive: boolean;
 };
@@ -148,7 +148,7 @@ export async function listMailboxConversations(account: EmailAccount, scope: Mai
       ORDER BY e."conversationId", e."sentAt" DESC, e."providerMessageId" DESC
     )
     SELECT p.*, people.presentations, latest."providerMessageId" AS id, latest."threadId", latest."from", latest.recipients AS "to", latest."ccRecipients" AS cc,
-      latest.subject, latest.snippet, latest.labels, latest.direction, latest."replyToAddress", latest."conversationKind", latest."externalAddresses",
+      latest.subject, latest.snippet, latest.body, latest.labels, latest.direction, latest."replyToAddress", latest."conversationKind", latest."externalAddresses",
       latest."effectiveDealId", latest."effectiveDealTitle"
     FROM page p JOIN people ON people."conversationId" = p."conversationId" JOIN latest ON latest."conversationId" = p."conversationId"
     ORDER BY ${options.sort === 'unread' ? Prisma.sql`p.unread DESC,` : Prisma.empty} p.date ${order}, p."conversationId" ASC`);
@@ -161,7 +161,7 @@ export async function listMailboxConversations(account: EmailAccount, scope: Mai
     }
     return { id: row.id, threadId: row.threadId, conversationId: row.conversationId, conversationKind: row.conversationKind,
       correspondentAddresses: row.externalAddresses, from: row.from, to: row.to, cc: row.cc, subject: row.subject, snippet: row.snippet,
-      body: '', date: row.date.toISOString(), isRead: !row.unread, labels: row.labels, direction: row.direction,
+      body: row.body, date: row.date.toISOString(), isRead: !row.unread, labels: row.labels, direction: row.direction,
       replyToAddress: row.replyToAddress, messageCount: row.messageCount, participants: [...names.values()],
       dealId: row.effectiveDealId, dealTitle: row.effectiveDealTitle, isArchived: row.isArchived, canArchive: row.canArchive };
   });

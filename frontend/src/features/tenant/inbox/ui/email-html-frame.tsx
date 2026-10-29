@@ -2,8 +2,8 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { mailboxDisplayDocument } from '../services/email-html';
 
-export function EmailHtmlFrame({ body, inlineImages }: { body: string; inlineImages: Record<string, string> }) {
-  const source = useMemo(() => mailboxDisplayDocument(body || '<p>(No content)</p>', inlineImages), [body, inlineImages]);
+export function EmailHtmlFrame({ body, inlineImages, subject }: { body: string; inlineImages: Record<string, string>; subject?: string }) {
+  const source = useMemo(() => mailboxDisplayDocument(body || '<p>(No content)</p>', inlineImages, subject), [body, inlineImages, subject]);
   const [height, setHeight] = useState(80);
   const cleanup = useRef<(() => void) | undefined>(undefined);
   useLayoutEffect(() => () => { cleanup.current?.(); cleanup.current = undefined; }, [source]);

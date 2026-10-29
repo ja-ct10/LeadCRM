@@ -3,7 +3,8 @@ import { acceptDealReply } from '../../modules/crm/deals/deal-engagement.service
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
-import { normalizeCrmStatus, type MailboxRecordContext } from '@leadcrm/shared';
+import { normalizeCrmStatus, type MailboxComposeMode, type MailboxRecordContext } from '@leadcrm/shared';
+import { isMailboxForward, withoutMailboxForwards } from './mailbox-engagement';
 import { receiptComposeContext } from './mailbox-draft-context';
 import prisma from '../../config/database.config';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
@@ -14,7 +15,7 @@ import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean; clientAdmin?: boolean }
 type Tx = Prisma.TransactionClient;
-type SentContext = { sourceMessageId?: string; dealId?: string; recordContext?: MailboxRecordContext };
+type SentContext = { composeMode?: MailboxComposeMode; forwardSourceMessageId?: string; sourceMessageId?: string; dealId?: string; recordContext?: MailboxRecordContext };
 
 async function validatedReplyDeal(tx: Tx, account: EmailAccount, email: GmailEmail, link: CustomerLink | undefined, context?: SentContext) {
   const sentContext = mailboxAddress(email.from) === mailboxAddress(account.email) ? context : undefined;
@@ -91,7 +92,7 @@ async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLin
   const scope = await resolveMailboxScope(account, permissions, tx);
   const verified = { AND: [where, scopedMessagesWhere(account, scope)], engagementRuleVersion: ENGAGEMENT_RULE_VERSION, sentAt: { lte: now } };
   const inbound = await tx.mailboxMessage.findFirst({ where: { ...verified, direction: 'inbound', meaningful: true }, orderBy: { sentAt: 'desc' } });
-  const outbound = !inbound ? await tx.mailboxMessage.findFirst({ where: { ...verified, direction: 'outbound' }, orderBy: { sentAt: 'asc' } }) : null;
+  const outbound = !inbound ? await tx.mailboxMessage.findFirst({ where: { ...verified, AND: [where, scopedMessagesWhere(account, scope), await withoutMailboxForwards(tx, account)], direction: 'outbound' }, orderBy: { sentAt: 'asc' } }) : null;
   // A verified CRM engagement timestamp survives reassignment; source mailbox content stays private.
   const previousReply = customer.engagementEvaluatedAt && customer.lastCustomerReplyAt && +customer.lastCustomerReplyAt <= +now ? customer.lastCustomerReplyAt : null;
   const lastCustomerReplyAt = inbound && (!previousReply || +inbound.sentAt > +previousReply) ? inbound.sentAt : previousReply;
@@ -138,6 +139,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         const saved = receiptComposeContext(receipt?.authorizationContext ?? null);
         if (saved) context = { ...saved, sourceMessageId: saved.replyToMessageId };
       }
+      const forwarded = mailboxAddress(email.from) === mailboxAddress(account.email) && isMailboxForward(context);
       const selected = context?.recordContext;
       const selectedWhere = selected ? { tenantId: account.tenantId, id: selected.recordId, ...(permissions.clientAdmin ? {} : { assignedUserId: account.userId }), isArchived: false, deletedAt: null } : undefined;
       const selectedRecord = selectedWhere && mailboxAddress(email.from) === mailboxAddress(account.email)
@@ -163,7 +165,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         await persistEmailActivity(tx, account, stored);
-        if (stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
+        if (!forwarded && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -202,6 +204,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
       await persistEmailActivity(tx, account, stored);
+      if (forwarded) return;
       const duplicateReply = genuineReply && email.rfcMessageId && link ? await tx.mailboxMessage.findFirst({ where: {
         ...await historyWhere(tx, account.tenantId, link), id: { not: stored.id }, rfcMessageId: email.rfcMessageId, direction: 'inbound', meaningful: true,
       }, select: { id: true } }) : null;
@@ -229,7 +232,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
 export async function evaluateMailboxEngagement(account: EmailAccount, permissions: MailboxPermissions, now = new Date()) {
   if (!permissions.leadsEdit && !permissions.contactsEdit) return;
   const scope = await resolveMailboxScope(account, permissions);
-  const messages = await prisma.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, OR: [{ leadId: { in: scope.leadIds } }, { contactId: { in: scope.contactIds } }] }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
+  const messages = await prisma.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, AND: [await withoutMailboxForwards(prisma, account)], OR: [{ leadId: { in: scope.leadIds } }, { contactId: { in: scope.contactIds } }] }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
   const seen = new Set<string>();
   for (const message of messages) {
     let link: CustomerLink | undefined = message.contactId ? { contactId: message.contactId } : message.leadId ? { leadId: message.leadId } : undefined;

@@ -123,7 +123,7 @@ export function EmailMessageContent({ email, onUnavailable, afterBody }: { email
   return <>
     {loading && <p role="status" className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 size={14} className="animate-spin" />Loading original message…</p>}
     {error && <div role="alert" className="mb-3 text-xs text-destructive">{error}<Button variant="ghost" size="sm" onClick={() => setRetry(value => value + 1)}>Retry message</Button></div>}
-    <EmailHtmlFrame body={content.body} inlineImages={inlineImages} />
+    <EmailHtmlFrame body={content.body} inlineImages={inlineImages} subject={email.subject} />
     {imageError && <div role="status" className="mt-2 text-xs text-muted-foreground">Some inline images could not be loaded.<Button variant="ghost" size="sm" onClick={() => setImageRetry(value => value + 1)}>Retry images</Button></div>}
     {afterBody}
     {!!files.length && <section className="mt-4 min-w-0" aria-label="Message attachments">

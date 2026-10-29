@@ -6,7 +6,7 @@ import EmailConversationView from './email-conversation-view';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 
 const mocks = vi.hoisted(() => ({ schedule: vi.fn(), send: vi.fn(), save: vi.fn(), remove: vi.fn(), thread: vi.fn(), read: vi.fn(), associate: vi.fn() }));
-vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: () => new Promise(() => {}), fetchGmailAttachment: vi.fn(), associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
+vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: async () => ({ body: '<p>Question</p><script>bad()</script>', attachments: [] }), fetchGmailAttachment: vi.fn(), associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const email = { id: 'message1', threadId: 'thread1', from: 'Customer <customer@example.test>', to: ['staff@camxian.com'], subject: 'Telephone inquiry', body: '<p>Question</p><script>bad()</script>', snippet: 'Question', date: '2026-10-07T00:00:00Z', labels: ['INBOX'], isRead: false, direction: 'inbound' as const };
 beforeEach(() => { vi.clearAllMocks(); mocks.schedule.mockResolvedValue({ id: 'scheduled', status: 'pending' }); mocks.read.mockResolvedValue({ success: true }); mocks.thread.mockResolvedValue({ emails: [email], dealOptions: [], canAssociateDeal: false }); });
@@ -141,8 +141,11 @@ it('reuses the composer for Reply and sanitizes Forward', async () => {
   fireEvent.click(screen.getAllByRole('button', { name: 'Reply' })[0]);
   expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('customer@example.test'); expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('Re: Telephone inquiry');
   fireEvent.click(screen.getByLabelText('Close')); fireEvent.click(screen.getAllByRole('button', { name: 'Forward' })[0]);
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toContain('Forwarded message'));
-  expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(''); expect(document.querySelector('[contenteditable] script')).toBeNull();
+  await waitFor(() => {
+    expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toContain('Forwarded message');
+    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('');
+  });
+  expect(document.querySelector('[contenteditable] script')).toBeNull();
 });
 it('removes a formerly selected message when the authorized thread changes', async () => {
   mocks.thread.mockResolvedValueOnce({ emails: [email], dealOptions: [], canAssociateDeal: false }).mockResolvedValueOnce({ emails: [{ ...email, id: 'message2', subject: 'Still authorized' }], dealOptions: [], canAssociateDeal: false });

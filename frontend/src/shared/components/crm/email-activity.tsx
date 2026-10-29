@@ -2,7 +2,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Mail } from 'lucide-react';
 import { RecordSection } from './record-section';
-import { safeMailboxHtml } from '@/features/tenant/inbox/services/email-html';
+import { normalizeMailboxContent, safeMailboxHtml } from '@/features/tenant/inbox/services/email-html';
 import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 
 export interface ActivityEmail { id: string; providerMessageId: string; threadId: string; accountId: string; direction: string; from: string; to: string[]; subject: string; sentAt: string; body: string }
@@ -14,14 +14,16 @@ export function EmailActivity({ email }: { email: ActivityEmail }) {
   const [expanded, setExpanded] = useState(false);
   const [canExpand, setCanExpand] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => safeMailboxHtml(email.body), [email.body]);
+  const html = useMemo(() => {
+    const content = normalizeMailboxContent(email.body, { subject: email.subject });
+    return content.text ? safeMailboxHtml(content.html) : '<p>(No content)</p>';
+  }, [email.body, email.subject]);
   useLayoutEffect(() => {
     const body = bodyRef.current;
     if (!body || expanded) return;
     const measure = () => {
-      const hasQuotedContent = !!body.querySelector('blockquote, .gmail_quote');
       const isClipped = body.scrollHeight > body.clientHeight + 1;
-      setCanExpand(hasQuotedContent || isClipped);
+      setCanExpand(isClipped);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') {
@@ -44,10 +46,8 @@ export function EmailActivity({ email }: { email: ActivityEmail }) {
         <div><dt className="inline font-medium">To: </dt><dd className="inline">{email.to.join(', ')}</dd></div>
         <div><dt className="inline font-medium">Subject: </dt><dd className="inline text-foreground">{email.subject || '(No subject)'}</dd></div>
       </dl>
-      <div ref={bodyRef} data-email-body className={`min-w-0 text-xs leading-[1.2rem] text-foreground sm:text-sm sm:leading-5 ${expanded ? '' : 'max-h-32 overflow-hidden [&_blockquote]:hidden [&_.gmail_quote]:hidden'}`}>
-        {/<[a-z][\s\S]*>/i.test(email.body)
-          ? <div className="min-w-0 [&_*]:max-w-full [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_table]:w-full [&_table]:table-fixed [&_td]:break-words [&_pre]:whitespace-pre-wrap [&_a]:underline" dangerouslySetInnerHTML={{ __html: html }} />
-          : <p className="whitespace-pre-wrap">{email.body}</p>}
+      <div ref={bodyRef} data-email-body className={`min-w-0 text-xs leading-[1.2rem] text-foreground sm:text-sm sm:leading-5 ${expanded ? '' : 'max-h-32 overflow-hidden'}`}>
+        <div className="min-w-0 [&_*]:max-w-full [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_table]:w-full [&_table]:table-fixed [&_td]:break-words [&_pre]:whitespace-pre-wrap [&_a]:underline" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
       {(canExpand || expanded) && (
         <button type="button" aria-expanded={expanded} className="inline-flex min-h-7 items-center text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300 sm:min-h-8 sm:text-xs" onClick={() => setExpanded(!expanded)}>

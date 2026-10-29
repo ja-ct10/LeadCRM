@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, ArrowLeft, Briefcase, Inbox, Loader2, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Badge } from '@/shared/components/ui/badge';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
-import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, restoreGmailConversations, type GmailEmail } from '../services/gmail.service';
+import { fetchGmailThread, fetchGmailCorrespondent, fetchGmailMessageContent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, restoreGmailConversations, type GmailEmail } from '../services/gmail.service';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { toast } from '@/shared/utils/toast';
 import type { MailboxConversationDetail } from '@leadcrm/shared';
@@ -32,6 +32,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
   const historyPending = useRef(false);
   const historyGeneration = useRef(0);
   const historyController = useRef<AbortController | undefined>(undefined);
+  const forwardController = useRef<AbortController | undefined>(undefined);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
@@ -63,7 +64,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
       const latestId = ordered.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined)?.id;
       setExpanded(previous => ({ ...previous, ...Object.fromEntries(ordered.map(message => [message.id, previous[message.id] ?? message.id === latestId])) }));
     }).catch(error => { if (active) failure(error); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; historyController.current?.abort(); if (historyGeneration.current === generation) historyGeneration.current++; };
+    return () => { active = false; historyController.current?.abort(); forwardController.current?.abort(); if (historyGeneration.current === generation) historyGeneration.current++; };
   }, [email.conversationId, email.threadId, revision, refresh, failure]);
   const loadMore = async () => {
     if (!email.conversationId || !nextPageToken || historyPending.current || loading) return;
@@ -95,6 +96,17 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
       return true;
     }
     catch (error) { callbacks.current.onEmailsChanged(); failure(error); return false; }
+    finally { pending.current = false; setBusy(false); }
+  };
+  const openForward = async (message: GmailEmail) => {
+    if (pending.current || loading || paused) return;
+    pending.current = true; setBusy(true); setError('');
+    const controller = new AbortController(); forwardController.current = controller;
+    const generation = historyGeneration.current;
+    try {
+      const content = await fetchGmailMessageContent(message.id, controller.signal);
+      if (!controller.signal.aborted && generation === historyGeneration.current) setDraft(forwardDraft({ ...message, ...content }));
+    } catch (error) { if (!controller.signal.aborted && generation === historyGeneration.current) failure(error); }
     finally { pending.current = false; setBusy(false); }
   };
   const latest = messages.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined);
@@ -130,7 +142,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
         {readError && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{readError}</p><button type="button" className={control} disabled={paused || readPending} onClick={onRetryRead}>Retry marking as read</button></div>}
         {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={paused || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
       </header>
-      {messages.map((message, index) => <EmailDetailView key={message.id} onUnavailable={failure} email={message} expanded={isExpanded(message)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? message.id === latest?.id) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => setDraft(forwardDraft(message))} disabled={loading || busy || paused}
+      {messages.map((message, index) => <EmailDetailView key={message.id} onUnavailable={failure} email={message} expanded={isExpanded(message)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? message.id === latest?.id) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => void openForward(message)} disabled={loading || busy || paused}
         topicActions={email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) ? <DropdownMenu>
           <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={loading || busy || paused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
           <DropdownMenuContent align="end">

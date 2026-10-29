@@ -84,3 +84,11 @@ it('cleans the old document before loading changed content and retains unchanged
   expect(view.frame.getAttribute('sandbox')).not.toContain('allow-scripts');
   expect(view.frame.getAttribute('srcdoc')).toContain("script-src 'none'");
 });
+it('passes the subject to distinguish Outlook forwards from reply history', () => {
+  const body = '<p>Sharing</p><div id="divRplyFwdMsg">From: Sender<br>Sent: Thursday<br>To: Customer</div><p>Forwarded content</p>';
+  const view = render(<EmailHtmlFrame body={body} inlineImages={{}} subject="Fwd: Proposal" />);
+  const frame = view.getByTitle('Email message content');
+  expect(frame.getAttribute('srcdoc')).toContain('Forwarded content');
+  view.rerender(<EmailHtmlFrame body={body} inlineImages={{}} subject="Re: Proposal" />);
+  expect(frame.getAttribute('srcdoc')).not.toContain('Forwarded content');
+});

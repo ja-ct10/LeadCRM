@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Mail, Trash2, Archive, Inbox, Briefcase, Loader2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { mailboxDate, conversationNames } from '../services/email-presentation';
+import { mailboxDate, mailboxPreview, conversationNames } from '../services/email-presentation';
 import { trashGmailConversations, archiveGmailConversations, restoreGmailConversations, GmailEmail } from '../services/gmail.service';
 import { Badge } from '@/shared/components/ui/badge';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -39,6 +39,7 @@ export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, o
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const refreshPending = useRef(false), mutationPending = useRef(false);
+  const previews = useMemo(() => emails.map(mailboxPreview), [emails]);
 
   useEffect(() => { setSelectedIds(previous => new Set([...previous].filter(id => emails.some(email => rowId(email) === id && eligible(email))))); }, [emails]);
   const selectable = emails.filter(eligible);
@@ -226,7 +227,7 @@ export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, o
             <p className="mt-1 text-xs text-slate-500">No messages match this view.</p>
           </div>
         )}
-        {emails.map((email) => {
+        {emails.map((email, index) => {
           const isSelected = selectedIds.has(rowId(email));
           const names = conversationNames(email, mailboxEmail);
           return (
@@ -284,7 +285,7 @@ export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, o
                     {email.subject || '(no subject)'}
                   </span>
                   <span className="max-w-full text-xs md:text-[13px] text-muted-foreground truncate">
-                    {email.scheduledStatus ? email.scheduledStatus + ' · ' : '— '}{email.snippet}
+                    {email.scheduledStatus ? email.scheduledStatus + ' · ' : '— '}{previews[index]}
                   </span>
                   </div>
                   {eligible(email) && <Badge variant="secondary" className="max-w-full gap-1 text-[10px]" title={email.dealTitle || 'No Deal'}>

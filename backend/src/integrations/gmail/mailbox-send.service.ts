@@ -29,7 +29,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
   if (claim.terminal) {
     if (claim.receipt.status !== 'sent' || !claim.receipt.providerMessageId || !claim.receipt.providerThreadId) throw new AppError('This operation is not a completed send.', 409);
     await ingestConfirmedMailboxSend(account, claim.receipt.providerMessageId, context);
-    await recordPersonalOutreach(account.id, tenantId, claim.receipt.providerMessageId);
+    if (source.composeMode !== 'forward') await recordPersonalOutreach(account.id, tenantId, claim.receipt.providerMessageId);
     await authorizeMailboxOperation(account, context);
     return { messageId: claim.receipt.providerMessageId, threadId: claim.receipt.providerThreadId };
   }
@@ -40,7 +40,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
       : await sendEmail(tenantId, userId, recipients, data.subject, data.body, source.replyToMessageId, data.draftId, source.forwardSourceMessageId,
         { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, attachments, recordContext: source.recordContext, dealId: source.dealId, quotation: generated?.quotation, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
-    await recordPersonalOutreach(account.id, tenantId, result.messageId);
+    if (source.composeMode !== 'forward') await recordPersonalOutreach(account.id, tenantId, result.messageId);
     if (claim.recover) await ingestConfirmedMailboxSend(account, result.messageId, context);
     await requestMailboxIngestion(account).catch(() => undefined);
     // Do not disclose a recovered result after a reassignment that occurred during provider I/O.
