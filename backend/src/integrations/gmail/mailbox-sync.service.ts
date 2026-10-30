@@ -1,7 +1,7 @@
 import { refreshDealClassification } from '../../modules/crm/customer-classification.service';
 import { syncBusinessEmailConnections } from './business-email.service';
-import { Prisma } from '@prisma/client';
-import { mailboxProviderQueries, messageInScope, matchingMailboxForward, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
+import { Prisma, type EmailAccount } from '@prisma/client';
+import { mailboxProviderQueries, messageInScope, matchingMailboxForward, storedInternalProof, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
 import { runScheduledMailboxEmails } from './scheduled-mailbox.service';
 import { randomUUID } from 'node:crypto';
@@ -19,7 +19,65 @@ import { GmailEmail } from './gmail.types';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { isMailboxOwner } from './mailbox-ownership';
-import { readGmailJson as gmailJson, withMailboxWorkerReadBudget } from './gmail-read';
+import { readGmailJson as gmailJson, writeGmailJson, withMailboxWorkerReadBudget } from './gmail-read';
+import { internalMailboxStates, isLocalForwardId, overlayInternalLabels } from './mailbox-forward-delivery';
+
+/** Drain only this mailbox's receipt-backed label intent using its own Google grant. */
+async function flushInternalMailboxActions(account: EmailAccount, token: string) {
+  const current = await authorizedMailbox(account.tenantId, account.userId);
+  const ids = current.scope.forwardProofs?.flatMap(proof => proof.completed && proof.receiptId ? [proof.receiptId] : []) ?? [];
+  if (!ids.length) return;
+  const receipts = await prisma.mailboxSendReceipt.findMany({ where: { tenantId: account.tenantId, id: { in: ids }, status: 'sent' } });
+  let processed = 0;
+  for (const receipt of receipts) for (const [messageId, state] of Object.entries(internalMailboxStates(receipt.authorizationContext))) {
+    if (!state.pending || state.accountId !== account.id || state.userId !== account.userId) continue;
+    if (processed++ >= 25) return;
+    const access = await authorizedMailbox(account.tenantId, account.userId);
+    const row = await prisma.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(access.account, access.scope, true), { id: messageId }] } });
+    if (!row || storedInternalProof(row, access.scope)?.receiptId !== receipt.id) continue;
+    let providerId = row.providerMessageId;
+    if (isLocalForwardId(providerId)) {
+      const found = await gmailJson<{ messages?: { id: string }[] }>(token, 'messages?' + new URLSearchParams({ q: 'in:anywhere rfc822msgid:' + row.rfcMessageId, maxResults: '2' }));
+      if (found.messages?.length !== 1) continue;
+      providerId = found.messages[0].id;
+    }
+    const metadataPath = `messages/${encodeURIComponent(providerId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`;
+    let email: GmailEmail;
+    try { email = parseGmailMessage(await gmailJson<GmailApiMessage>(token, metadataPath), 'metadata'); }
+    catch (error) { if (error instanceof AppError && error.statusCode === 404) continue; throw error; }
+    if (email.id !== providerId || email.labels.some(label => ['SPAM', 'DRAFT'].includes(label)) || matchingMailboxForward(email, access.scope)?.receiptId !== receipt.id) continue;
+    const latest = await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+    if (internalMailboxStates(latest.authorizationContext)[messageId]?.version !== state.version) continue;
+    // Metadata verification precedes every provider write; local IDs never enter Google paths.
+    const verified = await authorizedMailbox(account.tenantId, account.userId);
+    if (matchingMailboxForward(email, verified.scope)?.receiptId !== receipt.id) continue;
+    const removeLabelIds: string[] = [], addLabelIds: string[] = [];
+    for (const [label, present] of [['UNREAD', state.unread], ['INBOX', state.inbox]] as const) {
+      if (present === true && !email.labels.includes(label)) addLabelIds.push(label);
+      if (present === false && email.labels.includes(label)) removeLabelIds.push(label);
+    }
+    if (removeLabelIds.length || addLabelIds.length) await writeGmailJson(token, `messages/${encodeURIComponent(providerId)}/modify`, 'POST', { removeLabelIds, addLabelIds });
+    if (state.trash && !email.labels.includes('TRASH')) await writeGmailJson(token, `messages/${encodeURIComponent(providerId)}/trash`, 'POST');
+    email = parseGmailMessage(await gmailJson<GmailApiMessage>(token, metadataPath), 'metadata');
+    const finalAccess = await authorizedMailbox(account.tenantId, account.userId);
+    if (matchingMailboxForward(email, finalAccess.scope)?.receiptId !== receipt.id) continue;
+    await ingestMailboxMessages(finalAccess.account, [email], finalAccess.permissions);
+    const expected = overlayInternalLabels(email.labels, state);
+    if (expected.length !== email.labels.length || expected.some(label => !email.labels.includes(label))) continue;
+    await salesTransaction(async tx => {
+      const permissions = await mailboxPermissions(account.tenantId, account.userId, true, tx);
+      const scope = await resolveMailboxScope(account, permissions, tx);
+      const copy = await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, scope, true), { id: messageId }] } });
+      if (!copy || storedInternalProof(copy, scope)?.receiptId !== receipt.id) return;
+      const saved = await tx.mailboxSendReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+      const states = internalMailboxStates(saved.authorizationContext);
+      if (states[messageId]?.version !== state.version || !states[messageId].pending) return;
+      states[messageId] = { accountId: account.id, userId: account.userId, version: state.version, pending: false };
+      await tx.mailboxSendReceipt.update({ where: { id: receipt.id }, data: { authorizationContext: { ...saved.authorizationContext as Prisma.JsonObject, mailboxActions: states } } });
+      await tx.emailAccount.update({ where: { id: account.id }, data: { mailboxVersion: { increment: 1 } } });
+    });
+  }
+}
 import { correspondentCte, mailboxReadQuery } from './mailbox-conversations';
 
 export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true, db: Prisma.TransactionClient = prisma): Promise<MailboxPermissions> {
@@ -46,7 +104,7 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
   const { account, scope, permissions: currentPermissions } = await access();
   permissions = currentPermissions;
   if (expectedScopeHash && expectedScopeHash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
-  const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
+  const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, rfcMessageId: true, fromAddress: true, recipientAddresses: true, authorizationParticipants: true, labels: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
   // Lists already hold bodies and counts. Revocation during decoration must reject
   // the whole response, including disconnects that do not change the CRM scope hash.
   const current = await access();
@@ -54,6 +112,7 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
   return emails.map<GmailEmail>(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, bcc: undefined, replyToAddresses: undefined, authorizationHeadersValid: undefined, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     gmailActionsAvailable: account.isActive && email.gmailActionsAvailable !== false,
+    isInternal: !!row && !!storedInternalProof(row, scope),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
     contactId: row?.contactId && scope.contactIds.includes(row.contactId) ? row.contactId : undefined,
     dealId: permissions.dealsView ? email.conversationId ? email.dealId : (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined : undefined,
@@ -228,7 +287,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
         if (currentScope.hash !== scope.hash) throw new AppError('Mailbox assignments changed during synchronization.', 409, 'MAILBOX_SCOPE_CHANGED');
         if (email.labels.includes('DRAFT')) email.crmDraft = !!await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId, crmDraft: true,
           OR: [{ providerMessageId: id }, ...(batch.drafts?.[id] ? [{ draftId: batch.drafts[id] }] : [])] }, select: { id: true } });
-        if (email.labels.some(label => ['SPAM', 'TRASH'].includes(label))) {
+        if (email.labels.some(label => ['SPAM', 'TRASH'].includes(label)) && !matchingMailboxForward(email, currentScope)) {
           await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, tenantId, providerMessageId: id }, data: { labels: email.labels } });
         } else if (messageInScope(email, account.email, scope)) {
           // Hydrate legacy authorization metadata without rewriting an already verified historical body.
@@ -264,6 +323,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
       await checkpoint({});
       examined++;
     }
+    await flushInternalMailboxActions(account, token);
     batch.ids = batch.ids.slice(examined); batch.deleted = [];
     const queriesDone = batch.history || batch.nextIndex >= reconciliationQueries(scope).length;
     const hasMore = !!batch.ids.length || !!batch.nextPage || !queriesDone;

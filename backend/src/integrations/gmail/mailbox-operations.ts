@@ -6,10 +6,9 @@ import { customerDealWhere } from '../../modules/crm/engagement.service';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox } from './mailbox-store';
-import { assertStoredMessages, mailboxAddress } from './mailbox-scope';
+import { assertStoredMessages, mailboxAddress, resolveMailboxMessage, storedInternalProof } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { isMailboxForward } from './mailbox-engagement';
-import { assertProviderMessageIds } from './mailbox-forward-delivery';
 
 export type MailboxOperation = 'send' | 'draft' | 'schedule' | 'delete';
 export interface MailboxQuotationContext { draft: QuotationDraft; document: QuotationDocument; fingerprint: string; subject: string; body: string }
@@ -21,6 +20,7 @@ export interface MailboxOperationContext {
   draftId?: string;
   threadId?: string;
   composeMode?: MailboxComposeMode;
+  internalSourceReceiptId?: string;
   quotation?: MailboxQuotationContext;
   recordContext?: MailboxRecordContext;
 }
@@ -45,7 +45,17 @@ export function normalizedRecipients(recipients: string[]) {
 export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id' | 'tenantId' | 'userId'>, context: MailboxOperationContext) {
   const current = await authorizedMailbox(account.tenantId, account.userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
-  assertProviderMessageIds([context.replyToMessageId, context.forwardSourceMessageId].filter((id): id is string => !!id));
+  if (context.replyToMessageId) {
+    const row = await resolveMailboxMessage(current.account, current.scope, context.replyToMessageId);
+    const proof = storedInternalProof(row, current.scope);
+    if (proof?.completed && proof.receiptId) {
+      context.internalSourceReceiptId = proof.receiptId;
+      context.recordContext = undefined; context.dealId = undefined; context.quotation = undefined;
+      await assertMailboxRecipients(current.account, current.scope, current.permissions, context.recipients, '', undefined, true);
+      return current;
+    }
+    if (context.internalSourceReceiptId) throw new AppError('Internal reply source is no longer authorized.', 403, 'MAILBOX_SCOPE_CHANGED');
+  }
   if (isMailboxForward(context)) {
     if (!context.forwardSourceMessageId || context.replyToMessageId) throw new AppError('Choose the original message to forward.', 400);
     await assertStoredMessages(current.account, current.scope, [context.forwardSourceMessageId], true);

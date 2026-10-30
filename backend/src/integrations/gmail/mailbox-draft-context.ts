@@ -3,18 +3,20 @@ import type { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { assertStoredMessages, type MailboxScope } from './mailbox-scope';
+import { isInternalMailboxOperation } from './mailbox-engagement';
 
-type DraftContext = { composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string; recordContext?: MailboxRecordContext; dealId?: string };
-type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired' | 'recordContext' | 'dealId'>;
+type DraftContext = { composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string; recordContext?: MailboxRecordContext; dealId?: string; isInternal?: boolean };
+type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired' | 'recordContext' | 'dealId' | 'isInternal'>;
 const acknowledgedDraftReceipt: Prisma.MailboxSendReceiptWhereInput = { OR: [
   { status: { in: ['saved', 'queued', 'cancelled'] } },
   // A rejected delivery does not invalidate an already acknowledged forward draft.
   { status: 'failed', authorizationContext: { path: ['composeMode'], equals: 'forward' } },
+  { status: 'failed', authorizationContext: { path: ['internalSourceReceiptId'], string_starts_with: '' } },
 ] };
 export function receiptComposeContext(value: Prisma.JsonValue | null): DraftContext | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('composeMode' in value)) return;
   const parsed = MailboxComposeContextSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? { ...parsed.data, ...(parsed.data.composeMode !== 'forward' && isInternalMailboxOperation(value) ? { isInternal: true, recordContext: undefined, dealId: undefined } : {}) } : undefined;
 }
 
 /** Only an exact acknowledged provider draft/message pair supplies restoration intent. */

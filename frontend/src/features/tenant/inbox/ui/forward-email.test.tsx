@@ -27,6 +27,26 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it.each(['reply', 'forward'] as const)('opens internal %s with the connection requirement when Gmail is disconnected', async mode => {
+  mocks.status.mockResolvedValue({ isConnected: false });
+  const source = { ...original, isInternal: true, gmailActionsAvailable: false };
+  const initial = mode === 'forward' ? forwardDraft(source) : { isInternal: true, composeMode: 'reply' as const, replyToMessageId: source.id, to: 'recipient@example.test', subject: 'Re: Project & quote', body: '' };
+  render(<ComposeModal isOpen initialDraft={initial} onClose={vi.fn()} onSent={vi.fn()} />);
+  await screen.findByText(/Connect your work Gmail account first/);
+  for (const name of ['Send email', 'Save as draft', 'Schedule send options']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+  expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.schedule).not.toHaveBeenCalled();
+});
+it('validates an internal Reply with the employee allowlist through the standard composer', async () => {
+  render(<ComposeModal isOpen initialDraft={{ isInternal: true, composeMode: 'reply', replyToMessageId: 'internal_receipt', to: 'recipient@example.test', subject: 'Re: Internal', body: '<p>Employee response</p>' }} onClose={vi.fn()} onSent={vi.fn()} />);
+  await ready();
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: 'customer@example.test' } });
+  fireEvent.click(screen.getByLabelText('Send email'));
+  expect(screen.getByRole('alert').textContent).toContain('active employee accounts'); expect(mocks.send).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: 'second@example.test' } });
+  fireEvent.click(screen.getByLabelText('Send email')); await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+  expect(mocks.send.mock.calls[0]).toEqual(expect.arrayContaining(['internal_receipt', 'reply']));
+});
+
 it.each([null, 'lead'])('omits the match notice in list, collapsed and expanded views (lead=%s)', leadId => {
   const email = { ...original, leadId };
   const list = render(<InboxEmailList emails={[email]} totalCount={1} onEmailClick={vi.fn()} onEmailsChanged={vi.fn()} />);

@@ -43,6 +43,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
   const pending = useRef(false);
   const callbacks = useRef({ onBack, onEmailsChanged }); callbacks.current = { onBack, onEmailsChanged };
   const paused = Math.max(retryAt, cooldown) > Date.now();
+  const managementPaused = paused && !messages.every(message => message.isInternal);
   useEffect(() => { if (!cooldown) return; const timer = setTimeout(() => setCooldown(0), Math.max(0, cooldown - Date.now())); return () => clearTimeout(timer); }, [cooldown]);
   const failure = useCallback((error: unknown) => {
     const request = error as ApiRequestError;
@@ -86,7 +87,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
     } finally { historyPending.current = false; if (generation === historyGeneration.current) setLoading(false); }
   };
   const mutate = async (action: () => Promise<unknown>, goBack = false) => {
-    if (pending.current || paused) return false;
+    if (pending.current || managementPaused) return false;
     pending.current = true; setBusy(true); setError('');
     try {
       const result = await action() as { success?: boolean; error?: string } | undefined;
@@ -99,7 +100,7 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
     finally { pending.current = false; setBusy(false); }
   };
   const openForward = async (message: GmailEmail) => {
-    if (pending.current || loading || paused) return;
+    if (pending.current || loading || paused && !message.isInternal) return;
     pending.current = true; setBusy(true); setError('');
     const controller = new AbortController(); forwardController.current = controller;
     const generation = historyGeneration.current;
@@ -110,7 +111,6 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
     finally { pending.current = false; setBusy(false); }
   };
   const latest = messages.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined);
-  const gmailActionsUnavailable = messages.some(message => message.gmailActionsAvailable === false);
   const archive = () => originView === 'archived' && email.conversationId
     ? restoreGmailConversations([email.conversationId])
     : email.conversationId ? archiveGmailConversations([email.conversationId]) : archiveGmailThread(email.threadId);
@@ -127,8 +127,8 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
       <button type="button" title={originView === 'archived' ? 'Back to Archived Messages' : 'Back to inbox'} aria-label={originView === 'archived' ? 'Back to Archived Messages' : 'Back to inbox'} className={mailboxIconButton} onClick={() => onBack()}><ArrowLeft size={18} /></button>
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">Email Thread</span>
       {busy && <Loader2 aria-label="Updating conversation" className="h-4 w-4 animate-spin text-muted-foreground" />}
-      <button type="button" title={originView === 'archived' ? 'Restore to Inbox' : 'Archive conversation'} aria-label={originView === 'archived' ? 'Restore conversation' : 'Archive conversation'} disabled={gmailActionsUnavailable || loading || busy || paused || !latest || originView === 'inbox' && email.canArchive === false} className={mailboxIconButton} onClick={() => void mutate(archive, true).then(success => { if (success) toast.success(originView === 'archived' ? 'Messages restored to Inbox' : 'Messages archived'); })}>{originView === 'archived' ? <Inbox size={18} /> : <Archive size={18} />}</button>
-      <button type="button" title="Move to Gmail Trash — move messages to Gmail Trash" aria-label="Move to Gmail Trash" disabled={gmailActionsUnavailable || loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => setConfirmOpen(true)}><Trash2 size={18} /></button>
+      <button type="button" title={originView === 'archived' ? 'Restore to Inbox' : 'Archive conversation'} aria-label={originView === 'archived' ? 'Restore conversation' : 'Archive conversation'} disabled={loading || busy || managementPaused || !latest || originView === 'inbox' && email.canArchive === false} className={mailboxIconButton} onClick={() => void mutate(archive, true).then(success => { if (success) toast.success(originView === 'archived' ? 'Messages restored to Inbox' : 'Messages archived'); })}>{originView === 'archived' ? <Inbox size={18} /> : <Archive size={18} />}</button>
+      <button type="button" title="Move to Gmail Trash — move messages to Gmail Trash" aria-label="Move to Gmail Trash" disabled={loading || busy || managementPaused || !latest} className={mailboxIconButton} onClick={() => setConfirmOpen(true)}><Trash2 size={18} /></button>
     </div>
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <header className="space-y-1 border-b border-border px-3 py-3 sm:px-6">
@@ -140,15 +140,15 @@ export default function EmailConversationView({ email, originView = 'inbox', mai
         {!!participantAddresses.length && <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{participantAddresses.join(', ')}</p>}
         {loading && <p role="status" className="text-xs text-muted-foreground">Loading conversation…</p>}
         {paused && <p role="status" className="text-xs text-muted-foreground">Gmail updates are temporarily paused. Saved emails remain available.</p>}
-        {readError && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{readError}</p><button type="button" className={control} disabled={paused || readPending} onClick={onRetryRead}>Retry marking as read</button></div>}
-        {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={paused || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
+        {readError && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{readError}</p><button type="button" className={control} disabled={managementPaused || readPending} onClick={onRetryRead}>Retry marking as read</button></div>}
+        {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={managementPaused || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
       </header>
-      {messages.map((message, index) => <EmailDetailView key={message.id} onUnavailable={failure} email={message} expanded={isExpanded(message)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? message.id === latest?.id) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => void openForward(message)} disabled={loading || busy || paused}
+      {messages.map((message, index) => <EmailDetailView key={message.id} onUnavailable={failure} email={message} expanded={isExpanded(message)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? message.id === latest?.id) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => void openForward(message)} disabled={loading || busy || paused && !message.isInternal}
         topicActions={email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) ? <DropdownMenu>
-          <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={gmailActionsUnavailable || loading || busy || paused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
+          <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={loading || busy || managementPaused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={gmailActionsUnavailable || loading || busy || paused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(archive, true)}><Archive size={16} />{originView === 'archived' ? 'Restore to Inbox' : 'Archive this conversation'}</DropdownMenuItem>
-            <DropdownMenuItem destructive disabled={gmailActionsUnavailable || loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => setConfirmOpen(true)}><Trash2 size={16} />Move to Gmail Trash</DropdownMenuItem>
+            <DropdownMenuItem disabled={loading || busy || managementPaused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(archive, true)}><Archive size={16} />{originView === 'archived' ? 'Restore to Inbox' : 'Archive this conversation'}</DropdownMenuItem>
+            <DropdownMenuItem destructive disabled={loading || busy || managementPaused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => setConfirmOpen(true)}><Trash2 size={16} />Move to Gmail Trash</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu> : undefined}
         associationControls={associationMessages.get(message.threadId) === message.id ? <>

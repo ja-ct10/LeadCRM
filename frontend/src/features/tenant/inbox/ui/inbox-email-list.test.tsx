@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import InboxEmailList from './inbox-email-list';
 import type { GmailEmail } from '../services/gmail.service';
@@ -10,6 +10,18 @@ const row: GmailEmail = { id: 'latest', threadId: 'thread', from: 'Doris <doris@
 const props = () => ({ emails: [row], mailboxEmail: 'staff@example.test', totalCount: 1, onEmailsChanged: vi.fn().mockResolvedValue(undefined), onEmailClick: vi.fn() });
 beforeEach(() => { vi.resetAllMocks(); mocks.archive.mockResolvedValue({}); mocks.trash.mockResolvedValue({}); });
 afterEach(cleanup);
+
+it.each(['sent', 'internal'] as const)('uses the same selected toolbar for %s messages', async kind => {
+  const message = { ...row, conversationId: 'c_same', labels: kind === 'sent' ? ['SENT'] : ['INBOX', 'UNREAD'],
+    direction: kind === 'sent' ? 'outbound' as const : 'inbound' as const, isInternal: kind === 'internal', gmailActionsAvailable: kind !== 'internal' };
+  render(<InboxEmailList {...props()} emails={[message]} />);
+  const checkbox = screen.getAllByRole('checkbox')[1] as HTMLInputElement;
+  expect(checkbox.disabled).toBe(false); fireEvent.click(checkbox);
+  expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Move to Gmail Trash' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Move to Trash' }));
+  await waitFor(() => expect(mocks.trash).toHaveBeenCalledWith(['c_same']));
+});
 
 it('renders participant names, count and latest preview without changing the row layout', () => {
   const options = props(); render(<InboxEmailList {...options} />);

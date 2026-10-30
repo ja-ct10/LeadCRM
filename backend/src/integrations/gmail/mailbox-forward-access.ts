@@ -39,20 +39,21 @@ export async function mailboxForwardProofs(db: Prisma.TransactionClient, account
       { status: 'failed', operation: { in: ['draft', 'schedule'] }, providerDraftId: { not: null } }],
     AND: [
       { OR: [{ accountId: account.id }, { authorizationContext: { path: ['recipients'], array_contains: [mailbox] } }] },
-      { OR: [{ authorizationContext: { path: ['composeMode'], equals: 'forward' } }, { authorizationContext: { path: ['forwardSourceMessageId'], string_starts_with: '' } }] },
+      { OR: [{ authorizationContext: { path: ['composeMode'], equals: 'forward' } }, { authorizationContext: { path: ['forwardSourceMessageId'], string_starts_with: '' } }, { authorizationContext: { path: ['internalSourceReceiptId'], string_starts_with: '' } }] },
     ],
   }, orderBy: { id: 'asc' }, select: { id: true, status: true, accountId: true, account: { select: { email: true } }, authorizationContext: true, rfcMessageId: true, providerMessageId: true } });
   return receipts.flatMap(receipt => {
     const context = MailboxComposeContextSchema.safeParse(receipt.authorizationContext);
     const values = z.object({ recipients: z.array(z.string().email()).max(50) }).safeParse(receipt.authorizationContext);
-    if (!context.success || context.data.composeMode !== 'forward' || !values.success) return [];
+    const internalReply = z.object({ internalSourceReceiptId: z.string().min(1) }).safeParse(receipt.authorizationContext).success;
+    if (!context.success || context.data.composeMode !== 'forward' && !internalReply || !values.success) return [];
     if (!receipt.rfcMessageId && (receipt.accountId !== account.id || !receipt.providerMessageId)) return [];
     const sender = normalizeEmail(receipt.account.email), targets = [...new Set(values.data.recipients.map(normalizeEmail))].sort();
     if (!employees.includes(sender) || targets.some(email => !recipients.includes(email)) || receipt.accountId !== account.id && !targets.includes(mailbox)) return [];
     const snapshot = z.object({ forwardDelivery: z.object({ recipients: z.array(z.object({ userId: z.string(), email: z.string() })) }) }).safeParse(receipt.authorizationContext);
     if (snapshot.success && receipt.accountId !== account.id && !snapshot.data.forwardDelivery.recipients.some(person => person.userId === account.userId && person.email === mailbox)) return [];
     if (account.isActive === false && receipt.status !== 'sent') return [];
-    return [{ receiptId: receipt.id, completed: receipt.status === 'sent', hasDeliverySnapshot: snapshot.success, sender, recipients: targets, participants: [...new Set([sender, ...targets])].sort(), sourceMessageId: context.data.forwardSourceMessageId!,
+    return [{ receiptId: receipt.id, completed: receipt.status === 'sent', hasDeliverySnapshot: snapshot.success, sender, recipients: targets, participants: [...new Set([sender, ...targets])].sort(), sourceMessageId: (context.data.forwardSourceMessageId ?? context.data.replyToMessageId)!,
       rfcMessageId: receipt.rfcMessageId, providerMessageId: receipt.accountId === account.id ? receipt.providerMessageId : null }];
   });
 }

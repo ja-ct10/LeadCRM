@@ -1,3 +1,4 @@
+import { isInternalMailboxOperation } from './mailbox-engagement';
 import { randomUUID } from 'node:crypto';
 import { ScheduleMailboxEmailSchema, MAILBOX_FORWARD_RECIPIENT_ERROR, type ScheduledMailboxEmailDetail } from '@leadcrm/shared';
 import { z } from 'zod';
@@ -203,11 +204,11 @@ async function runScheduledMailboxPass() {
         await assertStoredMessages(current.account, current.scope, [storedDraft.providerMessageId]);
         if (email.rfcMessageId !== rfcMessageId || mailboxAddress(email.from) !== mailboxAddress(account.email) || !messageInScope(email, account.email, current.scope) ||
           JSON.stringify(normalizedRecipients([...email.to, ...(email.cc ?? [])])) !== JSON.stringify(normalizedRecipients(item.recipients))) throw new AppError('Scheduled draft changed or recipient is no longer assigned to you.', 403);
-        await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId, undefined, source.composeMode === 'forward');
-        if (source.composeMode === 'forward') {
+        await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId, undefined, isInternalMailboxOperation(context));
+        if (isInternalMailboxOperation(context)) {
           const full = await fetchMessageDetail(token, email.id);
           const attachments = await existingDraftAttachments(item.tenantId, item.createdById, item.draftId, receipt.id, item.id);
-          await stageForwardDelivery(account, receipt.id, { recipients: item.recipients, subject: full.subject, body: full.body, attachments });
+          await stageForwardDelivery(account, receipt.id, { recipients: item.recipients, subject: full.subject, body: full.body, attachments, ...(full.rfcInReplyTo ? { rfcInReplyTo: full.rfcInReplyTo, rfcReferences: full.rfcReferences } : {}) });
           await authorizeMailboxOperation(account, context);
         }
         await prisma.$transaction(async tx => {
@@ -222,7 +223,7 @@ async function runScheduledMailboxPass() {
       if (![result?.id, result?.threadId].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value))) {
         throw new AppError('Gmail returned an incomplete scheduled delivery receipt. Verify this operation before resending.', 503, 'GMAIL_OUTCOME_UNKNOWN');
       }
-      const forwardPersisted = source.composeMode === 'forward' && await completeForwardDelivery(account, receipt.id,
+      const forwardPersisted = isInternalMailboxOperation(context) && await completeForwardDelivery(account, receipt.id,
         { messageId: result.id, threadId: result.threadId }, { id: item.id, leaseId });
       if (!forwardPersisted) await update({ status: 'sent', sentAt: new Date(), providerMessageId: result.id, providerThreadId: result.threadId, lastError: null });
       committed = true;

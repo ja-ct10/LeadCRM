@@ -1933,8 +1933,9 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(detail.status, JSON.stringify(detail.body)).toBe(200); expect(detail.body.emails[0]).toMatchObject({ body: input.body, gmailActionsAvailable: false });
     const correspondent = await call('/conversations/' + item.conversationId, 'GET', undefined, recipientAuth);
     expect(correspondent.status, JSON.stringify(correspondent.body)).toBe(200);
-    expect((await call('/conversations/' + item.conversationId + '/read-state', 'PATCH', { isRead: true }, recipientAuth)).status).toBe(409);
-    expect((await call('/threads/' + item.threadId + '/archive', 'POST', {}, recipientAuth)).status).toBe(409);
+    expect((await call('/conversations/' + item.conversationId + '/read-state', 'PATCH', { isRead: true }, recipientAuth)).body).toMatchObject({ isRead: true, unreadCount: 0 });
+    expect((await call('/threads/' + item.threadId + '/archive', 'POST', {}, recipientAuth)).status).toBe(200);
+    expect((await call('/restore', 'POST', { conversationIds: [item.conversationId] }, recipientAuth)).status).toBe(200);
     if (!connected) {
       const historicalEmail = `historical-${randomUUID()}@example.test`;
       const historicalLead = await prisma.lead.create({ data: { tenantId, assignedUserId: employee.id, email: historicalEmail, firstName: 'Historical', lastName: 'Customer', productInterest: [] } });
@@ -1961,6 +1962,203 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(await prisma.workflowTriggerRecord.count({ where: { tenantId } })).toBe(workflowsBefore);
     expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: source.id } })).toEqual(source);
     expect(sends).toBe(1); expect(reads).toBe(0);
+  });
+  async function internalActionsFixture(connected: boolean) {
+    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'actions-source')], permissions));
+    const employee = await prisma.user.create({ data: { tenantId, email: `actions-${randomUUID()}@camxian.com`, firstName: 'Recipient', lastName: 'Actions', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: salesRoleId, userId: employee.id } });
+    const third = await prisma.user.findUniqueOrThrow({ where: { id: otherId } });
+    const accessToken = 'recipient-actions-' + randomUUID();
+    if (connected) await prisma.emailAccount.create({ data: { tenantId, userId: employee.id, email: employee.email, accessToken: encryptToken(accessToken), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
+    const recipientToken = (await issueAuthSession(employee)).token, authorization = `Bearer ${recipientToken}`;
+    const calls: { url: string; method?: string; authorization: string | null; raw?: string; payload?: any }[] = [];
+    let rfc = '', sends = 0, available = false, remoteLabels = ['INBOX', 'UNREAD'];
+    let onModify: (() => Promise<void>) | undefined;
+    const recipients = [employee.email, third.email].sort();
+    const received = (): GmailEmail => ({ ...mail(account.email, 'actions-received', remoteLabels), threadId: 'actions-received-thread', to: recipients, subject: 'Internal actions', body: '<p>Original &amp; formatted content</p>', rfcMessageId: rfc });
+    vi.stubGlobal('fetch', vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = String(target), payload = init?.body ? JSON.parse(String(init.body)) : undefined;
+      const item = { url, method: init?.method, authorization: new Headers(init?.headers).get('authorization'), payload, raw: payload?.raw ? Buffer.from(payload.raw, 'base64url').toString() : undefined };
+      calls.push(item);
+      if (url.endsWith('/messages/send')) {
+        const raw = item.raw!; const messageRfc = raw.match(/Message-ID: ([^\r\n]+)/)![1];
+        sends++;
+        if (sends === 1) { rfc = messageRfc; return Response.json({ id: 'actions-sent', threadId: 'actions-sent-thread' }); }
+        return Response.json({ id: 'actions-response', threadId: 'actions-response-thread' });
+      }
+      if (url.includes('/history?')) return Response.json({ historyId: '110', history: available ? [{ messagesAdded: [{ message: { id: 'actions-received' } }] }] : [] });
+      if (url.includes('/messages?')) return Response.json({ messages: available ? [{ id: 'actions-received', threadId: 'actions-received-thread' }] : [] });
+      if (url.endsWith('/modify')) {
+        remoteLabels = [...new Set([...remoteLabels.filter(label => !payload.removeLabelIds.includes(label)), ...payload.addLabelIds])];
+        const callback = onModify; onModify = undefined; await callback?.();
+        return Response.json({ id: 'actions-received', labelIds: remoteLabels });
+      }
+      if (url.endsWith('/trash')) { remoteLabels = [...remoteLabels.filter(label => label !== 'INBOX'), 'TRASH']; return Response.json({ id: 'actions-received', labelIds: remoteLabels }); }
+      if (url.includes('/messages/actions-received?')) return Response.json(apiMail(received(), [{ name: 'Message-ID', value: rfc }]));
+      throw new Error('Unexpected provider request: ' + url);
+    }));
+    const initial = await call('/send', 'POST', { requestId: randomUUID(), to: recipients, subject: 'Internal actions', body: '<p>Original &amp; formatted content</p>', composeMode: 'forward', forwardSourceMessageId: 'actions-source' });
+    expect(initial.status, JSON.stringify(initial.body)).toBe(200);
+    const recipientAccount = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId: employee.id, provider: 'gmail' } } });
+    const copy = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: recipientAccount.id, rfcMessageId: rfc } });
+    const sender = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, rfcMessageId: rfc } });
+    const thirdAccount = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId: third.id, provider: 'gmail' } } });
+    const thirdCopy = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: thirdAccount.id, rfcMessageId: rfc } });
+    const list = await call('/emails', 'GET', undefined, authorization);
+    const summary = list.body.emails.find((row: GmailEmail) => row.id === copy.providerMessageId);
+    expect(summary).toMatchObject({ isInternal: true });
+    if (!connected) {
+      const data = { requestId: randomUUID(), to: third.email, subject: 'Re: Internal actions', body: '<p>Reply</p>', composeMode: 'reply', replyToMessageId: copy.providerMessageId };
+      const before = calls.length;
+      for (const path of ['/send', '/drafts', '/scheduled']) {
+        const response = await call(path, 'POST', { ...data, ...(path === '/scheduled' ? { scheduledAt: new Date(Date.now() + 3600000).toISOString() } : {}) }, authorization);
+        expect(response.status, JSON.stringify(response.body)).toBe(409);
+      }
+      expect(calls).toHaveLength(before);
+    }
+    const sync = async () => {
+      const active = await prisma.emailAccount.findUniqueOrThrow({ where: { id: recipientAccount.id } });
+      const currentScope = await scope(() => resolveMailboxScope(active, permissions));
+      await prisma.emailAccount.update({ where: { id: active.id }, data: { syncCursor: '100', syncScopeHash: currentScope.hash, syncRequestedAt: new Date() } });
+      return scope(() => syncMailbox(tenantId, employee.id));
+    };
+    return { employee, third, accessToken, authorization, calls, copy, sender, thirdCopy, recipientAccount, summary, received, sync,
+      setAvailable: () => { available = true; }, setOnModify: (callback: () => Promise<void>) => { onModify = callback; } };
+  }
+  it.each([false, true])('manages only the recipient internal copy through shared actions (connected: %s)', async connected => {
+    const test = await internalActionsFixture(connected);
+    const count = test.calls.length;
+    const read = await call('/conversations/' + test.summary.conversationId + '/read-state', 'PATCH', { isRead: true }, test.authorization);
+    expect(read.status, JSON.stringify(read.body)).toBe(200); expect(read.body).toMatchObject({ isRead: true, unreadCount: 0 });
+    expect((await call('/emails', 'GET', undefined, test.authorization)).body.emails[0]).toMatchObject({ isRead: true });
+    expect((await call('/archive', 'POST', { conversationIds: [test.summary.conversationId] }, test.authorization)).status).toBe(200);
+    expect((await call('/emails', 'GET', undefined, test.authorization)).body.emails).toHaveLength(0);
+    expect((await call('/emails?view=archived', 'GET', undefined, test.authorization)).body.emails).toEqual(expect.arrayContaining([expect.objectContaining({ isRead: true })]));
+    expect((await call('/restore', 'POST', { conversationIds: [test.summary.conversationId] }, test.authorization)).status).toBe(200);
+    expect((await call('/trash', 'POST', { conversationIds: [test.summary.conversationId] }, test.authorization)).status).toBe(200);
+    expect((await call('/emails', 'GET', undefined, test.authorization)).body.emails).toHaveLength(0);
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.copy.id } })).labels).toContain('TRASH');
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.sender.id } })).toEqual(test.sender);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.thirdCopy.id } })).toEqual(test.thirdCopy);
+    expect(test.calls).toHaveLength(count);
+    expect((await call('/messages/' + test.sender.providerMessageId + '/read-state', 'PATCH', { isRead: true }, test.authorization)).status).toBe(404);
+  });
+  it('reconciles local actions using the recipient grant and retains a newer action during acknowledgement', async () => {
+    const test = await internalActionsFixture(true);
+    expect((await call('/conversations/' + test.summary.conversationId + '/read-state', 'PATCH', { isRead: true }, test.authorization)).status).toBe(200);
+    await test.sync();
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.copy.id } })).labels).not.toContain('UNREAD');
+    test.setAvailable();
+    test.setOnModify(async () => {
+      expect((await call('/messages/actions-received/read-state', 'PATCH', { isRead: false }, test.authorization)).status).toBe(200);
+    });
+    await test.sync();
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.copy.id } })).labels).toContain('UNREAD');
+    await test.sync();
+    const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.copy.id } });
+    expect(row).toMatchObject({ providerMessageId: 'actions-received', body: test.copy.body });
+    expect(row.labels).toContain('UNREAD');
+    expect(await prisma.mailboxMessage.count({ where: { accountId: test.recipientAccount.id, rfcMessageId: test.copy.rfcMessageId } })).toBe(1);
+    const writes = test.calls.filter(call => call.url.endsWith('/modify'));
+    expect(writes).toHaveLength(2); expect(writes.every(call => call.authorization === 'Bearer ' + test.accessToken)).toBe(true);
+    expect(test.calls.some(call => /messages\/internal_/.test(call.url))).toBe(false);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.sender.id } })).toEqual(test.sender);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.thirdCopy.id } })).toEqual(test.thirdCopy);
+  });
+  it.each(['reply', 'forward'] as const)('sends an internal %s from a local source through the recipient Gmail account without CRM effects', async mode => {
+    const test = await internalActionsFixture(true);
+    const beforeActivities = await prisma.activity.count({ where: { tenantId } });
+    const beforeWorkflows = await prisma.workflowTriggerRecord.count({ where: { tenantId } });
+    const data = { requestId: randomUUID(), to: test.third.email, subject: mode === 'reply' ? 'Re: Internal actions' : 'Fwd: Internal actions', body: '<p>Employee response</p>', composeMode: mode,
+      ...(mode === 'reply' ? { replyToMessageId: test.copy.providerMessageId } : { forwardSourceMessageId: test.copy.providerMessageId }) };
+    for (const invalid of [leadEmail, 'outside@example.test']) expect((await call('/send', 'POST', { ...data, requestId: randomUUID(), to: invalid }, test.authorization)).status).toBe(403);
+    const response = await call('/send', 'POST', data, test.authorization);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const sent = test.calls.filter(call => call.url.endsWith('/messages/send'));
+    expect(sent).toHaveLength(2); expect(sent[1].authorization).toBe('Bearer ' + test.accessToken);
+    expect(sent[1].payload.threadId).toBeUndefined(); expect(sent[1].raw).toContain('From: ' + test.employee.email);
+    if (mode === 'reply') expect(sent[1].raw).toContain('In-Reply-To: ' + test.copy.rfcMessageId);
+    else expect(sent[1].raw).not.toMatch(/In-Reply-To:|References:/);
+    test.setAvailable(); await scope(() => ingestMailboxMessages(test.recipientAccount, [test.received()], permissions));
+    expect((await call('/send', 'POST', data, test.authorization)).status).toBe(200);
+    expect(test.calls.filter(call => call.url.endsWith('/messages/send'))).toHaveLength(2);
+    const sentRow = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: test.recipientAccount.id, providerMessageId: response.body.messageId } });
+    expect(sentRow).toMatchObject({ leadId: null, contactId: null, dealId: null, meaningful: false });
+    expect(await prisma.activity.count({ where: { tenantId } })).toBe(beforeActivities);
+    expect(await prisma.workflowTriggerRecord.count({ where: { tenantId } })).toBe(beforeWorkflows);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.sender.id } })).toEqual(test.sender);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.thirdCopy.id } })).toEqual(test.thirdCopy);
+  });
+  it('replays disconnected recipient actions after reconnect, including Trash, without modifying other copies', async () => {
+    const test = await internalActionsFixture(false);
+    expect((await call('/messages/' + test.copy.providerMessageId + '/read-state', 'PATCH', { isRead: true }, test.authorization)).status).toBe(200);
+    expect((await call('/trash', 'POST', { conversationIds: [test.summary.conversationId] }, test.authorization)).status).toBe(200);
+    await prisma.emailAccount.update({ where: { id: test.recipientAccount.id }, data: { isActive: true, accessToken: encryptToken(test.accessToken), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
+    test.setAvailable(); await test.sync(); await test.sync();
+    const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.copy.id } });
+    expect(row.providerMessageId).toBe('actions-received'); expect(row.labels).toContain('TRASH'); expect(row.labels).not.toContain('UNREAD');
+    expect((await call('/emails', 'GET', undefined, test.authorization)).body.emails).toHaveLength(0);
+    expect(test.calls.filter(call => call.url.endsWith('/trash'))).toHaveLength(1);
+    expect(test.calls.some(call => /messages\/internal_/.test(call.url))).toBe(false);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.sender.id } })).toEqual(test.sender);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: test.thirdCopy.id } })).toEqual(test.thirdCopy);
+  });
+  it('restores an internal Reply draft across source reconciliation and dispatches its schedule once', async () => {
+    const test = await internalActionsFixture(true);
+    const provider = globalThis.fetch; let raw = '', sends = 0, draftWrites = 0;
+    const outgoing = () => ({ ...mail(test.employee.email, 'internal-reply-draft', ['DRAFT']), threadId: 'internal-reply-topic', to: [test.third.email], subject: 'Re: Internal actions', body: '<p>Scheduled employee reply</p>' });
+    const headers = () => [{ name: 'Message-ID', value: raw.match(/Message-ID: ([^\r\n]+)/)![1] }, { name: 'In-Reply-To', value: test.copy.rfcMessageId! }, { name: 'References', value: test.copy.rfcMessageId! }];
+    vi.stubGlobal('fetch', vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = String(target);
+      if ((url.endsWith('/drafts') || url.endsWith('/drafts/internal-reply-draft')) && ['POST', 'PUT'].includes(init?.method ?? '')) {
+        const payload = JSON.parse(String(init!.body)); raw = Buffer.from(payload.message.raw, 'base64url').toString(); draftWrites++;
+        if (payload.message.threadId) expect(payload.message.threadId).not.toMatch(/^internal_/);
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer ' + test.accessToken);
+        return Response.json({ id: 'internal-reply-draft', message: { id: 'internal-reply-draft', threadId: 'internal-reply-topic' } });
+      }
+      if (url.includes('/drafts/internal-reply-draft?')) return Response.json({ message: apiMail(outgoing(), headers()) });
+      if (url.includes('/messages/internal-reply-draft?')) return Response.json(apiMail(outgoing(), headers()));
+      if (url.endsWith('/drafts/send')) { sends++; return Response.json({ id: 'internal-reply-sent', threadId: 'internal-reply-topic' }); }
+      return provider(target, init);
+    }));
+    const data = { requestId: randomUUID(), to: test.third.email, subject: 'Re: Internal actions', body: '<p>Scheduled employee reply</p>', composeMode: 'reply', replyToMessageId: test.copy.providerMessageId };
+    const draft = await call('/drafts', 'POST', data, test.authorization); expect(draft.status, JSON.stringify(draft.body)).toBe(200);
+    test.setAvailable(); await scope(() => ingestMailboxMessages(test.recipientAccount, [test.received()], permissions));
+    const list = await call('/emails?filter=drafts', 'GET', undefined, test.authorization);
+    expect(list.body.emails).toEqual(expect.arrayContaining([expect.objectContaining({ isInternal: true, composeMode: 'reply', replyToMessageId: test.copy.providerMessageId })]));
+    expect((await call('/drafts', 'POST', data, test.authorization)).status).toBe(200); expect(draftWrites).toBe(1);
+    const queued = await call('/scheduled', 'POST', { ...data, requestId: randomUUID(), draftId: draft.body.draftId, scheduledAt: new Date(Date.now() + 3600000).toISOString() }, test.authorization);
+    expect(queued.status, JSON.stringify(queued.body)).toBe(201);
+    const before = await prisma.activity.count({ where: { tenantId } });
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.body.id }, data: { scheduledAt: new Date(0) } });
+    await runScheduledMailboxEmails(); await runScheduledMailboxEmails();
+    const delivered = await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.body.id } });
+    expect(delivered.status, JSON.stringify(delivered)).toBe('sent'); expect(sends).toBe(1);
+    expect(await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: test.recipientAccount.id, providerMessageId: 'internal-reply-sent' } })).toMatchObject({ leadId: null, contactId: null, dealId: null, meaningful: false });
+    expect(await prisma.activity.count({ where: { tenantId } })).toBe(before);
+  });
+  it('recovers an uncertain internal Reply with its original source alias and never sends it twice', async () => {
+    const test = await internalActionsFixture(true), provider = globalThis.fetch;
+    let writes = 0, sent: GmailEmail | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.endsWith('/messages/send')) {
+        writes++; const raw = Buffer.from(JSON.parse(String(init?.body)).raw, 'base64url').toString();
+        sent = { ...mail(test.employee.email, 'uncertain-internal-reply', ['SENT']), to: [test.third.email], subject: 'Re: Internal actions', body: '<p>Reply recovery</p>', rfcMessageId: raw.match(/Message-ID: ([^\r\n]+)/)![1], rfcInReplyTo: test.copy.rfcMessageId };
+        throw new TypeError('Provider response lost after delivery');
+      }
+      if (url.includes('/messages?') && decodeURIComponent(url).includes('leadcrm-send-')) return Response.json({ messages: [{ id: sent!.id, threadId: sent!.threadId }] });
+      if (url.includes('/messages/uncertain-internal-reply?')) return Response.json(apiMail(sent!, [{ name: 'Message-ID', value: sent!.rfcMessageId! }, { name: 'In-Reply-To', value: test.copy.rfcMessageId! }]));
+      return provider(target, init);
+    }));
+    const data = { requestId: randomUUID(), to: test.third.email, subject: 'Re: Internal actions', body: '<p>Reply recovery</p>', composeMode: 'reply', replyToMessageId: test.copy.providerMessageId };
+    expect((await call('/send', 'POST', data, test.authorization)).body.error.code).toBe('GMAIL_OUTCOME_UNKNOWN');
+    test.setAvailable(); await scope(() => ingestMailboxMessages(test.recipientAccount, [test.received()], permissions));
+    const response = await call('/send', 'POST', data, test.authorization); expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((await call('/send', 'POST', data, test.authorization)).status).toBe(200); expect(writes).toBe(1);
+    const row = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: test.recipientAccount.id, providerMessageId: sent!.id } });
+    expect(row).toMatchObject({ body: data.body, leadId: null, contactId: null, dealId: null, rfcInReplyTo: test.copy.rfcMessageId });
+    expect(await prisma.activity.count({ where: { tenantId, mailboxMessageId: row.id } })).toBe(0);
   });
   it('recovers a synchronized legacy forward with no delivery snapshot through normal Gmail sync', async () => {
     await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'legacy-forward-source')], permissions));
@@ -2194,6 +2392,11 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     }
     else await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } });
     const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    if (state === 'disconnected') {
+      expect((await call('/emails')).body.emails).toHaveLength(0);
+      expect((await call('/threads/disabled')).status).toBe(404);
+      expect((await call('/messages/disabled/content')).status).toBe(404);
+    }
     expect([401, 403, 409]).toContain((await call('/threads/disabled/read-state', 'PATCH', { isRead: true })).status);
     expect(provider).not.toHaveBeenCalled();
   });

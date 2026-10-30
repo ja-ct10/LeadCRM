@@ -1,5 +1,7 @@
 # Internal employee forwarding — persistence verification
 
+This records the earlier persistence change and its verification. Recipient actions and internal Reply now follow the [shared mailbox action flow](inbox-internal-actions.md), which supersedes the read/download-only recipient behavior described below.
+
 ## Confirmed root cause
 
 Employee recipient restrictions were already present, but Gmail acceptance did not guarantee a LeadCRM message record. The sender path fetched provider metadata and content after sending; a read-back failure was swallowed and deferred to synchronization. Recipient copies depended entirely on the recipient's Gmail synchronization, while mailbox reads and rendering required an active Gmail connection.

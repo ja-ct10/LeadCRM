@@ -29,9 +29,9 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.resto
 
 
 describe('Persisted scoped Inbox', () => {
-  it('reads persisted internal copies without Gmail and does not issue provider read-state writes', async () => {
+  it('marks internal copies read through the shared handler without a Gmail connection', async () => {
     mocks.status.mockResolvedValue({ isConnected: false, canReadMailbox: true, mailboxEmail: 'staff@example.test', email: null });
-    mocks.list.mockResolvedValue({ emails: [{ ...email, id: 'internal_receipt', subject: 'Internal forward', gmailActionsAvailable: false }] });
+    mocks.list.mockResolvedValue({ emails: [{ ...email, id: 'internal_receipt', subject: 'Internal forward', isInternal: true, gmailActionsAvailable: false }] });
     render(<InboxPage />); await flush();
     expect(screen.getByText(/Internal forward/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Connect Gmail' })).toBeTruthy();
@@ -39,7 +39,7 @@ describe('Persisted scoped Inbox', () => {
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
     fireEvent.click(screen.getByText(/Internal forward/)); await flush();
     expect(screen.getByText('Conversation')).toBeTruthy();
-    expect(mocks.read).not.toHaveBeenCalled(); expect(mocks.readThread).not.toHaveBeenCalled();
+    expect(mocks.read).not.toHaveBeenCalled(); expect(mocks.readThread).toHaveBeenCalledWith(email.threadId, true);
   });
   it('discovers the first internal delivery while the disconnected Inbox remains open', async () => {
     mocks.status.mockResolvedValueOnce({ isConnected: false, email: null }).mockResolvedValue({ isConnected: false, canReadMailbox: true, mailboxEmail: 'staff@example.test' });

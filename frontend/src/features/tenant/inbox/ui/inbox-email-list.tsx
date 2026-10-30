@@ -29,7 +29,7 @@ interface InboxEmailListProps {
 
 
 const rowId = (email: GmailEmail) => email.conversationId ?? (email.messageCount ? email.threadId : email.id);
-const eligible = (email: GmailEmail) => email.gmailActionsAvailable !== false && !email.scheduledStatus && !email.labels.includes('DRAFT');
+const eligible = (email: GmailEmail) => !email.scheduledStatus && !email.labels.includes('DRAFT');
 
 export default function InboxEmailList({ view = 'inbox', emails, mailboxEmail, onEmailsChanged, refreshDisabled = false, loading = false, hasLoadError = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

@@ -1,7 +1,7 @@
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox, mailboxChanged } from './mailbox-store';
-import { mailboxAddress, scopedMessagesWhere } from './mailbox-scope';
+import { mailboxAddress, scopedMessagesWhere, storedInternalProof, resolveMailboxScope } from './mailbox-scope';
 import { getValidAccessToken } from './gmail.service';
 import { writeGmailJson } from './gmail-read';
 import { Prisma } from '@prisma/client';
@@ -11,9 +11,17 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { MailboxConversationReadStateSchema, type MailboxConversationReadState, type MailboxBulkActionResult } from '@leadcrm/shared';
 import { countUnreadConversations } from './mailbox-conversations';
-import { isLocalForwardId } from './mailbox-forward-delivery';
+import { assertProviderMessageIds, internalMailboxStates, nextInternalMailboxState, overlayInternalLabels } from './mailbox-forward-delivery';
+import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
+import { mailboxPermissions } from './mailbox-sync.service';
 
 type Action = 'read' | 'unread' | 'archive' | 'trash' | 'restore';
+
+async function authorizedActionMailbox(tenantId: string, userId: string) {
+  const current = await authorizedMailbox(tenantId, userId, true);
+  if (!current.account.isActive && !current.scope.forwardProofs?.some(proof => proof.completed)) throw new AppError('Connect your work Gmail account first.', 409);
+  return current;
+}
 
 const readStatePending = new Map<string, Promise<MailboxConversationReadState>>();
 const readCursorSchema = z.object({ context: z.string(), cutoff: z.string().datetime(), after: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/) }).strict();
@@ -21,7 +29,7 @@ const readCursorSchema = z.object({ context: z.string(), cutoff: z.string().date
 /** Independent of history pagination, with a fixed opening-time boundary. */
 export async function mutateMailboxConversationReadState(tenantId: string, userId: string, conversationId: string, input: unknown): Promise<MailboxConversationReadState> {
   const options = MailboxConversationReadStateSchema.parse(input);
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedActionMailbox(tenantId, userId);
   const key = JSON.stringify([tenantId, userId, account.id, scope.hash, conversationId, options]);
   const existing = readStatePending.get(key);
   if (existing) return existing;
@@ -59,7 +67,7 @@ export async function mutateMailboxConversationReadState(tenantId: string, userI
     } finally {
       if (count) await mailboxChanged(account.id);
     }
-    const current = await authorizedMailbox(tenantId, userId);
+    const current = await authorizedActionMailbox(tenantId, userId);
     if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw new AppError('Mailbox access changed. Reopen the conversation.', 409, 'MAILBOX_SCOPE_CHANGED');
     const [state] = await mailboxReadQuery<{ unread: boolean }[]>(current.account, Prisma.sql`
       WITH ${correspondentCte(current.account, current.scope)} SELECT EXISTS(SELECT 1 FROM eligible WHERE "conversationId" = ${conversationId} AND unread) AS unread`);
@@ -73,7 +81,7 @@ export async function mutateMailboxConversationReadState(tenantId: string, userI
 /** Group toolbar/bulk actions cover all currently authorized non-draft messages
  * across its topics. No provider thread-wide mutation is ever issued. */
 export async function mutateMailboxCorrespondents(tenantId: string, userId: string, conversationIds: string[], action: Action) {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedActionMailbox(tenantId, userId);
   const rows = await mailboxReadQuery<{ conversationId: string; providerMessageId: string; dealId: string | null }[]>(account, Prisma.sql`
     WITH ${correspondentCte(account, scope)} SELECT "conversationId", "providerMessageId", "dealId" FROM eligible
     WHERE "conversationId" IN (${Prisma.join(conversationIds)}) LIMIT 1001`);
@@ -85,7 +93,7 @@ export async function mutateMailboxCorrespondents(tenantId: string, userId: stri
 }
 
 export async function mutateMailboxMessages(tenantId: string, userId: string, messageIds: string[], action: Action, expectedGroups?: Map<string, { dealId: string | null; conversationId: string }>) {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedActionMailbox(tenantId, userId);
   await assertStoredMessages(account, scope, messageIds, true);
   const rows = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { providerMessageId: { in: messageIds }, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true, providerMessageId: true, labels: true, fromAddress: true, recipientAddresses: true, dealId: true } });
   if (expectedGroups && rows.some(row => row.dealId !== expectedGroups.get(row.providerMessageId)?.dealId)) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
@@ -99,14 +107,13 @@ export async function mutateMailboxThread(tenantId: string, userId: string, thre
 }
 
 export async function mutateMailboxThreads(tenantId: string, userId: string, threadIds: string[], action: Action) {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedActionMailbox(tenantId, userId);
   const rows = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId: { in: threadIds }, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true, threadId: true, providerMessageId: true, labels: true, fromAddress: true, recipientAddresses: true, dealId: true } });
   if (new Set(rows.map(row => row.threadId)).size !== new Set(threadIds).size) throw new AppError('Conversation is no longer available in your assigned CRM mailbox scope.', 404);
   return applyMessageAction(tenantId, userId, account.id, account.email, rows, action);
 }
 
 async function applyMessageAction(tenantId: string, userId: string, accountId: string, mailbox: string, rows: { id: string; providerMessageId: string; labels: string[]; fromAddress: string; recipientAddresses?: string[]; dealId?: string | null; conversationId?: string }[], action: Action, scopeHash?: string): Promise<MailboxBulkActionResult> {
-  if (rows.some(row => isLocalForwardId(row.providerMessageId))) throw new AppError('This internal copy is available to read and download. Gmail actions become available after mailbox synchronization.', 409, 'MAILBOX_PROVIDER_PENDING');
   // Trash outbound replies before their approved fixed-sender source disappears
   // from scope. Current authorization is still rechecked before every write.
   const eligible = (row: typeof rows[number]) => action === 'read' ? row.labels.includes('UNREAD') : action === 'unread' ? !row.labels.includes('UNREAD') : action === 'archive' ? row.labels.includes('INBOX')
@@ -115,12 +122,12 @@ async function applyMessageAction(tenantId: string, userId: string, accountId: s
     .sort((a, b) => Number(!!a.dealId) - Number(!!b.dealId) || Number(b.fromAddress === mailboxAddress(mailbox)) - Number(a.fromAddress === mailboxAddress(mailbox)) || a.providerMessageId.localeCompare(b.providerMessageId));
   const completedMessageIds = rows.filter(row => !eligible(row)).map(row => row.providerMessageId);
   if (!changed.length) return { success: true, count: 0, completedMessageIds };
-  const token = await getValidAccessToken(tenantId, userId);
+  let token: string | undefined;
   let count = 0;
   try {
     for (const row of changed) {
       // Reassignment/revocation during a long bulk operation stops later writes.
-      const current = await authorizedMailbox(tenantId, userId);
+      const current = await authorizedActionMailbox(tenantId, userId);
       if (current.account.id !== accountId) throw new AppError('Mailbox changed. Refresh your Inbox.', 409);
       if (scopeHash && current.scope.hash !== scopeHash) throw new AppError('Mailbox access changed. Reopen the conversation.', 409, 'MAILBOX_SCOPE_CHANGED');
       await assertStoredMessages(current.account, current.scope, [row.providerMessageId], true);
@@ -131,9 +138,32 @@ async function applyMessageAction(tenantId: string, userId: string, accountId: s
           ) AS found`);
         if (!membership.found) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
       }
-      const saved = await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: row.id }, select: { labels: true, dealId: true } });
+      const saved = await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: row.id } });
       if (row.dealId !== undefined && row.dealId !== saved.dealId) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
       if (action === 'read' && !saved.labels.includes('UNREAD') || action === 'unread' && saved.labels.includes('UNREAD')) continue;
+      const proof = storedInternalProof(saved, current.scope);
+      if (proof?.completed && proof.receiptId) {
+        const updated = await salesTransaction(async tx => {
+          const permissions = await mailboxPermissions(tenantId, userId, true, tx);
+          const scope = await resolveMailboxScope(current.account, permissions, tx);
+          const target = await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(current.account, scope), { id: row.id }] } });
+          if (!target || storedInternalProof(target, scope)?.receiptId !== proof.receiptId) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
+          if (!eligible({ ...row, labels: target.labels })) return false;
+          const receipt = await tx.mailboxSendReceipt.findFirstOrThrow({ where: { tenantId, id: proof.receiptId } });
+          const states = internalMailboxStates(receipt.authorizationContext);
+          const state = nextInternalMailboxState(states[target.id], current.account, action);
+          await tx.mailboxMessage.update({ where: { id: target.id }, data: { labels: overlayInternalLabels(target.labels, state) } });
+          await tx.mailboxSendReceipt.update({ where: { id: receipt.id }, data: { authorizationContext: { ...receipt.authorizationContext as Prisma.JsonObject, mailboxActions: { ...states, [target.id]: state } } } });
+          await tx.emailAccount.update({ where: { id: accountId }, data: { mailboxVersion: { increment: 1 }, syncRequestedAt: new Date() } });
+          return true;
+        });
+        if (updated) count++;
+        completedMessageIds.push(row.providerMessageId);
+        continue;
+      }
+      // Ordinary customer mail retains provider-first behavior and Gmail authorization.
+      assertProviderMessageIds([row.providerMessageId]);
+      token ??= await getValidAccessToken(tenantId, userId);
       const removeLabelIds = action === 'read' ? ['UNREAD'] : action === 'archive' ? ['INBOX'] : [];
       const addLabelIds = action === 'unread' ? ['UNREAD'] : action === 'trash' ? ['TRASH'] : action === 'restore' ? ['INBOX'] : [];
       const provider = await writeGmailJson<{ labelIds?: string[] }>(token, `messages/${encodeURIComponent(row.providerMessageId)}/${action === 'trash' ? 'trash' : 'modify'}`, 'POST', action === 'trash' ? undefined : { removeLabelIds, addLabelIds });
