@@ -10,7 +10,7 @@ const { build, preview } = await import(pathToFileURL(require.resolve('vite')));
 const { default: react } = await import(pathToFileURL(require.resolve('@vitejs/plugin-react')));
 const { default: tailwind } = await import(pathToFileURL(require.resolve('@tailwindcss/postcss')));
 const { chromium } = require('playwright');
-const output = resolve(root, 'data/outputs/inbox-forward-verification'); mkdirSync(output, { recursive: true });
+const output = resolve(root, 'data/outputs/system-audit/inbox-forward-employees'); mkdirSync(output, { recursive: true });
 const source = resolve(root, 'frontend/src').replaceAll('\\', '/');
 const fixture = resolve(output, 'browser'); mkdirSync(fixture, { recursive: true });
 writeFileSync(resolve(fixture, 'index.html'), '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/fixture.tsx"></script>');
@@ -21,14 +21,14 @@ const original={id:'original',threadId:'original-thread',from:'Customer <'+custo
 const full='<p>Fresh &amp; readable <strong>quotation</strong></p><p>Second line</p><div class="gmail_quote"><p>Original quoted history</p></div>';
 const files=[{id:'pdf',filename:'Quote.pdf',mimeType:'application/pdf',size:18},{id:'eml',filename:'Original.eml',mimeType:'message/rfc822'},{id:'retry',filename:'Retry.txt',mimeType:'text/plain',size:4}];
 let sent=[],attempts=0;window.forwardCalls=[];window.forwardMode='success';window.forwardDownloads=[];
-export const getGmailStatus=async()=>({isConnected:true,email:owner,connectedAt:'2026-10-01',lastSyncAt:'2026-10-28'});
+export const getGmailStatus=async()=>({isConnected:true,email:owner,connectedAt:'2026-10-01',lastSyncAt:'2026-10-28',forwardRecipientEmails:['first@example.test','second@example.test']});
 export const fetchGmailEmails=async(options={})=>({emails:options.filter==='sent'?sent:[original,...sent],unreadCount:0});
 export const fetchGmailThread=async(id)=>({emails:id==='original-thread'?[{...original,id:'older',date:'2026-10-27T01:00:00Z'},original]:sent.filter(row=>row.threadId===id),dealOptions:[],canAssociateDeal:false});
 export const fetchGmailMessageContent=async(id)=>({body:id==='original'?full:id==='older'?'<pre>Plain &lt;original&gt; &amp; preserved\\nSecond line</pre>':sent.find(row=>row.id===id)?.body??'',attachments:id==='original'?files:[]});
 export const fetchGmailAttachment=async(id,file)=>{window.forwardDownloads.push(file);if(file==='retry'&&++attempts===1)throw Error('Download failed.');return new Blob([file==='pdf'?'%PDF-original-bytes':'Text']);};
 export const sendGmailEmail=async(to,subject,body,replyToMessageId,draftId,forwardSourceMessageId,requestId,composeMode,extras)=>{
  const payload={to,subject,body,replyToMessageId,draftId,forwardSourceMessageId,requestId,composeMode,...extras};window.forwardCalls.push(payload);
- if(window.forwardMode==='recipient')throw Object.assign(Error('A recipient is outside your assigned CRM mailbox scope.'),{status:403,code:'MAILBOX_RECIPIENT_REJECTED'});
+ if(window.forwardMode==='recipient')throw Object.assign(Error('Forwarding is only allowed to active employee accounts in your LeadCRM workspace.'),{status:403,code:'MAILBOX_RECIPIENT_REJECTED'});
  if(window.forwardMode==='gmail')throw Object.assign(Error('Gmail rejected this send.'),{status:403,code:'GMAIL_WRITE_REJECTED'});
  if(window.forwardMode==='unknown')throw Object.assign(Error('Verify delivery before retrying.'),{status:503,code:'GMAIL_OUTCOME_UNKNOWN'});
  await new Promise(done=>setTimeout(done,150));sent=[{...original,id:'sent',threadId:'forward-new-thread',from:owner,to,cc:[],subject,body,snippet:'Forwarded',labels:['SENT'],direction:'outbound',date:new Date().toISOString()}];return{success:true,messageId:'sent',threadId:'forward-new-thread'};
@@ -88,6 +88,11 @@ try {
   results.push('Full original content, attachment bytes, explicit omission and retry');
   await page.getByLabel('To', { exact: true }).fill('invalid'); await page.getByLabel('Send email', { exact: true }).click();
   assert.ok((await page.getByRole('alert').innerText()).includes('valid email addresses')); assert.equal(await page.evaluate(() => window.forwardCalls.length), 0);
+  for (const address of ['external@example.test', 'customer@example.test', 'foreign-employee@example.test']) {
+    await page.getByLabel('To', { exact: true }).fill(address); await page.getByLabel('Send email', { exact: true }).click();
+    assert.ok((await page.getByRole('alert').innerText()).includes('active employee accounts')); assert.equal(await page.evaluate(() => window.forwardCalls.length), 0);
+  }
+  results.push('External, CRM customer and foreign employee addresses rejected before delivery');
   await page.getByLabel('To', { exact: true }).fill('first@example.test, second@example.test');
   await page.getByLabel('Subject', { exact: true }).fill('Edited forward'); await editor.fill('Edited introduction\nOriginal forwarded content & details');
   assert.equal(await page.getByLabel('To', { exact: true }).getAttribute('aria-invalid'), 'false'); results.push('Invalid and multiple recipients, subject/body edits');

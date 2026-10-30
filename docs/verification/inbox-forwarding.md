@@ -1,80 +1,81 @@
-# Inbox forwarding verification — 2026-10-30
+# Employee-only Inbox forwarding — 2026-10-30
 
-## Root causes and resulting behavior
+## Root cause and resulting behavior
 
-The existing composer treated every source-backed HTTP 403 as revoked mailbox access. Recipient-policy rejection therefore cleared and closed a forward without displaying the error. Recipient validation now returns `MAILBOX_RECIPIENT_REJECTED`, and the composer displays that error while preserving edits. A Gmail write rejection also preserves the draft. Actual source/account authorization loss still clears protected content.
+Forward shared the customer-recipient validator with Compose and Reply, so assigned CRM customers qualified and employee-only addresses did not. The ingestion guard skipped engagement updates only after customer matching, Deal attribution and email Activity persistence. The verified-message replay path could also persist an Activity.
 
-The recipient field's blur validation accepted only one address, although submission supported an array. Editing, blur, send and draft validation now use the existing shared recipient schema and comma-separated addresses, with the existing maximum of 50 recipients. CRM recipient restrictions remain enforced.
+Forward now checks active, provisioned employees from the authenticated tenant, including Client Admin and approved staff email addresses. Lead/Contact addresses, unknown addresses, other tenants, inactive/pending accounts and retired Guests are ineligible. Every address must qualify; mixed recipient lists fail together. Existing staff provisioning and email normalization rules are reused.
 
-Forward previously copied the stored body and omitted the attachment-source metadata used by draft restoration. It now reads the selected original through the existing authorized content endpoint, preserves sender/date/subject/To/Cc and complete sanitized message history, and restores original attachment bytes through existing attachment downloads and MIME generation. Forward content normalization preserves quotes independently of display-only quote trimming.
+The existing status endpoint accepts `includeForwardRecipients=true` and returns the optional shared `forwardRecipientEmails` field. Forward validates against that list before send, schedule and nonempty draft saves. Loading failures block these actions and offer retry. Backend authorization independently rechecks the current database before provider writes, scheduled dispatch, replay and recovery. Recipient rejection uses `MAILBOX_RECIPIENT_REJECTED` and preserves editable content.
 
-Supported attachments retain their filenames and bytes. Missing, unsupported, oversized or failed files appear individually and block delivery until retried or explicitly removed. Existing limits remain 10 files, 5 MB each and 10 MB total. Available embedded images can be sent as ordinary attachments; original image placement and remote images are not preserved, and the composer explains that limitation.
+Normalized forward intent drops CRM record and Deal context, including restored drafts. The composer hides the Deal selector and does not associate a sent forward. Ingestion handles proven forward copies before any customer matching or CRM effects, storing null Lead/Contact/Deal links and no engagement evidence. The manual Deal-association API also rejects employee forwards.
 
-The existing send, ingestion and engagement paths treated accepted forwards as ordinary outreach. Forward intent now travels through immediate and scheduled ingestion and is recovered from existing receipts during later synchronization. Proven forwards remain outbound Sent/history records but do not contribute outreach timestamps, customer replies, Deal engagement evidence or resulting status automation. No source CRM association or original Gmail thread is forced onto the new message. Existing matching and recipient/source authorization logic remain intact.
+Same-tenant operation receipts, exact provider identities and exact participants provide the narrow read exception for sender Sent, recipient Inbox, drafts, content and attachments. Matching applies consistently to provider metadata, ORM reads and SQL conversation queries. Reconciliation searches the proven RFC identities, rather than granting general access to internal employee mail. Eligibility changes invalidate mailbox scope.
 
-The literal “No unique CRM email match” UI notice was removed without a replacement warning or backend matching changes.
+Deactivation blocks new delivery and receipt replay, while existing internal Sent history and acknowledged drafts remain readable. A rejected scheduled forward retains the specific employee-eligibility error; its owner can review the failure and correct the draft. Draft reads still require access to the original source message.
 
-## Files changed for this request
+Existing Gmail MIME/delivery, authentication, operation IDs and uncertain-outcome recovery remain in use. Supported attachment filenames and bytes, complete sanitized source content and normal Sent history are preserved. The source message's CRM association and Activity rows are unchanged. No endpoint, dependency, schema change or migration was added.
 
-Frontend behavior:
-
-- `frontend/src/features/tenant/inbox/ui/email-detail-view.tsx`
-- `frontend/src/features/tenant/inbox/ui/email-conversation-view.tsx`
-- `frontend/src/features/tenant/inbox/ui/compose-modal.tsx`
-- `frontend/src/features/tenant/inbox/services/email-presentation.ts`
-- `frontend/src/features/tenant/inbox/services/email-html.ts` — adds the complete-content Forward projection while retaining concurrent display normalization work.
+## Changed files
 
 Backend behavior:
 
-- `backend/src/integrations/gmail/mailbox-recipient-access.ts`
-- `backend/src/integrations/gmail/mailbox-attachments.ts`
-- `backend/src/integrations/gmail/mailbox-send.service.ts`
-- `backend/src/integrations/gmail/gmail.service.ts`
-- `backend/src/integrations/gmail/scheduled-mailbox.service.ts`
-- `backend/src/integrations/gmail/mailbox-ingestion.service.ts`
-- `backend/src/integrations/gmail/mailbox-engagement.ts`
-- `backend/src/modules/crm/deals/deal-engagement.service.ts`
+- `backend/src/integrations/gmail/mailbox-forward-access.ts` — employee eligibility and receipt proof.
+- `backend/src/integrations/gmail/mailbox-recipient-access.ts` — Forward-specific validation.
+- `backend/src/integrations/gmail/mailbox-operations.ts` — authoritative source/recipient authorization.
+- `backend/src/integrations/gmail/mailbox-draft-context.ts` — retain exact acknowledged Forward intent after rejected delivery.
+- `backend/src/integrations/gmail/gmail.controller.ts` — opt-in status query.
+- `backend/src/integrations/gmail/gmail.service.ts` — status data, delivery/draft checks and canonical participants.
+- `backend/src/integrations/gmail/mailbox-ingestion.service.ts` — persist forward copies without CRM effects.
+- `backend/src/integrations/gmail/mailbox-scope.ts` — metadata, ORM, SQL and reconciliation access.
+- `backend/src/integrations/gmail/mailbox-sync.service.ts` — reject manual CRM association.
+- `backend/src/integrations/gmail/mailbox-recovery.ts` — canonical recovered-draft participants.
+- `backend/src/integrations/gmail/scheduled-mailbox.service.ts` — Forward-aware dispatch rechecks.
 
-Verification:
+Frontend and shared contracts:
 
+- `frontend/src/features/tenant/inbox/services/gmail.service.ts`
+- `frontend/src/features/tenant/inbox/ui/compose-modal.tsx`
+- `shared/src/contracts/mailbox.contract.ts`
+- `shared/src/contracts/mailbox.contract.js` — generated by the shared build.
+
+Tests, browser fixture and documentation:
+
+- `backend/src/integrations/gmail/mailbox-draft-context.test.ts`
+- `backend/src/integrations/gmail/mailbox-scope.test.ts`
+- `backend/src/integrations/gmail/scoped-mailbox.integration.test.ts`
 - `frontend/src/features/tenant/inbox/ui/forward-email.test.tsx`
 - `frontend/src/features/tenant/inbox/ui/compose-schedule.test.tsx`
-- `frontend/src/features/tenant/inbox/ui/inbox-page.test.tsx` — refresh fixture updates the body together with the snippet, matching the current preview projection.
-- `backend/src/integrations/gmail/scoped-mailbox.integration.test.ts`
-- `backend/scripts/test-mailbox-db.mjs` — optional `--testNamePattern=` and `--testTimeout=` passthrough; default suite behavior is unchanged.
-- `backend/scripts/verify-inbox-forward.mjs`
-- This report and local logs/screenshots under `data/outputs/inbox-forward-verification/`.
+- `frontend/src/features/tenant/inbox/ui/email-conversation-view.test.tsx`
+- `backend/scripts/verify-inbox-forward.mjs` — adds rejection checks and writes new evidence under ignored QA outputs.
+- `docs/API.md`
+- `docs/verification/inbox-forwarding.md`
 
-Other changes already present or concurrently edited in the workspace were preserved. No endpoint, dependency, database schema or migration was added.
+## Executed verification
 
-## Executed checks
-
-| Check | Observed result |
+| Check | Result |
 | --- | --- |
-| `npm --prefix frontend run test -- src/features/tenant/inbox --maxWorkers=2` | 176 passed, 11 files, including late-download authorization cleanup |
-| Selected Gmail MIME, scope, draft context, attachment, scheduler and customer/Deal engagement unit suites | 72 passed, 7 files |
-| Selected scoped mailbox integration checks using `test-mailbox-db.mjs` | 21 passed; 144 other cases excluded by the name filter |
-| Final delayed/scheduled Forward replay checks, including ordinary messages without RFC IDs | 2 passed; this reruns two cases included in the 21 above |
-| Full `mailbox.integration.test.ts` through the disposable runner | 34 passed |
-| Full `mailbox-agent.integration.test.ts` through the disposable runner with `--testTimeout=60000` | 22 passed |
-| Frontend TypeScript check | Passed |
-| Backend application and test TypeScript checks | Passed |
-| `node backend/scripts/verify-inbox-forward.mjs` | 5 browser scenarios passed; zero page errors |
+| Shared package build | Passed; generated JavaScript synchronized |
+| `npm run lint` | All three workspaces passed, including backend test types |
+| Gmail, CRM email visibility and workflow email unit suites | 176 passed across 15 files |
+| All Inbox component/service suites | 184 passed across 11 files |
+| Full scoped mailbox HTTP suite on disposable PostgreSQL 17.6 | 178 passed; zero failed or skipped |
+| Final deactivation/recovery revalidation on unchanged source | 2 passed; 176 other cases excluded by the explicit name filter |
+| Native guarded deployment/startup rehearsal | 3 checks passed against disposable databases |
+| Bundled forwarding browser fixture in Chromium | 6 scenarios passed, zero page errors |
 
-The browser walkthrough uses the real Inbox and composer with controlled Gmail responses. It covers collapsed/expanded views, fresh full content, attachment byte preservation/retry/explicit omission, invalid and multiple recipients, body/subject edits, recipient/provider errors that retain drafts, stable retry IDs, repeated clicks and Sent visibility. The fixture was bundled successfully and tested in local headless Chromium; the full application production build was not run.
+The HTTP suite covers same-tenant employee delivery and multiple recipients; external, Lead, Contact, other-tenant, inactive/pending, Guest and employee/customer-collision rejection on send/draft/schedule APIs; Client Admin and approved staff eligibility; saved drafts; scheduled delivery and deactivation before dispatch; uncertain-outcome recovery and replay. Delivery tests assert new-thread MIME and attachment bytes, sender Sent and recipient Inbox visibility, metadata rejection before unrelated body fetches, unchanged source rows/activities, no forwarded-copy timeline entries, no new Activities/Workflow trigger rows, unchanged CRM engagement/stage evidence, and rejection of manual Deal linking.
 
-Database tests use fresh PGlite databases and mocked Gmail, not deployment credentials. Authenticated HTTP forwarding cases cover Lead/Contact recipients and multiple recipients, MIME attachments, new-thread behavior, Sent persistence, one Activity per matched message, unchanged CRM status evidence, receipt replay and delayed/scheduled ingestion. Existing mailbox tests cover genuine inbound automation, matching, threading, synchronization and ordinary delivery.
+The existing relationship-read race assertion now expects the documented `409 MAILBOX_SCOPE_CHANGED` retry response after reassignment, with no data disclosure. Deactivation fixtures use independent employees without assigned CRM records; retired-Guest fixtures respect the database prohibition on active Guest accounts.
 
-Evidence: [browser results](../../data/outputs/inbox-forward-verification/browser-results.json), [retained draft screenshot](../../data/outputs/inbox-forward-verification/forward-error-retains-draft.png), [Sent screenshot](../../data/outputs/inbox-forward-verification/forward-sent-visible.png). The adjacent `.log` files contain the executed test output.
+The broad run overlapped the final failed-forward draft-restoration/test/report edits, so its outer QA wrapper records `REVALIDATION REQUIRED` despite all 178 assertions passing. Both affected deactivation/recovery scenarios were then rerun on unchanged final executable source and passed, including restored Forward intent. The 176 backend unit tests also passed on that final implementation; the two native rechecks repeat cases from the broad suite.
 
-## PR consolidation preflight
+Local evidence is retained under the ignored `data/outputs/system-audit/inbox-forward-employees/` directory: `native-http-results.json`, `native-qa-report.json`, `native-targeted-results.json`, `native-targeted-qa-report.json`, `browser-results.json`, `forward-error-retains-draft.png` and `forward-sent-visible.png`. These generated artifacts are not required repository inputs.
 
-The consolidated branch starts at upstream `main` commit `5eec92be`. All 14 other local worktrees were inspected. Their commits, including the outstanding form-heading and import-column edits in older worktrees, are already represented in that base; the newer optional heading props are preserved.
+## Limits and rollout
 
-The exact CI TypeScript steps passed locally for frontend, backend and shared, including fresh Prisma Client generation and Next route type generation. Backend test types also passed. The additional CRM activity/timeline/custom-field component suites passed all 59 tests. QA coordination/isolation checks passed 33 tests with one Linux-only case skipped on Windows; documentation checking found zero broken links among 2,224 local links.
+Gmail was mocked in HTTP tests and controlled in the browser fixture. Live Gmail delivery, live OAuth and production deployment were not exercised. The native startup rehearsal built and started the backend; the browser fixture bundle was built, rather than a complete Next.js production build.
 
-## Verification limits
+Initial sandbox runs hit Vitest cache/loopback restrictions and were rerun outside the sandbox. An initial PGlite full-suite attempt lost its socket; native PostgreSQL replaced that fixture. Initial native fixture failures were corrected and the full suite rerun. Historical tracked browser evidence was preserved; current captures live in the ignored QA directory.
 
-The first full scoped-mailbox run encountered a local `P1001` database connection failure and was interrupted. The focused scoped run passed; the remaining 144 scoped cases were not all completed successfully in this run. The first full agent suite had 21 passes and one test exceeding its 20-second limit; all 22 passed when rerun with a 60-second per-test timeout. Earlier browser attempts timed out while loading the development fixture; the final bundled-fixture walkthrough passed.
-
-Live Gmail delivery, live OAuth, native PostgreSQL concurrency and deployment were not exercised. No historical CRM status/timestamp backfill was performed. Release the frontend and backend together so recipient-policy error codes are recognized by the composer. See the existing [Inbox API documentation](../API.md#inbox-integration) for unchanged ownership, scope and threading rules.
+Deploy matching frontend/backend/shared versions together. No historical production cleanup or backfill is part of this change. Existing attachment limits and explicit omission/retry behavior remain as documented in the [Inbox API](../API.md).

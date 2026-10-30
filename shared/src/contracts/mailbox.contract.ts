@@ -15,6 +15,12 @@ const header = z.string().trim().min(1).max(998).refine(value => !/[\r\n]/.test(
 const recipient = z.string().trim().max(254).email().refine(value => !/[\r\n]/.test(value), 'Invalid email address');
 export const MAILBOX_COMPOSE_MODES = ['compose', 'reply', 'replyAll', 'forward'] as const;
 export type MailboxComposeMode = typeof MAILBOX_COMPOSE_MODES[number];
+export const MAILBOX_FORWARD_RECIPIENT_ERROR = 'Forwarding is only allowed to active employee accounts in your LeadCRM workspace.';
+export interface MailboxConnectionStatus {
+  isConnected: boolean; email: string | null; connectedAt: string | null; lastSyncAt: string | null;
+  syncError?: string | null; retryAt?: string | null;
+  forwardRecipientEmails?: string[];
+}
 const sourceId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export const MailboxRecordContextSchema = z.object({ recordModule: z.enum(['leads', 'contacts']), recordId: z.string().min(1).max(200) }).strict();
 export type MailboxRecordContext = z.infer<typeof MailboxRecordContextSchema>;
@@ -44,7 +50,8 @@ export const MailboxComposeContextSchema = z.object({
 }).transform(value => ({ ...value, composeMode: value.composeMode ?? (value.replyToMessageId ? 'reply' : value.forwardSourceMessageId ? 'forward' : 'compose') as MailboxComposeMode }))
   .refine(value => value.composeMode === 'compose' ? !value.replyToMessageId && !value.forwardSourceMessageId
     : value.composeMode === 'forward' ? !!value.forwardSourceMessageId && !value.replyToMessageId
-    : !!value.replyToMessageId && !value.forwardSourceMessageId, 'Choose the original message for Reply, Reply All or Forward.');
+    : !!value.replyToMessageId && !value.forwardSourceMessageId, 'Choose the original message for Reply, Reply All or Forward.')
+  .transform(value => value.composeMode === 'forward' ? { ...value, recordContext: undefined, dealId: undefined } : value);
 export const SendMailboxEmailSchema = z.object({
   ...recordComposeFields,
   attachments: MailboxUploadAttachmentsSchema.optional(),

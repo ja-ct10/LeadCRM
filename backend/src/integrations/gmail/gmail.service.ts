@@ -11,7 +11,7 @@ import { authorizedMailbox, listStoredMailbox, mailboxChanged } from './mailbox-
 import { assertStoredMessages, mailboxAddress, messageInScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { ingestMailboxMessages } from './mailbox-ingestion.service';
-import { MailboxListOptions } from '@leadcrm/shared';
+import { MailboxListOptions, type MailboxConnectionStatus } from '@leadcrm/shared';
 import { readGmailJson, writeGmailJson } from './gmail-read';
 import type { MailboxUnreadCount } from '@leadcrm/shared';
 import { countUnreadConversations } from './mailbox-conversations';
@@ -264,7 +264,7 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   if (forwardSourceMessageId) await assertStoredMessages(account, scope, [forwardSourceMessageId], true);
   const reply = replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: replyToMessageId } } }) : null;
   const recipients = Array.isArray(to) ? to : [to];
-  if (!draftId) await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
+  if (!draftId) await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId, undefined, !!forwardSourceMessageId);
   if (!draftId && reply) assertReplySubject(subject, reply.subject);
   let marked = false;
   const beforeProviderWrite = async () => { if (!marked) { await operation.beforeProviderWrite?.(); marked = true; } };
@@ -288,7 +288,8 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
 export async function getConnectionStatus(
   tenantId: string,
   userId: string,
-): Promise<{ isConnected: boolean; email: string | null; connectedAt: string | null; lastSyncAt: string | null; syncError?: string | null; retryAt?: string | null }> {
+  includeForwardRecipients = false,
+): Promise<MailboxConnectionStatus> {
   const account = await prisma.emailAccount.findUnique({
     where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
   });
@@ -304,6 +305,7 @@ export async function getConnectionStatus(
 
   return {
     isConnected: true,
+    ...(includeForwardRecipients ? { forwardRecipientEmails: (await authorizedMailbox(tenantId, userId)).scope.forwardRecipientEmails ?? [] } : {}),
     syncError: account.syncError ?? null, retryAt: account.syncRetryAt?.toISOString() ?? null,
     email: account.email,
     connectedAt: account.connectedAt.toISOString(),
@@ -338,7 +340,7 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
       if (!sourceMessageId) throw new AppError('Choose the original message action before using this draft.', 409, 'MAILBOX_DRAFT_CONTEXT_REQUIRED');
     }
   }
-  await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
+  await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId, undefined, !!options.forwardSourceMessageId);
   if (reply) assertReplySubject(subject, reply.subject);
   const accessToken = await getValidAccessToken(tenantId, userId);
   const headers = reply ? await verifiedReplyHeaders(accessToken, reply) : undefined;
@@ -351,7 +353,7 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
   if (![result.id, result.message?.id, result.message?.threadId].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value))) throw new AppError('Gmail returned an incomplete draft receipt. Retry only this operation to verify it.', 503, 'GMAIL_OUTCOME_UNKNOWN');
   if (draftId) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId, providerMessageId: { not: result.message.id } }, data: { labels: ['DELETED'] } });
   const data = { threadId: result.message.threadId, from: account.email, fromAddress: mailboxAddress(account.email)!, recipients,
-    recipientAddresses: recipients, authorizationParticipants: [...new Set([mailboxAddress(account.email)!, ...recipients])], participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
+    recipientAddresses: [...new Set(recipients)].sort(), authorizationParticipants: [...new Set([mailboxAddress(account.email)!, ...recipients])].sort(), participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
     subject, body, snippet: body.replace(/<[^>]*>/g, '').slice(0, 200), labels: ['DRAFT'], direction: 'outbound',
     sentAt: new Date(), draftId: result.id, crmDraft: true, rfcMessageId: options.messageId, sourceMessageId };
   await prisma.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: result.message.id } },

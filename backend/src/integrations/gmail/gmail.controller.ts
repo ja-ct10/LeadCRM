@@ -45,7 +45,7 @@ export async function callback(req: Request, res: Response) {
   res.redirect(destination.toString());
 }
 export async function status(req: Request, res: Response, next: NextFunction) {
-  try { res.json(await getConnectionStatus(req.user!.tenantId, req.user!.userId)); } catch (error) { next(error); }
+  try { res.json(await getConnectionStatus(req.user!.tenantId, req.user!.userId, req.query.includeForwardRecipients === 'true')); } catch (error) { next(error); }
 }
 export async function listEmails(req: Request, res: Response, next: NextFunction) {
   try {

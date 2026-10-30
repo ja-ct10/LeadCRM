@@ -7,6 +7,7 @@ import { normalizeEmail } from './engagement-rules';
 import type { MailboxPermissions } from './mailbox-ingestion.service';
 import type { GmailEmail } from './gmail.types';
 import { crmActor } from '../../modules/crm/access/crm-record-access.service';
+import { mailboxForwardEmployees, mailboxForwardProofs, type MailboxForwardProof } from './mailbox-forward-access';
 
 export const FIXED_MAILBOX_SENDERS = ['reymarkjpanes@12066156.brevosend.com', 'info@camxian.com'];
 export const MAILBOX_PARTICIPANT_POLICY_VERSION = 1;
@@ -33,6 +34,9 @@ export interface MailboxScope {
   draftSourceIds: string[];
   hash: string;
   dealsView?: boolean;
+  employeeEmails?: string[];
+  forwardRecipientEmails?: string[];
+  forwardProofs?: MailboxForwardProof[];
 }
 
 /** Only actual provider address headers establish participants. Never inspect body text or infer aliases. */
@@ -57,7 +61,8 @@ function deriveScope(scope: MailboxScope, permissions: MailboxPermissions): Mail
   const leadIds = permitted.filter(identity => identity.type === 'lead').map(identity => identity.id).sort();
   const contactIds = permitted.filter(identity => identity.type === 'contact').map(identity => identity.id).sort();
   const flags = Object.entries({ ...permissions, clientAdmin: permissions.clientAdmin === true }).sort(([a], [b]) => a.localeCompare(b));
-  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, scope.userId, scope.mailboxAddress, flags, identities, addresses, deniedAddresses])).digest('hex');
+  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, 'employee-forward-v1', scope.userId, scope.mailboxAddress, flags, identities, addresses, deniedAddresses,
+    scope.employeeEmails, scope.forwardRecipientEmails, scope.forwardProofs])).digest('hex');
   return { ...scope, identities, addresses, deniedAddresses, leadIds, contactIds, hash, dealsView: permissions.dealsView };
 }
 
@@ -93,7 +98,12 @@ export async function resolveMailboxScope(account: EmailAccount, permissions: Ma
     if (converted && mailboxAddress(converted.email ?? '') === address) continue;
     identities.push({ type: 'lead', id: row.id, address, assignedUserId: row.assignedUserId, available: !row.convertedAt && !row.isArchived && !row.deletedAt });
   }
-  const scope = deriveScope({ userId: account.userId, mailboxAddress: mailboxAddress(account.email), identities, addresses: [], deniedAddresses: [], leadIds: [], contactIds: [], fixedThreadIds: [], threadRecipients: {}, draftSourceIds: [], hash: '' }, permissions);
+  // This tenant-only identity lookup must also see inactive staff for existing
+  // copies; ordinary User archive permissions must not erase mailbox history.
+  const readEmployees = () => mailboxForwardEmployees(db, account.tenantId, [...leads, ...contacts].flatMap(row => row.email ?? []));
+  const { forwardHistoryRecipientEmails, ...employees } = actor ? await crmActor.run({ ...actor, readRecords: false }, readEmployees) : await readEmployees();
+  const forwardProofs = await mailboxForwardProofs(db, account, employees.employeeEmails, forwardHistoryRecipientEmails);
+  const scope = deriveScope({ userId: account.userId, mailboxAddress: mailboxAddress(account.email), identities, ...employees, forwardProofs, addresses: [], deniedAddresses: [], leadIds: [], contactIds: [], fixedThreadIds: [], threadRecipients: {}, draftSourceIds: [], hash: '' }, permissions);
   const fixed = await db.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id,
     fromAddress: { in: FIXED_MAILBOX_SENDERS }, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
     NOT: [{ labels: { hasSome: ['SPAM', 'TRASH', 'DELETED', 'DRAFT'] } }, { authorizationParticipants: { hasSome: scope.deniedAddresses } }],
@@ -116,11 +126,23 @@ export async function resolveMailboxScope(account: EmailAccount, permissions: Ma
   return scope;
 }
 
-export function messageInScope(email: Pick<GmailEmail, 'from' | 'to' | 'cc' | 'threadId' | 'bcc' | 'replyToAddress' | 'replyToAddresses' | 'authorizationHeadersValid'> & { labels?: string[]; crmDraft?: boolean }, mailbox: string, scope: MailboxScope): boolean {
+type ScopedEmail = Pick<GmailEmail, 'from' | 'to' | 'cc' | 'threadId' | 'bcc' | 'replyToAddress' | 'replyToAddresses' | 'authorizationHeadersValid' | 'rfcMessageId'> & { id?: string; labels?: string[]; crmDraft?: boolean };
+
+export function matchingMailboxForward(email: ScopedEmail, scope: MailboxScope): MailboxForwardProof | undefined {
+  const participants = mailboxParticipants(email);
+  if (!participants) return;
+  const recipients = [...new Set([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []))].sort();
+  return scope.forwardProofs?.find(proof => (proof.rfcMessageId && proof.rfcMessageId === email.rfcMessageId || proof.providerMessageId && proof.providerMessageId === email.id)
+    && proof.sender === mailboxAddress(email.from) && JSON.stringify(proof.recipients) === JSON.stringify(recipients)
+    && JSON.stringify(proof.participants) === JSON.stringify(participants) && (recipients.length > 0 || email.labels?.includes('DRAFT')));
+}
+
+export function messageInScope(email: ScopedEmail, mailbox: string, scope: MailboxScope): boolean {
   const participants = mailboxParticipants(email);
   if (!participants || participants.some(address => address !== mailboxAddress(mailbox) && scope.deniedAddresses.includes(address))) return false;
   const from = mailboxAddress(email.from)!;
   if (email.labels?.includes('DRAFT') && from !== mailboxAddress(mailbox)) return false;
+  if (matchingMailboxForward(email, scope)) return true;
   if (from !== mailboxAddress(mailbox)) return FIXED_MAILBOX_SENDERS.includes(from) || scope.addresses.includes(from);
   const recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []);
   return recipients.some(address => scope.addresses.includes(address)) ||
@@ -135,6 +157,10 @@ export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope, 
     NOT: [{ labels: { hasSome: includeTrashedActivity ? ['SPAM', 'DELETED'] : ['SPAM', 'TRASH', 'DELETED'] } }, { authorizationParticipants: { hasSome: deniedAddresses } }],
     AND: [{ OR: [{ NOT: { labels: { has: 'DRAFT' } } }, { sourceMessageId: null }, { sourceMessageId: { in: scope.draftSourceIds } }] }],
     OR: [
+      ...(scope.forwardProofs ?? []).map(proof => ({ fromAddress: proof.sender, recipientAddresses: { equals: proof.recipients }, authorizationParticipants: { equals: proof.participants },
+        ...(proof.recipients.length ? {} : { labels: { has: 'DRAFT' } }),
+        ...(proof.sender === mailboxAddress(account.email) ? {} : { NOT: { labels: { has: 'DRAFT' } } }),
+        OR: [...(proof.rfcMessageId ? [{ rfcMessageId: proof.rfcMessageId }] : []), ...(proof.providerMessageId ? [{ providerMessageId: proof.providerMessageId }] : [])] })),
       { fromAddress: { in: [...FIXED_MAILBOX_SENDERS, ...scope.addresses], not: mailboxAddress(account.email) }, NOT: { labels: { has: 'DRAFT' } } },
       { fromAddress: mailboxAddress(account.email), OR: [
         { recipientAddresses: { hasSome: scope.addresses } },
@@ -150,6 +176,11 @@ export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope, in
   const array = (values: string[]) => values.length ? Prisma.sql`ARRAY[${Prisma.join(values)}]::text[]` : Prisma.sql`ARRAY[]::text[]`;
   const mailbox = mailboxAddress(account.email) ?? '';
   const continuity = Object.entries(scope.threadRecipients).map(([threadId, addresses]) => Prisma.sql`(m."threadId" = ${threadId} AND m."recipientAddresses" && ${array(addresses)})`);
+  const forwards = (scope.forwardProofs ?? []).map(proof => Prisma.sql`(m."fromAddress" = ${proof.sender}
+    AND m."recipientAddresses" = ${array(proof.recipients)} AND m."authorizationParticipants" = ${array(proof.participants)}
+    AND (${proof.sender === mailbox} OR NOT ('DRAFT' = ANY(m.labels)))
+    AND (${proof.recipients.length > 0} OR 'DRAFT' = ANY(m.labels))
+    AND ((m."rfcMessageId" IS NOT NULL AND m."rfcMessageId" = ${proof.rfcMessageId}) OR m."providerMessageId" = ${proof.providerMessageId}))`);
   return Prisma.sql`m."tenantId" = ${account.tenantId} AND m."accountId" = ${account.id}
     AND EXISTS (SELECT 1 FROM "EmailAccount" a WHERE a.id = m."accountId" AND a."tenantId" = m."tenantId" AND a."userId" = ${account.userId} AND a."isActive")
     AND m."participantPolicyVersion" = ${MAILBOX_PARTICIPANT_POLICY_VERSION}
@@ -160,13 +191,15 @@ export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope, in
       OR (m."fromAddress" = ${mailbox} AND (m."recipientAddresses" && ${array(scope.addresses)}
         ${continuity.length ? Prisma.sql`OR ${Prisma.join(continuity, ' OR ')}` : Prisma.empty}
         OR (m."threadId" = ANY(${array(scope.fixedThreadIds)}) AND m."recipientAddresses" && ${array(FIXED_MAILBOX_SENDERS)})
-        OR ('DRAFT' = ANY(m.labels) AND m."crmDraft" AND cardinality(m."recipientAddresses") = 0))))`;
+        OR ('DRAFT' = ANY(m.labels) AND m."crmDraft" AND cardinality(m."recipientAddresses") = 0)))
+      ${forwards.length ? Prisma.sql`OR ${Prisma.join(forwards, ' OR ')}` : Prisma.empty})`;
 }
 
 export function mailboxProviderQueries(scope: MailboxScope): string[] {
   const terms = [...new Set([...FIXED_MAILBOX_SENDERS, ...scope.addresses])].map(address => `from:${address}`);
   for (const address of new Set([...scope.addresses, ...Object.values(scope.threadRecipients).flat()])) terms.push(`to:${address}`, `cc:${address}`, `bcc:${address}`);
   for (const address of FIXED_MAILBOX_SENDERS) terms.push(`to:${address}`);
+  for (const id of new Set((scope.forwardProofs ?? []).flatMap(proof => proof.rfcMessageId ?? []))) terms.push(`rfc822msgid:${id}`);
   const queries: string[] = [];
   let chunk: string[] = [], length = 0;
   for (const term of terms) {

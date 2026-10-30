@@ -8,6 +8,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox } from './mailbox-store';
 import { assertStoredMessages, mailboxAddress } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
+import { isMailboxForward } from './mailbox-engagement';
 
 export type MailboxOperation = 'send' | 'draft' | 'schedule' | 'delete';
 export interface MailboxQuotationContext { draft: QuotationDraft; document: QuotationDocument; fingerprint: string; subject: string; body: string }
@@ -43,6 +44,12 @@ export function normalizedRecipients(recipients: string[]) {
 export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id' | 'tenantId' | 'userId'>, context: MailboxOperationContext) {
   const current = await authorizedMailbox(account.tenantId, account.userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+  if (isMailboxForward(context)) {
+    if (!context.forwardSourceMessageId || context.replyToMessageId) throw new AppError('Choose the original message to forward.', 400);
+    await assertStoredMessages(current.account, current.scope, [context.forwardSourceMessageId], true);
+    await assertMailboxRecipients(current.account, current.scope, current.permissions, context.recipients, '', undefined, true);
+    return current;
+  }
   if (context.recordContext) {
     const { recordModule, recordId } = context.recordContext;
     const where = { tenantId: account.tenantId, id: recordId, ...(current.permissions.clientAdmin ? {} : { assignedUserId: account.userId }), isArchived: false, deletedAt: null };

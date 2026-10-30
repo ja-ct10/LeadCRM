@@ -1,6 +1,6 @@
 import { classifyCustomerRecord, refreshDealClassification, recordStaffOutreach, acceptCustomerReply } from '../../modules/crm/customer-classification.service';
 import { acceptDealReply } from '../../modules/crm/deals/deal-engagement.service';
-import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
+import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, matchingMailboxForward, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { normalizeCrmStatus, type MailboxComposeMode, type MailboxRecordContext } from '@leadcrm/shared';
@@ -139,7 +139,27 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         const saved = receiptComposeContext(receipt?.authorizationContext ?? null);
         if (saved) context = { ...saved, sourceMessageId: saved.replyToMessageId };
       }
-      const forwarded = mailboxAddress(email.from) === mailboxAddress(account.email) && isMailboxForward(context);
+      const forwardProof = matchingMailboxForward(email, currentScope);
+      const forwarded = !!forwardProof || mailboxAddress(email.from) === mailboxAddress(account.email) && isMailboxForward(context);
+      // Internal copies belong only to the mailbox. This precedes every CRM lookup,
+      // including the verified-message replay path and inherited thread associations.
+      if (forwarded) {
+        const draft = email.labels.includes('DRAFT');
+        const sourceMessageId = context?.forwardSourceMessageId ?? forwardProof?.sourceMessageId;
+        if (draft && (!sourceMessageId || !await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, currentScope), { providerMessageId: sourceMessageId, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true } }))) return;
+        const data = { threadId: email.threadId, from: email.from, fromAddress: mailboxAddress(email.from)!, recipients: email.to,
+          recipientAddresses: [...new Set([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []))].sort(),
+          authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
+          subject: email.subject, body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
+          rfcInReplyTo: email.rfcInReplyTo, rfcReferences: email.rfcReferences ?? [], draftId: draft ? email.draftId : null,
+          ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
+          direction: mailboxAddress(email.from) === mailboxAddress(account.email) ? 'outbound' : 'inbound',
+          sourceMessageId: draft ? sourceMessageId : null, crmDraft: draft,
+          leadId: null, contactId: null, dealId: null, dealAttribution: Prisma.DbNull, meaningful: false, readyToClose: false, needsDealAssociation: false, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
+        await tx.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: email.id } },
+          create: { ...data, accountId: account.id, providerMessageId: email.id, tenantId: account.tenantId }, update: data });
+        return;
+      }
       const selected = context?.recordContext;
       const selectedWhere = selected ? { tenantId: account.tenantId, id: selected.recordId, ...(permissions.clientAdmin ? {} : { assignedUserId: account.userId }), isArchived: false, deletedAt: null } : undefined;
       const selectedRecord = selectedWhere && mailboxAddress(email.from) === mailboxAddress(account.email)
@@ -165,7 +185,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         await persistEmailActivity(tx, account, stored);
-        if (!forwarded && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
+        if (stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId, [], new Date(), true, stored.dealId, 'gmail');
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -204,7 +224,6 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
       await persistEmailActivity(tx, account, stored);
-      if (forwarded) return;
       const duplicateReply = genuineReply && email.rfcMessageId && link ? await tx.mailboxMessage.findFirst({ where: {
         ...await historyWhere(tx, account.tenantId, link), id: { not: stored.id }, rfcMessageId: email.rfcMessageId, direction: 'inbound', meaningful: true,
       }, select: { id: true } }) : null;

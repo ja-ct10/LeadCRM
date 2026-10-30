@@ -98,6 +98,23 @@ Gmail sending, synchronization, or assignment permissions.
 Exact compose/reply/reply-all/forward draft context is server-owned;
 legacy drafts with unverified source evidence require explicit source selection.
 
+Forward is employee-only: every recipient must be an active, provisioned staff
+account in the authenticated tenant. Client Admin and explicitly approved staff
+email addresses qualify; Lead/Contact addresses, inactive accounts, retired Guests,
+unknown addresses and other tenants' accounts do not. Invalid recipients return
+403 `MAILBOX_RECIPIENT_REJECTED` with an editable-draft error. The existing
+`GET /integrations/gmail/status?includeForwardRecipients=true` response optionally
+includes `forwardRecipientEmails` for frontend validation; sends, drafts, schedules
+and recovery independently recheck current server data.
+
+Forward intent discards CRM record/Deal context. Forward copies retain Gmail
+delivery, supported attachments and Sent history, and appear in the sender's
+LeadCRM Sent view and eligible recipients' Inbox using same-tenant receipt/provider
+identity evidence. They have no CRM associations, activities or engagement effects
+and cannot be manually linked to a Deal. Original message history and normal
+Compose/Reply authorization remain preserved. See [employee forwarding
+verification](verification/inbox-forwarding.md).
+
 This is an intentional writer compatibility change. Deploy matching frontend and
 backend revisions together. Old writers must supply stable UUIDs before upgrading;
 they must not silently generate a fresh UUID on each retry. See
