@@ -33,6 +33,7 @@ export interface MailboxScope {
   threadRecipients: Record<string, string[]>;
   draftSourceIds: string[];
   hash: string;
+  internalOnly?: boolean;
   dealsView?: boolean;
   employeeEmails?: string[];
   forwardRecipientEmails?: string[];
@@ -61,7 +62,7 @@ function deriveScope(scope: MailboxScope, permissions: MailboxPermissions): Mail
   const leadIds = permitted.filter(identity => identity.type === 'lead').map(identity => identity.id).sort();
   const contactIds = permitted.filter(identity => identity.type === 'contact').map(identity => identity.id).sort();
   const flags = Object.entries({ ...permissions, clientAdmin: permissions.clientAdmin === true }).sort(([a], [b]) => a.localeCompare(b));
-  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, 'employee-forward-v1', scope.userId, scope.mailboxAddress, flags, identities, addresses, deniedAddresses,
+  const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, 'employee-forward-v2', scope.internalOnly, scope.userId, scope.mailboxAddress, flags, identities, addresses, deniedAddresses,
     scope.employeeEmails, scope.forwardRecipientEmails, scope.forwardProofs])).digest('hex');
   return { ...scope, identities, addresses, deniedAddresses, leadIds, contactIds, hash, dealsView: permissions.dealsView };
 }
@@ -103,7 +104,7 @@ export async function resolveMailboxScope(account: EmailAccount, permissions: Ma
   const readEmployees = () => mailboxForwardEmployees(db, account.tenantId, [...leads, ...contacts].flatMap(row => row.email ?? []));
   const { forwardHistoryRecipientEmails, ...employees } = actor ? await crmActor.run({ ...actor, readRecords: false }, readEmployees) : await readEmployees();
   const forwardProofs = await mailboxForwardProofs(db, account, employees.employeeEmails, forwardHistoryRecipientEmails);
-  const scope = deriveScope({ userId: account.userId, mailboxAddress: mailboxAddress(account.email), identities, ...employees, forwardProofs, addresses: [], deniedAddresses: [], leadIds: [], contactIds: [], fixedThreadIds: [], threadRecipients: {}, draftSourceIds: [], hash: '' }, permissions);
+  const scope = deriveScope({ internalOnly: account.isActive === false, userId: account.userId, mailboxAddress: mailboxAddress(account.email), identities, ...employees, forwardProofs, addresses: [], deniedAddresses: [], leadIds: [], contactIds: [], fixedThreadIds: [], threadRecipients: {}, draftSourceIds: [], hash: '' }, permissions);
   const fixed = await db.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id,
     fromAddress: { in: FIXED_MAILBOX_SENDERS }, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
     NOT: [{ labels: { hasSome: ['SPAM', 'TRASH', 'DELETED', 'DRAFT'] } }, { authorizationParticipants: { hasSome: scope.deniedAddresses } }],
@@ -143,6 +144,7 @@ export function messageInScope(email: ScopedEmail, mailbox: string, scope: Mailb
   const from = mailboxAddress(email.from)!;
   if (email.labels?.includes('DRAFT') && from !== mailboxAddress(mailbox)) return false;
   if (matchingMailboxForward(email, scope)) return true;
+  if (scope.internalOnly) return false;
   if (from !== mailboxAddress(mailbox)) return FIXED_MAILBOX_SENDERS.includes(from) || scope.addresses.includes(from);
   const recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []);
   return recipients.some(address => scope.addresses.includes(address)) ||
@@ -153,7 +155,7 @@ export function messageInScope(email: ScopedEmail, mailbox: string, scope: Mailb
 
 export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope, includeTrashedActivity = false): Prisma.MailboxMessageWhereInput {
   const deniedAddresses = scope.deniedAddresses.filter(address => address !== mailboxAddress(account.email));
-  return { tenantId: account.tenantId, accountId: account.id, account: { isActive: true }, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
+  const result: Prisma.MailboxMessageWhereInput = { tenantId: account.tenantId, accountId: account.id, account: { tenantId: account.tenantId, userId: account.userId, ...(scope.internalOnly ? {} : { isActive: true }) }, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
     NOT: [{ labels: { hasSome: includeTrashedActivity ? ['SPAM', 'DELETED'] : ['SPAM', 'TRASH', 'DELETED'] } }, { authorizationParticipants: { hasSome: deniedAddresses } }],
     AND: [{ OR: [{ NOT: { labels: { has: 'DRAFT' } } }, { sourceMessageId: null }, { sourceMessageId: { in: scope.draftSourceIds } }] }],
     OR: [
@@ -169,6 +171,8 @@ export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope, 
         { labels: { has: 'DRAFT' }, crmDraft: true, recipientAddresses: { isEmpty: true } },
       ] },
     ] };
+  if (scope.internalOnly) result.OR = result.OR!.slice(0, scope.forwardProofs?.length ?? 0);
+  return result;
 }
 
 /** SQL and ORM both apply the participant veto before returning/searching/aggregating any messages. */
@@ -182,16 +186,16 @@ export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope, in
     AND (${proof.recipients.length > 0} OR 'DRAFT' = ANY(m.labels))
     AND ((m."rfcMessageId" IS NOT NULL AND m."rfcMessageId" = ${proof.rfcMessageId}) OR m."providerMessageId" = ${proof.providerMessageId}))`);
   return Prisma.sql`m."tenantId" = ${account.tenantId} AND m."accountId" = ${account.id}
-    AND EXISTS (SELECT 1 FROM "EmailAccount" a WHERE a.id = m."accountId" AND a."tenantId" = m."tenantId" AND a."userId" = ${account.userId} AND a."isActive")
+    AND EXISTS (SELECT 1 FROM "EmailAccount" a WHERE a.id = m."accountId" AND a."tenantId" = m."tenantId" AND a."userId" = ${account.userId} AND (${!!scope.internalOnly} OR a."isActive"))
     AND m."participantPolicyVersion" = ${MAILBOX_PARTICIPANT_POLICY_VERSION}
     AND NOT (m."authorizationParticipants" && ${array(scope.deniedAddresses.filter(address => address !== mailbox))})
     AND NOT (m.labels && ${includeTrashedActivity ? Prisma.sql`ARRAY['SPAM', 'DELETED']::text[]` : Prisma.sql`ARRAY['SPAM', 'TRASH', 'DELETED']::text[]`})
     AND (NOT ('DRAFT' = ANY(m.labels)) OR m."sourceMessageId" IS NULL OR m."sourceMessageId" = ANY(${array(scope.draftSourceIds)}))
-    AND ((m."fromAddress" = ANY(${array([...FIXED_MAILBOX_SENDERS, ...scope.addresses])}) AND m."fromAddress" <> ${mailbox} AND NOT ('DRAFT' = ANY(m.labels)))
+    AND ((${!scope.internalOnly} AND ((m."fromAddress" = ANY(${array([...FIXED_MAILBOX_SENDERS, ...scope.addresses])}) AND m."fromAddress" <> ${mailbox} AND NOT ('DRAFT' = ANY(m.labels)))
       OR (m."fromAddress" = ${mailbox} AND (m."recipientAddresses" && ${array(scope.addresses)}
         ${continuity.length ? Prisma.sql`OR ${Prisma.join(continuity, ' OR ')}` : Prisma.empty}
         OR (m."threadId" = ANY(${array(scope.fixedThreadIds)}) AND m."recipientAddresses" && ${array(FIXED_MAILBOX_SENDERS)})
-        OR ('DRAFT' = ANY(m.labels) AND m."crmDraft" AND cardinality(m."recipientAddresses") = 0)))
+        OR ('DRAFT' = ANY(m.labels) AND m."crmDraft" AND cardinality(m."recipientAddresses") = 0)))))
       ${forwards.length ? Prisma.sql`OR ${Prisma.join(forwards, ' OR ')}` : Prisma.empty})`;
 }
 

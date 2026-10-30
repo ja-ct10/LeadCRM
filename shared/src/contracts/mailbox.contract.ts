@@ -20,6 +20,8 @@ export interface MailboxConnectionStatus {
   isConnected: boolean; email: string | null; connectedAt: string | null; lastSyncAt: string | null;
   syncError?: string | null; retryAt?: string | null;
   forwardRecipientEmails?: string[];
+  canReadMailbox?: boolean;
+  mailboxEmail?: string;
 }
 const sourceId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export const MailboxRecordContextSchema = z.object({ recordModule: z.enum(['leads', 'contacts']), recordId: z.string().min(1).max(200) }).strict();
@@ -98,12 +100,14 @@ export interface MailboxAttachment {
   id: string; filename: string; mimeType: string; size?: number;
   contentId?: string;
   disposition?: 'inline' | 'attachment';
-  /** Gmail MIME part locator; bytes remain in Gmail, never in this metadata. */
+  /** Gmail MIME part locator; attachment bytes are never exposed in this metadata. */
   partId?: string;
 }
 export interface MailboxMessageContent { body: string; attachments: MailboxAttachment[] }
 
 export interface MailboxEmail {
+  /** False for disconnected or receipt-backed copies awaiting provider reconciliation. */
+  gmailActionsAvailable?: boolean;
   id: string;
   threadId: string;
   /** Inbox identity only. Never pass this value to Gmail as a thread ID. */

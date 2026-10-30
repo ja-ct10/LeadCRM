@@ -8,11 +8,12 @@ import type { GmailEmail } from './gmail.types';
 import type { MailboxAttachment } from '@leadcrm/shared';
 import { countUnreadConversations, listMailboxConversations, conversationContext } from './mailbox-conversations';
 import { draftComposeContexts } from './mailbox-draft-context';
+import { isLocalForwardId } from './mailbox-forward-delivery';
 
-export async function authorizedMailbox(tenantId: string, userId: string) {
+export async function authorizedMailbox(tenantId: string, userId: string, readOnly = false) {
   const permissions = await mailboxPermissions(tenantId, userId);
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  if (!account?.isActive) throw new AppError('Connect your work Gmail account first.', 409);
+  if (!account || !readOnly && !account.isActive) throw new AppError('Connect your work Gmail account first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
   return { account, permissions, scope };
 }
@@ -22,14 +23,14 @@ export function storedEmail(row: MailboxMessage): GmailEmail {
     cc: row.ccRecipients, replyToAddress: row.replyToAddress,
     subject: row.subject, body: row.body, snippet: row.snippet, date: row.sentAt.toISOString(),
     labels: row.labels, isRead: !row.labels.includes('UNREAD'), draftId: row.draftId ?? undefined,
-    direction: row.direction as GmailEmail['direction'], leadId: row.leadId, contactId: row.contactId,
+    gmailActionsAvailable: !isLocalForwardId(row.providerMessageId), direction: row.direction as GmailEmail['direction'], leadId: row.leadId, contactId: row.contactId,
     dealId: row.dealId, needsDealAssociation: row.needsDealAssociation, rfcMessageId: row.rfcMessageId ?? undefined,
     rfcInReplyTo: row.rfcInReplyTo, rfcReferences: row.rfcReferences, attachments: Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : [] };
 }
 
 export async function listStoredMailbox(tenantId: string, userId: string, input: MailboxListOptions = {}) {
   const options = MailboxListSchema.parse(input);
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedMailbox(tenantId, userId, true);
   const base = scopedMessagesWhere(account, scope);
   const unreadCount = await countUnreadConversations(account, scope);
   if (!['drafts', 'scheduled'].includes(options.filter)) return { ...await listMailboxConversations(account, scope, options), unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };

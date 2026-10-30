@@ -9,6 +9,7 @@ import { authorizedMailbox } from './mailbox-store';
 import { assertStoredMessages, mailboxAddress } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { isMailboxForward } from './mailbox-engagement';
+import { assertProviderMessageIds } from './mailbox-forward-delivery';
 
 export type MailboxOperation = 'send' | 'draft' | 'schedule' | 'delete';
 export interface MailboxQuotationContext { draft: QuotationDraft; document: QuotationDocument; fingerprint: string; subject: string; body: string }
@@ -44,6 +45,7 @@ export function normalizedRecipients(recipients: string[]) {
 export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id' | 'tenantId' | 'userId'>, context: MailboxOperationContext) {
   const current = await authorizedMailbox(account.tenantId, account.userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+  assertProviderMessageIds([context.replyToMessageId, context.forwardSourceMessageId].filter((id): id is string => !!id));
   if (isMailboxForward(context)) {
     if (!context.forwardSourceMessageId || context.replyToMessageId) throw new AppError('Choose the original message to forward.', 400);
     await assertStoredMessages(current.account, current.scope, [context.forwardSourceMessageId], true);

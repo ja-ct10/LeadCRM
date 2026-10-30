@@ -725,9 +725,13 @@ Delete Role sets `RoleDefinition.isArchived = true` and records `role.deleted`; 
 
 ### Inbox integration
 
-Gmail routes are under `/integrations/gmail`. The OAuth callback is state-validated; other routes require an authenticated ready workspace, either `leads.view` or `contacts.view`, and mailbox ownership/current CRM scope checks. Staff Inbox uses the employee's own connected account. Recipient access is rechecked before delivery, including Workflow and scheduled sends.
+Gmail routes are under `/integrations/gmail`. The OAuth callback is state-validated; other routes require an authenticated ready workspace, either `leads.view` or `contacts.view`, and mailbox ownership/current CRM scope checks. Customer mail and Gmail actions use the employee's own connected account. Confirmed internal forwards can be read without a Gmail connection. Recipient access is rechecked before delivery, including Workflow and scheduled sends.
 
 New consent requests use `gmail.modify` and `userinfo.email`. The backend derives `login_hint` from the persisted registered email, verifies Google's verified account email and Gmail profile identity, and rechecks current sessions/eligibility/permissions before encrypted credential storage. Production mailbox overrides are ignored. `GMAIL_RECONNECT_REQUIRED` means Google revoked or expired the refresh grant; credentials are cleared while synchronized CRM history remains. Disconnect also cancels pending OAuth requests.
+
+Forward recipients must all be active, provisioned employees in the authenticated tenant; Lead/Contact identities, external addresses and other tenants are rejected with `MAILBOX_RECIPIENT_REJECTED`. The existing status endpoint accepts `includeForwardRecipients=true` and returns optional `forwardRecipientEmails`. Its optional `canReadMailbox` and `mailboxEmail` fields describe internal read availability separately from `isConnected`, which continues to mean Gmail authorization.
+
+Before forwarding, a server-owned operation receipt stages the accepted content and supported attachment bytes in the existing private storage. Gmail confirmation persists sender Sent and recipient Inbox records without requiring Gmail read-back. A recipient without an account gets an inactive, credential-free account container; later OAuth reuses it. Such recipients can read and download only receipt-proven internal copies, with historical customer mail excluded. `gmailActionsAvailable: false` disables provider actions for disconnected or not-yet-reconciled copies; direct API requests are also rejected with `MAILBOX_PROVIDER_PENDING` or the existing connection error. Normal synchronization replaces local identities with verified recipient provider IDs on the same database record. Internal copies have no CRM associations, Activities, engagement or workflow effects. Attachment storage requires the existing [private storage mount](setup/coolify-private-storage.md); internal cache keys are never returned to clients.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -737,7 +741,7 @@ New consent requests use `gmail.modify` and `userinfo.email`. The backend derive
 | GET | `/integrations/gmail/emails`, `/integrations/gmail/unread-count`, `/integrations/gmail/events` | Persisted mailbox reads/counts/events |
 | GET | `/integrations/gmail/threads/:threadId` | Scoped thread |
 | GET | `/integrations/gmail/messages/:messageId/content` | Refresh an expanded authorized message's original body and attachment metadata |
-| GET | `/integrations/gmail/messages/:messageId/attachments/:attachmentId` | Download original Gmail attachment bytes, including validated MIME part locators |
+| GET | `/integrations/gmail/messages/:messageId/attachments/:attachmentId` | Download authorized Gmail or cached internal-forward attachment bytes |
 | GET | `/integrations/gmail/conversations/:conversationId` | Scoped Gmail thread and Deal history, bounded message pages |
 | PATCH | `/integrations/gmail/messages/:messageId/read-state` | Read/unread one currently authorized message |
 | POST | `/integrations/gmail/send`, `/integrations/gmail/drafts` | Send/save draft |

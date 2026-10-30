@@ -19,6 +19,13 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const flush = async () => { await act(async () => { await Promise.resolve(); }); };
 const props = { onOpenSidebar: vi.fn(), onOpenInbox: vi.fn() };
 
+it('counts persisted internal forwards without a connected Gmail account', async () => {
+  mocks.status.mockResolvedValue({ isConnected: false, canReadMailbox: true });
+  mocks.count.mockResolvedValue({ unreadCount: 2 });
+  render(<Topbar {...props} />); await flush();
+  expect(screen.getByRole('button', { name: 'Open Inbox' }).textContent).toBe('2');
+});
+
 it.each([0, 2])('does not replace a confirmed count of %s with an older initial response', async count => {
   let finish!: (value: { unreadCount: number }) => void;
   mocks.count.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));

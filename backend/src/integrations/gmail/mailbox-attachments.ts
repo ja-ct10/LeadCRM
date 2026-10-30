@@ -8,12 +8,19 @@ import { getValidAccessToken, fetchMessageDetail, gmailParts, decodeGmailBody, M
 import { readGmailJson } from './gmail-read';
 import { mailboxPermissions } from './mailbox-sync.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
+import { forwardAttachmentMetadata, readForwardAttachment, storedForwardSnapshot } from './mailbox-forward-delivery';
 
 /** Read only a currently authorized message; repairing display fields never replays CRM effects. */
 export async function readMailboxContent(tenantId: string, userId: string, messageId: string): Promise<MailboxMessageContent> {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedMailbox(tenantId, userId, true);
   await assertStoredMessages(account, scope, [messageId]);
-  const stored = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { id: true, threadId: true } });
+  const stored = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { id: true, threadId: true, rfcMessageId: true } });
+  const snapshot = await storedForwardSnapshot(account, stored.rfcMessageId);
+  if (snapshot) {
+    const current = await authorizedMailbox(tenantId, userId, true);
+    await assertStoredMessages(current.account, current.scope, [messageId]);
+    return { body: snapshot.body, attachments: forwardAttachmentMetadata(snapshot) };
+  }
   const email = await fetchMessageDetail(await getValidAccessToken(tenantId, userId), messageId);
   if (email.threadId !== stored.threadId || !messageInScope(email, account.email, scope) || email.labels.some(label => ['SPAM', 'TRASH', 'DELETED'].includes(label))) throw new AppError('Message access changed. Refresh your Inbox.', 404, 'MAILBOX_SCOPE_CHANGED');
   const content = { body: email.body, attachments: email.attachments ?? [] };
@@ -40,9 +47,17 @@ function previewContentType(data: Buffer, mimeType: string) {
 
 export async function readMailboxAttachment(tenantId: string, userId: string, messageId: string, attachmentId: string, recordContext?: RecordEmailAttachmentContext) {
   if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedMailbox(tenantId, userId, true);
   await assertStoredMessages(account, scope, [messageId]);
-  const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { attachments: true, threadId: true } });
+  const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { attachments: true, threadId: true, rfcMessageId: true } });
+  const snapshot = await storedForwardSnapshot(account, row.rfcMessageId);
+  if (snapshot) {
+    const file = await readForwardAttachment(snapshot, attachmentId);
+    const current = await authorizedMailbox(tenantId, userId, true);
+    await assertStoredMessages(current.account, current.scope, [messageId]);
+    if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
+    return { ...file, mimeType: previewContentType(file.data, file.mimeType) };
+  }
   const attachment = (Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : []).find(file => file.id === attachmentId);
   if (!attachment) throw new AppError('Attachment is not available for this message.', 404, 'MAILBOX_ATTACHMENT_UNAVAILABLE');
   if (attachment.size !== undefined && (!Number.isSafeInteger(attachment.size) || attachment.size < 0) || typeof attachment.filename !== 'string' || typeof attachment.mimeType !== 'string') throw new AppError('Invalid attachment metadata.', 502);

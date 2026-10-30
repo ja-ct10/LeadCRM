@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { MailboxConversationReadStateSchema, type MailboxConversationReadState, type MailboxBulkActionResult } from '@leadcrm/shared';
 import { countUnreadConversations } from './mailbox-conversations';
+import { isLocalForwardId } from './mailbox-forward-delivery';
 
 type Action = 'read' | 'unread' | 'archive' | 'trash' | 'restore';
 
@@ -105,6 +106,7 @@ export async function mutateMailboxThreads(tenantId: string, userId: string, thr
 }
 
 async function applyMessageAction(tenantId: string, userId: string, accountId: string, mailbox: string, rows: { id: string; providerMessageId: string; labels: string[]; fromAddress: string; recipientAddresses?: string[]; dealId?: string | null; conversationId?: string }[], action: Action, scopeHash?: string): Promise<MailboxBulkActionResult> {
+  if (rows.some(row => isLocalForwardId(row.providerMessageId))) throw new AppError('This internal copy is available to read and download. Gmail actions become available after mailbox synchronization.', 409, 'MAILBOX_PROVIDER_PENDING');
   // Trash outbound replies before their approved fixed-sender source disappears
   // from scope. Current authorization is still rechecked before every write.
   const eligible = (row: typeof rows[number]) => action === 'read' ? row.labels.includes('UNREAD') : action === 'unread' ? !row.labels.includes('UNREAD') : action === 'archive' ? row.labels.includes('INBOX')

@@ -16,6 +16,7 @@ import { fetchEmails, sendEmailWithToken, parseGmailMessage, ingestConfirmedMail
 import type { GmailEmail } from './gmail.types';
 import { salesPipeline, salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { crmActor } from '../../modules/crm/access/crm-record-access.service';
+import { ENGAGEMENT_RULE_VERSION } from './engagement-rules';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -1243,14 +1244,15 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const employee = forward ? await prisma.user.create({ data: { tenantId, email: `scheduled-forward-${randomUUID()}@camxian.com`, firstName: 'Scheduled', lastName: 'Recipient', role: 'Sales' } }) : null;
     const recipient = employee?.email ?? leadEmail;
     if (forward) await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'scheduled-forward-source')], permissions));
-    const outgoing = { ...mail(account.email, 'sent-schedule', ['SENT']), to: [recipient] };
+    const outgoing = { ...mail(account.email, 'sent-schedule', ['SENT']), to: [recipient], subject: 'Scheduled inquiry', body: '<p>Hello</p>' };
     const provider = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const path = String(input);
       if (path.endsWith('/drafts') && init?.method === 'POST') {
         draftRfc = Buffer.from(JSON.parse(String(init.body)).message.raw, 'base64url').toString();
         return Response.json({ id: 'draft-schedule-' + userId, message: { id: 'draft-message', threadId: 'schedule-thread' } });
       }
-      if (path.includes('/drafts/') && path.includes('?format=metadata')) return Response.json({ message: apiMail({ ...outgoing, id: 'draft-message', labels: ['DRAFT'] }, [{ name: 'Message-ID', value: draftRfc.match(/Message-ID: ([^\r\n]+)/)![1] }]) });
+      if (path.includes('/drafts/') && /[?&]format=(?:metadata|full)/.test(path)) return Response.json({ message: apiMail({ ...outgoing, id: 'draft-message', labels: ['DRAFT'] }, [{ name: 'Message-ID', value: draftRfc.match(/Message-ID: ([^\r\n]+)/)![1] }]) });
+      if (path.includes('/messages/draft-message?')) return Response.json(apiMail({ ...outgoing, id: 'draft-message', labels: ['DRAFT'] }, [{ name: 'Message-ID', value: draftRfc.match(/Message-ID: ([^\r\n]+)/)![1] }]));
       if (path.endsWith('/drafts/send')) { sends++; return Response.json({ id: outgoing.id, threadId: outgoing.threadId }); }
       if (path.includes('/messages?')) return Response.json({ messages: [{ id: outgoing.id, threadId: outgoing.threadId }] });
       return Response.json(apiMail(outgoing, [{ name: 'Message-ID', value: draftRfc.match(/Message-ID: ([^\r\n]+)/)![1] }]));
@@ -1879,6 +1881,142 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
       expect((await call('/emails?filter=sent')).body.emails.some((row: GmailEmail) => row.id === sent!.id)).toBe(true);
     } finally { await prisma.user.update({ where: { id: employee.id }, data: { status: 'ACTIVE' } }); }
   });
+  it.each([false, true])('persists both forward mailboxes before Gmail read-back (recipient connected: %s)', async connected => {
+    const original = mail(leadEmail, 'durable-original');
+    await scope(() => ingestMailboxMessages(account, [original], permissions));
+    const source = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: original.id } });
+    const activityBefore = await prisma.activity.count({ where: { tenantId } });
+    const workflowsBefore = await prisma.workflowTriggerRecord.count({ where: { tenantId } });
+    const employee = await prisma.user.create({ data: { tenantId, email: `durable-${randomUUID()}@camxian.com`, firstName: 'Internal', lastName: 'Recipient', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: salesRoleId, userId: employee.id } });
+    if (connected) await prisma.emailAccount.create({ data: { tenantId, userId: employee.id, email: employee.email, accessToken: encryptToken(randomUUID()), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
+    const recipientToken = (await issueAuthSession(employee)).token;
+    const bytes = Buffer.from('%PDF-durable forward bytes');
+    const input = { requestId: randomUUID(), to: employee.email, subject: 'Durable internal forward', body: '<h1>Preserved &amp; formatted</h1><p>Original history</p>', composeMode: 'forward', forwardSourceMessageId: original.id,
+      attachments: [{ filename: 'Forward.pdf', mimeType: 'application/pdf', content: bytes.toString('base64') }] };
+    let sends = 0, reads = 0, rfcMessageId = '';
+    vi.stubGlobal('fetch', vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'POST' && String(_url).endsWith('/messages/send')) {
+        sends++;
+        const raw = Buffer.from(JSON.parse(String(init.body)).raw, 'base64url').toString();
+        rfcMessageId = raw.match(/Message-ID: ([^\r\n]+)/)![1];
+        expect(raw).toContain(bytes.toString('base64')); expect(raw).not.toMatch(/In-Reply-To:|References:/);
+        return Response.json({ id: 'durable-sent', threadId: 'durable-sent-thread' });
+      }
+      reads++; return Response.json({ error: { message: 'Not visible in Gmail reads yet' } }, { status: 404 });
+    }));
+    const response = await call('/send', 'POST', input);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(sends).toBe(1); expect(reads).toBe(0);
+    const senderList = await call('/emails?filter=sent');
+    expect(senderList.status, JSON.stringify(senderList.body)).toBe(200);
+    expect(senderList.body.emails).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'durable-sent', direction: 'outbound', subject: input.subject, body: input.body, from: account.email })]));
+    const recipientAccount = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId: employee.id, provider: 'gmail' } } });
+    expect(recipientAccount.isActive).toBe(connected);
+    const recipientAuth = `Bearer ${recipientToken}`;
+    const status = await call('/status', 'GET', undefined, recipientAuth);
+    expect(status.body.isConnected).toBe(connected);
+    if (!connected) { expect(status.body).toMatchObject({ canReadMailbox: true, mailboxEmail: employee.email }); expect(recipientAccount.accessToken).toBe(''); }
+    const inbox = await call('/emails', 'GET', undefined, recipientAuth);
+    expect(inbox.status, JSON.stringify(inbox.body)).toBe(200);
+    const item = inbox.body.emails.find((row: GmailEmail) => row.subject === input.subject);
+    expect(item).toMatchObject({ direction: 'inbound', from: account.email, to: [employee.email], body: input.body, gmailActionsAvailable: false, messageCount: 1 });
+    const persisted = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: recipientAccount.id, rfcMessageId } });
+    expect(persisted).toMatchObject({ leadId: null, contactId: null, dealId: null, meaningful: false, labels: ['INBOX', 'UNREAD'] });
+    const content = await call('/messages/' + item.id + '/content', 'GET', undefined, recipientAuth);
+    expect(content.status, JSON.stringify(content.body)).toBe(200); expect(content.body.body).toBe(input.body);
+    expect(JSON.stringify(content.body)).not.toMatch(/sha256|mailbox-attachments|forwardDelivery/);
+    const attachment = content.body.attachments[0];
+    const downloaded = await realFetch(`${base}/messages/${item.id}/attachments/${attachment.id}`, { headers: { Authorization: recipientAuth } });
+    expect(downloaded.status).toBe(200); expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(bytes);
+    const detail = await call('/threads/' + item.threadId, 'GET', undefined, recipientAuth);
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200); expect(detail.body.emails[0]).toMatchObject({ body: input.body, gmailActionsAvailable: false });
+    const correspondent = await call('/conversations/' + item.conversationId, 'GET', undefined, recipientAuth);
+    expect(correspondent.status, JSON.stringify(correspondent.body)).toBe(200);
+    expect((await call('/conversations/' + item.conversationId + '/read-state', 'PATCH', { isRead: true }, recipientAuth)).status).toBe(409);
+    expect((await call('/threads/' + item.threadId + '/archive', 'POST', {}, recipientAuth)).status).toBe(409);
+    if (!connected) {
+      const historicalEmail = `historical-${randomUUID()}@example.test`;
+      const historicalLead = await prisma.lead.create({ data: { tenantId, assignedUserId: employee.id, email: historicalEmail, firstName: 'Historical', lastName: 'Customer', productInterest: [] } });
+      await prisma.mailboxMessage.create({ data: { tenantId, accountId: recipientAccount.id, providerMessageId: 'historical-customer', threadId: 'historical-customer', direction: 'inbound', from: historicalEmail, fromAddress: historicalEmail,
+        recipients: [employee.email], recipientAddresses: [employee.email], authorizationParticipants: [employee.email, historicalEmail].sort(), participantPolicyVersion: 1, leadId: historicalLead.id,
+        subject: 'Historical customer mail', body: 'Must stay unavailable without Gmail', snippet: 'Unavailable', labels: ['INBOX'], sentAt: new Date() } });
+      expect((await call('/emails', 'GET', undefined, recipientAuth)).body.emails.some((row: GmailEmail) => row.id === 'historical-customer')).toBe(false);
+      expect((await call('/messages/historical-customer/content', 'GET', undefined, recipientAuth)).status).toBe(404);
+    }
+    expect((await call('/threads/' + original.threadId, 'GET', undefined, recipientAuth)).status).toBe(404);
+    expect((await call('/send', 'POST', input)).status).toBe(200);
+    expect((await call('/emails', 'GET', undefined, recipientAuth)).body.emails.filter((row: GmailEmail) => row.subject === input.subject)).toHaveLength(1);
+    expect(sends).toBe(1); expect(reads).toBe(0);
+    // A later OAuth connection keeps the same account container and canonical message.
+    const activeRecipient = await prisma.emailAccount.update({ where: { id: recipientAccount.id }, data: { isActive: true, accessToken: encryptToken(randomUUID()) } });
+    const received = { ...mail(account.email, 'durable-recipient-provider'), threadId: 'durable-recipient-thread', to: [employee.email], subject: input.subject, body: input.body, rfcMessageId };
+    await Promise.all([scope(() => ingestMailboxMessages(activeRecipient, [received], permissions)), scope(() => ingestMailboxMessages(activeRecipient, [received], permissions)), call('/send', 'POST', input)]);
+    await scope(() => ingestMailboxMessages(account, [{ ...mail(account.email, 'durable-sent', ['SENT']), threadId: 'durable-sent-thread', to: [employee.email], rfcMessageId, body: '', attachments: [], contentLoaded: false }], permissions));
+    const reconciled = await prisma.mailboxMessage.findMany({ where: { accountId: recipientAccount.id, rfcMessageId } });
+    expect(reconciled).toHaveLength(1); expect(reconciled[0]).toMatchObject({ id: persisted.id, providerMessageId: received.id, threadId: received.threadId, body: input.body });
+    expect((await call('/emails', 'GET', undefined, recipientAuth)).body.emails.find((row: GmailEmail) => row.subject === input.subject)).toMatchObject({ id: received.id, messageCount: 1, gmailActionsAvailable: true });
+    expect((await call('/messages/durable-sent/content')).body).toMatchObject({ body: input.body });
+    expect(await prisma.activity.count({ where: { tenantId } })).toBe(activityBefore);
+    expect(await prisma.workflowTriggerRecord.count({ where: { tenantId } })).toBe(workflowsBefore);
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: source.id } })).toEqual(source);
+    expect(sends).toBe(1); expect(reads).toBe(0);
+  });
+  it('recovers a synchronized legacy forward with no delivery snapshot through normal Gmail sync', async () => {
+    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'legacy-forward-source')], permissions));
+    const employee = await prisma.user.create({ data: { tenantId, email: `legacy-forward-${randomUUID()}@camxian.com`, firstName: 'Legacy', lastName: 'Recipient', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: salesRoleId, userId: employee.id } });
+    const rfcMessageId = `<legacy-forward-${randomUUID()}@leadcrm.invalid>`;
+    const sent = { ...mail(account.email, 'legacy-forward-provider', ['SENT']), to: [employee.email], rfcMessageId, body: '<p>Legacy forwarded content</p>' };
+    const receipt = await prisma.mailboxSendReceipt.create({ data: { tenantId, accountId: account.id, requestId: randomUUID(), payloadHash: 'legacy-forward', status: 'sent', operation: 'send',
+      providerMessageId: sent.id, providerThreadId: sent.threadId, rfcMessageId, authorizationContext: { composeMode: 'forward', forwardSourceMessageId: 'legacy-forward-source', recipients: [employee.email] } } });
+    const stored = await persistHistorical(sent, { rfcMessageId, engagementRuleVersion: ENGAGEMENT_RULE_VERSION });
+    const currentScope = await scope(() => resolveMailboxScope(account, permissions));
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: currentScope.hash, syncCursor: '100', syncRequestedAt: new Date() } });
+    let fullReads = 0;
+    const provider = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      expect(init?.method).toBeUndefined();
+      if (String(target).includes('/history?')) return Response.json({ historyId: '110', history: [{ messagesAdded: [{ message: { id: sent.id } }] }] });
+      if (String(target).includes('format=full')) fullReads++;
+      return Response.json(apiMail({ ...sent, ...(String(target).includes('format=metadata') ? { body: '' } : {}) }, [{ name: 'Message-ID', value: rfcMessageId }]));
+    });
+    vi.stubGlobal('fetch', provider);
+    await scope(() => syncMailbox(tenantId, userId));
+    expect(fullReads).toBe(1);
+    const updated = await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+    expect(updated.authorizationContext).toMatchObject({ forwardDelivery: { body: sent.body, sentAt: sent.date } });
+    expect(await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: stored.id } })).toMatchObject({ body: sent.body, leadId: null, contactId: null, dealId: null });
+    const recipientAccount = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId: employee.id, provider: 'gmail' } } });
+    expect(recipientAccount.isActive).toBe(false);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: recipientAccount.id, rfcMessageId } })).toBe(1);
+    const recipientToken = (await issueAuthSession(employee)).token;
+    expect((await call('/emails', 'GET', undefined, `Bearer ${recipientToken}`)).body.emails).toEqual(expect.arrayContaining([expect.objectContaining({ body: sent.body })]));
+  });
+  it('rejects forward attachment staging failure before Gmail delivery', async () => {
+    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'storage-source')], permissions));
+    const employee = await prisma.user.findUniqueOrThrow({ where: { id: otherId } });
+    const storageRoot = process.env.STORAGE_ROOT!;
+    vi.stubEnv('STORAGE_ROOT', '');
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    const input = { requestId: randomUUID(), to: employee.email, subject: 'Storage failure', body: '<p>Keep editing</p>', composeMode: 'forward', forwardSourceMessageId: 'storage-source', attachments: [{ filename: 'Forward.pdf', mimeType: 'application/pdf', content: Buffer.from('%PDF-private bytes').toString('base64') }] };
+    const response = await call('/send', 'POST', input);
+    expect(response.status, JSON.stringify(response.body)).toBe(503); expect(provider).not.toHaveBeenCalled();
+    vi.stubEnv('STORAGE_ROOT', storageRoot);
+    provider.mockResolvedValue(Response.json({ error: { message: 'Rejected by fixture' } }, { status: 400 }));
+    expect((await call('/send', 'POST', input)).status).not.toBe(200);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect((await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { accountId_requestId: { accountId: account.id, requestId: input.requestId } } })).authorizationContext).toHaveProperty('forwardDelivery');
+    vi.stubEnv('STORAGE_ROOT', '');
+    expect((await call('/send', 'POST', input)).status).toBe(503); expect(provider).toHaveBeenCalledTimes(1);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, subject: 'Storage failure', labels: { has: 'SENT' } } })).toBe(0);
+    const staged = await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { accountId_requestId: { accountId: account.id, requestId: input.requestId } } });
+    const stagedContext = staged.authorizationContext as any;
+    await prisma.mailboxSendReceipt.update({ where: { id: staged.id }, data: { authorizationContext: { ...stagedContext, forwardDelivery: { ...stagedContext.forwardDelivery, sentAt: '2001-01-01T00:00:00.000Z' } } } });
+    vi.stubEnv('STORAGE_ROOT', storageRoot);
+    provider.mockResolvedValue(Response.json({ id: 'storage-retry-sent', threadId: 'storage-retry-thread' }));
+    expect((await call('/send', 'POST', input)).status).toBe(200); expect(provider).toHaveBeenCalledTimes(2);
+    expect((await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: 'storage-retry-sent' } })).sentAt.getUTCFullYear()).toBeGreaterThan(2001);
+  });
   it.each(['lead', 'contact', 'multiple'] as const)('forwards a %s source to employees without CRM effects on delivery or replay', async kind => {
     const original = { ...mail(kind === 'contact' ? contactEmail : leadEmail, 'forward-original'), rfcMessageId: '<forward-original@example.test>' };
     await scope(() => ingestMailboxMessages(account, [original], permissions));
@@ -1931,7 +2069,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     await scope(() => evaluateMailboxEngagement(account, permissions));
     const evidence = await scope(() => readDealEngagementEvidence(prisma, tenantId, deal.id, new Date()));
     expect(evidence.events).toEqual(evidenceBefore.events); expect(evidence.hasQuotation).toBe(false); expect(await snapshot()).toEqual(before);
-    const recipientAccount = await prisma.emailAccount.create({ data: { tenantId, userId: employee.id, email: employee.email, accessToken: encryptToken(randomUUID()), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
+    const recipientAccount = await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: employee.id, provider: 'gmail' } }, update: { isActive: true, accessToken: encryptToken(randomUUID()), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] }, create: { tenantId, userId: employee.id, email: employee.email, accessToken: encryptToken(randomUUID()), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
     const received = { ...sent!, id: 'received-forward', threadId: 'received-forward-thread', labels: ['INBOX', 'UNREAD'] };
     const recipientScope = await scope(() => resolveMailboxScope(recipientAccount, permissions));
     await prisma.emailAccount.update({ where: { id: recipientAccount.id }, data: { syncScopeHash: recipientScope.hash, syncCursor: '100', syncRequestedAt: new Date() } });

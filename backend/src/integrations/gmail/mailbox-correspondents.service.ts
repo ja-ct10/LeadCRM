@@ -15,7 +15,7 @@ type DetailRow = { id: string; threadId: string; providerMessageId: string; sent
 /** Open the latest page of the selected group; older pages retain chronological display. */
 export async function readMailboxCorrespondent(tenantId: string, userId: string, conversationId: string, input: unknown) : Promise<MailboxConversationDetail> {
   const options = MailboxConversationPageSchema.parse(input);
-  const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
+  const { account, scope, permissions } = await authorizedMailbox(tenantId, userId, true);
   const context = conversationContext(account, scope, ['detail', conversationId]);
   let cursor: { context: string; date: string; id: string } | undefined;
   if (options.pageToken) {
@@ -64,7 +64,7 @@ export async function readMailboxCorrespondent(tenantId: string, userId: string,
     email.dealId = row.effectiveDealId; email.dealTitle = row.effectiveDealTitle;
     if (email.dealId) email.needsDealAssociation = false;
   }
-  const current = await authorizedMailbox(tenantId, userId);
+  const current = await authorizedMailbox(tenantId, userId, true);
   if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   const last = page[0];
   return { emails, messageCount: rows[0].messageCount, dealId: rows[0].effectiveDealId, dealTitle: rows[0].effectiveDealTitle,

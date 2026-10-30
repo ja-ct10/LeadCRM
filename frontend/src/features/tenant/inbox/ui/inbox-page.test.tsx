@@ -29,6 +29,35 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.resto
 
 
 describe('Persisted scoped Inbox', () => {
+  it('reads persisted internal copies without Gmail and does not issue provider read-state writes', async () => {
+    mocks.status.mockResolvedValue({ isConnected: false, canReadMailbox: true, mailboxEmail: 'staff@example.test', email: null });
+    mocks.list.mockResolvedValue({ emails: [{ ...email, id: 'internal_receipt', subject: 'Internal forward', gmailActionsAvailable: false }] });
+    render(<InboxPage />); await flush();
+    expect(screen.getByText(/Internal forward/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect Gmail' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Compose new email' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+    fireEvent.click(screen.getByText(/Internal forward/)); await flush();
+    expect(screen.getByText('Conversation')).toBeTruthy();
+    expect(mocks.read).not.toHaveBeenCalled(); expect(mocks.readThread).not.toHaveBeenCalled();
+  });
+  it('discovers the first internal delivery while the disconnected Inbox remains open', async () => {
+    mocks.status.mockResolvedValueOnce({ isConnected: false, email: null }).mockResolvedValue({ isConnected: false, canReadMailbox: true, mailboxEmail: 'staff@example.test' });
+    mocks.list.mockResolvedValue({ emails: [{ ...email, subject: 'First internal forward', gmailActionsAvailable: false }] });
+    render(<InboxPage />); await flush();
+    expect(screen.getByText('Connect email')).toBeTruthy(); expect(mocks.list).not.toHaveBeenCalled();
+    await advance(60_000); await flush();
+    expect(screen.getByText(/First internal forward/)).toBeTruthy(); expect(mocks.sync).not.toHaveBeenCalled();
+  });
+  it('keeps internal copies readable after disconnecting Gmail', async () => {
+    mocks.list.mockResolvedValue({ emails: [{ ...email, subject: 'Internal forward', gmailActionsAvailable: false }] });
+    render(<InboxPage />); await flush();
+    mocks.status.mockResolvedValue({ isConnected: false, canReadMailbox: true, mailboxEmail: 'staff@example.test' });
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' })); await flush();
+    expect(screen.getByText(/Internal forward/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect Gmail' })).toBeTruthy();
+  });
   it('shows a load failure with retry instead of an empty mailbox, then recovers', async () => {
     mocks.list.mockRejectedValueOnce(new TypeError('Connection interrupted'));
     render(<InboxPage />); await flush();
