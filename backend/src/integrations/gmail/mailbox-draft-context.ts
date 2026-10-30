@@ -6,6 +6,11 @@ import { assertStoredMessages, type MailboxScope } from './mailbox-scope';
 
 type DraftContext = { composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string; recordContext?: MailboxRecordContext; dealId?: string };
 type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired' | 'recordContext' | 'dealId'>;
+const acknowledgedDraftReceipt: Prisma.MailboxSendReceiptWhereInput = { OR: [
+  { status: { in: ['saved', 'queued', 'cancelled'] } },
+  // A rejected delivery does not invalidate an already acknowledged forward draft.
+  { status: 'failed', authorizationContext: { path: ['composeMode'], equals: 'forward' } },
+] };
 export function receiptComposeContext(value: Prisma.JsonValue | null): DraftContext | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('composeMode' in value)) return;
   const parsed = MailboxComposeContextSchema.safeParse(value);
@@ -15,7 +20,7 @@ export function receiptComposeContext(value: Prisma.JsonValue | null): DraftCont
 /** Only an exact acknowledged provider draft/message pair supplies restoration intent. */
 export async function draftComposeContext(account: Pick<EmailAccount, 'id' | 'tenantId'>, row: MailboxMessage): Promise<RestoredDraftContext> {
   const receipt = row.draftId ? await prisma.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id,
-    providerDraftId: row.draftId, providerMessageId: row.providerMessageId, operation: { in: ['draft', 'schedule'] }, status: { in: ['saved', 'queued', 'cancelled'] } },
+    providerDraftId: row.draftId, providerMessageId: row.providerMessageId, operation: { in: ['draft', 'schedule'] }, AND: [acknowledgedDraftReceipt] },
     orderBy: { createdAt: 'desc' }, select: { authorizationContext: true } }) : null;
   const context = receiptComposeContext(receipt?.authorizationContext ?? null);
   if (context) return context;
@@ -28,7 +33,7 @@ export async function draftComposeContext(account: Pick<EmailAccount, 'id' | 'te
 export async function draftComposeContexts(account: Pick<EmailAccount, 'id' | 'tenantId'>, rows: MailboxMessage[]): Promise<Map<string, RestoredDraftContext>> {
   const pairs = rows.filter(row => row.draftId).map(row => ({ providerDraftId: row.draftId!, providerMessageId: row.providerMessageId }));
   const receipts = pairs.length ? await prisma.mailboxSendReceipt.findMany({ where: { tenantId: account.tenantId, accountId: account.id,
-    operation: { in: ['draft', 'schedule'] }, status: { in: ['saved', 'queued', 'cancelled'] }, OR: pairs },
+    operation: { in: ['draft', 'schedule'] }, AND: [acknowledgedDraftReceipt], OR: pairs },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { providerDraftId: true, providerMessageId: true, authorizationContext: true } }) : [];
   return new Map(rows.map(row => {
     const receipt = receipts.find(item => item.providerDraftId === row.draftId && item.providerMessageId === row.providerMessageId);

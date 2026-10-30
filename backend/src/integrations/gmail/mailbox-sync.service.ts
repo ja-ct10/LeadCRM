@@ -1,7 +1,7 @@
 import { refreshDealClassification } from '../../modules/crm/customer-classification.service';
 import { syncBusinessEmailConnections } from './business-email.service';
 import { Prisma } from '@prisma/client';
-import { mailboxProviderQueries, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
+import { mailboxProviderQueries, messageInScope, matchingMailboxForward, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
 import { runScheduledMailboxEmails } from './scheduled-mailbox.service';
 import { randomUUID } from 'node:crypto';
@@ -100,7 +100,8 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     const currentScope = await resolveMailboxScope(account, currentPermissions, tx);
     if (currentScope.hash !== scope.hash) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
     const threadWhere = { AND: [scopedMessagesWhere(account, currentScope), { threadId, id: { in: targets.map(row => row.id) } }] };
-    const selected = await tx.mailboxMessage.findMany({ where: threadWhere, select: { id: true, dealId: true, dealAttribution: true } });
+    const selected = await tx.mailboxMessage.findMany({ where: threadWhere });
+    if (selected.some(row => matchingMailboxForward(storedEmail(row), currentScope))) throw new AppError('Employee forwards cannot be associated with CRM records.', 403);
     if (selected.length !== targets.length || selected.some(row => row.dealId && row.dealId !== dealId)) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
     const messages = await tx.mailboxMessage.findMany({ where: threadWhere, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
     const links = messages.filter(message => message.leadId ? scope.leadIds.includes(message.leadId) : message.contactId && scope.contactIds.includes(message.contactId));

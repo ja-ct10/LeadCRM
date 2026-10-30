@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MailboxDealAssociationSchema = exports.MailboxBulkActionSchema = exports.MailboxConversationPageSchema = exports.MailboxConversationReadStateSchema = exports.MailboxConversationIdSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.MailboxComposeContextSchema = exports.MailboxUploadAttachmentsSchema = exports.MailboxUploadAttachmentSchema = exports.MAILBOX_ATTACHMENT_TYPES = exports.MAILBOX_ATTACHMENTS_MAX_BYTES = exports.MAILBOX_ATTACHMENT_MAX_BYTES = exports.MailboxRecordContextSchema = exports.MAILBOX_COMPOSE_MODES = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
+exports.MailboxDealAssociationSchema = exports.MailboxBulkActionSchema = exports.MailboxConversationPageSchema = exports.MailboxConversationReadStateSchema = exports.MailboxConversationIdSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.MailboxComposeContextSchema = exports.MailboxUploadAttachmentsSchema = exports.MailboxUploadAttachmentSchema = exports.MAILBOX_ATTACHMENT_TYPES = exports.MAILBOX_ATTACHMENTS_MAX_BYTES = exports.MAILBOX_ATTACHMENT_MAX_BYTES = exports.MailboxRecordContextSchema = exports.MAILBOX_FORWARD_RECIPIENT_ERROR = exports.MAILBOX_COMPOSE_MODES = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
 exports.mailboxAttachmentType = mailboxAttachmentType;
 const zod_1 = require("zod");
 exports.CLOSED_WON_CONFIRMATION_TYPES = ['Approved Quotation', 'Signed/Approved Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'];
@@ -15,6 +15,7 @@ exports.ClosedWonConfirmationSchema = zod_1.z.object({
 const header = zod_1.z.string().trim().min(1).max(998).refine(value => !/[\r\n]/.test(value), 'Invalid email header');
 const recipient = zod_1.z.string().trim().max(254).email().refine(value => !/[\r\n]/.test(value), 'Invalid email address');
 exports.MAILBOX_COMPOSE_MODES = ['compose', 'reply', 'replyAll', 'forward'];
+exports.MAILBOX_FORWARD_RECIPIENT_ERROR = 'Forwarding is only allowed to active employee accounts in your LeadCRM workspace.';
 const sourceId = zod_1.z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 exports.MailboxRecordContextSchema = zod_1.z.object({ recordModule: zod_1.z.enum(['leads', 'contacts']), recordId: zod_1.z.string().min(1).max(200) }).strict();
 exports.MAILBOX_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
@@ -42,7 +43,8 @@ exports.MailboxComposeContextSchema = zod_1.z.object({
 }).transform(value => ({ ...value, composeMode: value.composeMode ?? (value.replyToMessageId ? 'reply' : value.forwardSourceMessageId ? 'forward' : 'compose') }))
     .refine(value => value.composeMode === 'compose' ? !value.replyToMessageId && !value.forwardSourceMessageId
     : value.composeMode === 'forward' ? !!value.forwardSourceMessageId && !value.replyToMessageId
-        : !!value.replyToMessageId && !value.forwardSourceMessageId, 'Choose the original message for Reply, Reply All or Forward.');
+        : !!value.replyToMessageId && !value.forwardSourceMessageId, 'Choose the original message for Reply, Reply All or Forward.')
+    .transform(value => value.composeMode === 'forward' ? { ...value, recordContext: undefined, dealId: undefined } : value);
 exports.SendMailboxEmailSchema = zod_1.z.object({
     ...recordComposeFields,
     attachments: exports.MailboxUploadAttachmentsSchema.optional(),

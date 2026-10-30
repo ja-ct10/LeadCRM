@@ -3,6 +3,7 @@ import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { mailboxAddress, messageInScope, scopedMessagesWhere, type MailboxScope } from './mailbox-scope';
 import type { MailboxPermissions } from './mailbox-ingestion.service';
+import { MAILBOX_FORWARD_RECIPIENT_ERROR } from '@leadcrm/shared';
 
 /** Shared by delivery and read-only Workflow checks. Assignment is checked separately. */
 export function assertMailboxCustomerPermission(permissions: MailboxPermissions, isLead: boolean, isContact: boolean) {
@@ -12,10 +13,14 @@ export function assertMailboxCustomerPermission(permissions: MailboxPermissions,
 }
 
 /** Read scope is insufficient for delivery. Every recipient needs current mutation access. */
-export async function assertMailboxRecipients(account: EmailAccount, scope: MailboxScope, permissions: MailboxPermissions, values: string[], threadId = '', projection?: { type: 'lead' | 'contact'; id: string; email: string }) {
+export async function assertMailboxRecipients(account: EmailAccount, scope: MailboxScope, permissions: MailboxPermissions, values: string[], threadId = '', projection?: { type: 'lead' | 'contact'; id: string; email: string }, forward = false) {
   if (values.length > 50) throw new AppError('Use at most 50 recipients.', 400);
   const recipients = values.map(value => mailboxAddress(value));
   if (recipients.some(address => !address)) throw new AppError('Enter valid recipient addresses.', 400);
+  if (forward) {
+    if (recipients.some(address => !scope.forwardRecipientEmails?.includes(address!))) throw new AppError(MAILBOX_FORWARD_RECIPIENT_ERROR, 403, 'MAILBOX_RECIPIENT_REJECTED');
+    return;
+  }
   if (!permissions.leadsEdit && !permissions.contactsEdit) throw new AppError('Lead or Contact edit permission is required to compose customer email.', 403, 'MAILBOX_RECIPIENT_REJECTED');
   const [leads, contacts, continuation] = await Promise.all([
     prisma.lead.findMany({ where: { tenantId: account.tenantId, id: { in: scope.leadIds } }, select: { id: true, email: true } }),

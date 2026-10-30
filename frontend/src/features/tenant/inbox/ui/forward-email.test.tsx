@@ -9,10 +9,10 @@ import EmailConversationView from './email-conversation-view';
 import EmailDetailView from './email-detail-view';
 import InboxEmailList from './inbox-email-list';
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), schedule: vi.fn(), content: vi.fn(), attachment: vi.fn(), thread: vi.fn(), success: vi.fn() }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), schedule: vi.fn(), status: vi.fn(), associate: vi.fn(), content: vi.fn(), attachment: vi.fn(), thread: vi.fn(), success: vi.fn() }));
 vi.mock('../services/gmail.service', () => ({ sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, scheduleGmailEmail: mocks.schedule,
   fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment, fetchGmailThread: mocks.thread,
-  deleteGmailDraft: vi.fn(), associateThreadDeal: vi.fn(), archiveGmailConversations: vi.fn(), trashGmailConversations: vi.fn(), restoreGmailConversations: vi.fn() }));
+  getGmailStatus: mocks.status, deleteGmailDraft: vi.fn(), associateThreadDeal: mocks.associate, archiveGmailConversations: vi.fn(), trashGmailConversations: vi.fn(), restoreGmailConversations: vi.fn() }));
 vi.mock('@/shared/utils/toast', () => ({ toast: { success: mocks.success, error: vi.fn() } }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const original: GmailEmail = { id: 'original', threadId: 'original-thread', from: 'Customer <customer@example.test>', to: ['owner@example.test'], cc: ['copy@example.test'], subject: 'Project & quote', snippet: 'Saved content', body: '<p>Saved content</p>', date: '2026-10-28T01:00:00Z', labels: ['INBOX'], isRead: true };
@@ -21,6 +21,7 @@ const draft = () => ({ ...forwardDraft({ ...original, attachments: [] }), to: 'r
 const ready = () => waitFor(() => expect(screen.getByLabelText('Send email')).toHaveProperty('disabled', false));
 beforeEach(() => {
   vi.resetAllMocks(); mocks.send.mockResolvedValue({ success: true, messageId: 'sent', threadId: 'new-thread' });
+  mocks.status.mockResolvedValue({ isConnected: true, forwardRecipientEmails: ['recipient@example.test', 'first@example.test', 'second@example.test'] });
   mocks.save.mockResolvedValue({ draftId: 'saved', messageId: 'saved-message' }); mocks.content.mockResolvedValue({ body: original.body, attachments: [] });
   mocks.thread.mockResolvedValue({ emails: [original], dealOptions: [], canAssociateDeal: false }); mocks.attachment.mockResolvedValue(new Blob(['%PDF-original-bytes']));
 });
@@ -60,6 +61,31 @@ it.each(['recipient@example.test', 'first@example.test, second@example.test'])('
 it.each(['invalid', 'ok@example.test, invalid', 'ok@example.test,'])('rejects invalid recipients before sending: %s', async to => {
   render(<ComposeModal isOpen initialDraft={draft()} onClose={vi.fn()} onSent={vi.fn()} />); fireEvent.change(screen.getByLabelText('To'), { target: { value: to } });
   await ready(); fireEvent.click(screen.getByLabelText('Send email')); expect(screen.getByRole('alert').textContent).toContain('valid email addresses'); expect(mocks.send).not.toHaveBeenCalled();
+});
+it.each(['external@example.test', 'customer@example.test', 'contact@example.test', 'foreign-employee@example.test', 'inactive@example.test', 'recipient@example.test, customer@example.test'])('rejects an ineligible employee address before sending or saving: %s', async to => {
+  render(<ComposeModal isOpen initialDraft={draft()} onClose={vi.fn()} onSent={vi.fn()} />);
+  await ready(); fireEvent.change(screen.getByLabelText('To'), { target: { value: to } }); fireEvent.blur(screen.getByLabelText('To'));
+  expect(screen.getByLabelText('To').getAttribute('aria-invalid')).toBe('true');
+  fireEvent.click(screen.getByLabelText('Send email')); expect(screen.getByRole('alert').textContent).toContain('active employee accounts');
+  fireEvent.click(screen.getByLabelText('Save as draft')); expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toContain('Saved content');
+});
+it('blocks forwarding while employee data is unavailable and retries without losing content', async () => {
+  mocks.status.mockRejectedValueOnce(new Error('Unavailable'));
+  render(<ComposeModal isOpen initialDraft={draft()} onClose={vi.fn()} onSent={vi.fn()} />);
+  await screen.findByRole('button', { name: 'Retry employee recipients' });
+  for (const name of ['Send email', 'Save as draft', 'Schedule send options']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toContain('Saved content');
+  fireEvent.click(screen.getByRole('button', { name: 'Retry employee recipients' })); await ready();
+  expect(mocks.status).toHaveBeenLastCalledWith(expect.any(AbortSignal), true);
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: ' RECIPIENT@example.test ' } });
+  fireEvent.click(screen.getByLabelText('Send email')); await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+});
+it('drops inherited CRM context and never links the forwarded copy after sending', async () => {
+  render(<ComposeModal isOpen initialDraft={{ ...draft(), sourceDealId: 'source-deal', dealId: 'source-deal', recordContext: { recordModule: 'leads', recordId: 'source-lead' } }} onClose={vi.fn()} onSent={vi.fn()} />);
+  await ready(); expect(screen.getByLabelText('To')).toHaveProperty('readOnly', false);
+  fireEvent.click(screen.getByLabelText('Send email')); await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+  expect(mocks.send.mock.calls[0][8]).toMatchObject({ recordContext: undefined, dealId: undefined }); expect(mocks.associate).not.toHaveBeenCalled();
 });
 it.each(['MAILBOX_RECIPIENT_REJECTED', 'GMAIL_WRITE_REJECTED'])('keeps the editable draft and displays rejection (%s)', async code => {
   mocks.send.mockRejectedValue(Object.assign(new Error('Recipient or Gmail rejected this send.'), { status: 403, code }));

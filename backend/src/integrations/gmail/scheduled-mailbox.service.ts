@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ScheduleMailboxEmailSchema, type ScheduledMailboxEmailDetail } from '@leadcrm/shared';
+import { ScheduleMailboxEmailSchema, MAILBOX_FORWARD_RECIPIENT_ERROR, type ScheduledMailboxEmailDetail } from '@leadcrm/shared';
 import { z } from 'zod';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
@@ -164,15 +164,14 @@ async function runScheduledMailboxPass() {
       if (account.id !== item.accountId) throw new AppError('Mailbox changed.', 403);
       const storedDraft = await prisma.mailboxMessage.findFirst({ where: { tenantId: item.tenantId, accountId: account.id, draftId: item.draftId } });
       if (!storedDraft) throw new AppError('Scheduled draft is no longer available.', 404);
-      if (!uncertain) await assertStoredMessages(account, scope, [storedDraft.providerMessageId]);
-      if (storedDraft?.sourceMessageId) await assertStoredMessages(account, scope, [storedDraft.sourceMessageId], true);
-      await assertMailboxRecipients(account, scope, permissions, item.recipients, storedDraft?.threadId);
       const receipt = await prisma.mailboxSendReceipt.findUnique({ where: { accountId_requestId: { accountId: item.accountId, requestId: item.requestId } } });
       const source = receiptComposeContext(receipt?.authorizationContext ?? null);
       if (!source || !receipt?.rfcMessageId) throw new AppError('This scheduled draft has no verified operation context. Review it in Gmail and save a verified draft before scheduling again.', 409, 'MAILBOX_DRAFT_CONTEXT_REQUIRED');
       const rfcMessageId = receipt.rfcMessageId;
       const context = { recipients: item.recipients, draftId: item.draftId, ...source, threadId: storedDraft.threadId };
       await authorizeMailboxOperation(account, context);
+      if (!uncertain) await assertStoredMessages(account, scope, [storedDraft.providerMessageId]);
+      if (storedDraft.sourceMessageId) await assertStoredMessages(account, scope, [storedDraft.sourceMessageId], true);
       const token = await getValidAccessToken(item.tenantId, item.createdById);
       let result: { id: string; threadId: string };
       if (uncertain) {
@@ -203,7 +202,7 @@ async function runScheduledMailboxPass() {
         await assertStoredMessages(current.account, current.scope, [storedDraft.providerMessageId]);
         if (email.rfcMessageId !== rfcMessageId || mailboxAddress(email.from) !== mailboxAddress(account.email) || !messageInScope(email, account.email, current.scope) ||
           JSON.stringify(normalizedRecipients([...email.to, ...(email.cc ?? [])])) !== JSON.stringify(normalizedRecipients(item.recipients))) throw new AppError('Scheduled draft changed or recipient is no longer assigned to you.', 403);
-        await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId);
+        await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId, undefined, source.composeMode === 'forward');
         await prisma.$transaction(async tx => {
           const moved = await tx.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId, status: 'claimed', leaseUntil: { gt: new Date() } }, data: { status: 'sending' } });
           if (!moved.count) throw new AppError('Scheduled email claim lost.', 409);
@@ -237,7 +236,7 @@ async function runScheduledMailboxPass() {
       const status = unknown ? 'uncertain' : transient && item.attemptCount < 2 ? 'pending' : 'failed';
       await update({ status,
         retryAt: unknown && item.attemptCount >= 3 ? null : error instanceof AppError && error.retryAt ? new Date(error.retryAt) : new Date(Date.now() + 60000 * 2 ** Math.min(item.attemptCount, 4)),
-        lastError: unknown ? 'Delivery needs verification. Automatic resend is paused.' : error instanceof AppError && error.code === 'MAILBOX_DRAFT_CONTEXT_REQUIRED' ? error.message : error instanceof AppError && [403, 404].includes(error.statusCode) ? 'Mailbox authorization or CRM assignment changed. Email was not sent.' : 'Gmail could not send this scheduled email. Reconnect or review the draft.' });
+        lastError: unknown ? 'Delivery needs verification. Automatic resend is paused.' : error instanceof AppError && (error.code === 'MAILBOX_DRAFT_CONTEXT_REQUIRED' || error.code === 'MAILBOX_RECIPIENT_REJECTED' && error.message === MAILBOX_FORWARD_RECIPIENT_ERROR) ? error.message : error instanceof AppError && [403, 404].includes(error.statusCode) ? 'Mailbox authorization or CRM assignment changed. Email was not sent.' : 'Gmail could not send this scheduled email. Reconnect or review the draft.' });
       await prisma.mailboxSendReceipt.updateMany({ where: { accountId: item.accountId, requestId: item.requestId, operation: 'schedule', status: { in: ['queued', 'sending', 'uncertain'] } }, data: { status: unknown ? 'uncertain' : status === 'pending' ? 'queued' : 'failed', leaseId: null, leaseUntil: null, lastError: unknown ? 'Delivery unconfirmed. No automatic resend.' : 'Scheduled delivery rejected.' } });
     } finally {
       await prisma.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId }, data: { leaseId: null, leaseUntil: null } });

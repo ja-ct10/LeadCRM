@@ -20,6 +20,22 @@ it('requires explicit source selection for unverified older reply drafts', async
   await expect(resolveDraftOperationContext(account, { requestId: 'operation', draftId: row.draftId! })).rejects.toMatchObject({ code: 'MAILBOX_DRAFT_CONTEXT_REQUIRED' });
   expect(await resolveDraftOperationContext(account, { requestId: 'operation', draftId: row.draftId!, composeMode: 'forward', forwardSourceMessageId: 'selected-original' })).toEqual({ composeMode: 'forward', forwardSourceMessageId: 'selected-original' });
 });
+it('removes CRM context from new and restored forwards while retaining Reply context', async () => {
+  const linked = { recordContext: { recordModule: 'leads' as const, recordId: 'lead' }, dealId: 'deal' };
+  const context = { ...linked, composeMode: 'forward' as const, forwardSourceMessageId: 'original' };
+  expect(await resolveDraftOperationContext(account, { requestId: 'operation', ...context })).toEqual({ ...context, recordContext: undefined, dealId: undefined });
+  db.mailboxSendReceipt.findFirst.mockResolvedValue({ authorizationContext: context });
+  expect(await draftComposeContext(account, row)).toEqual({ ...context, recordContext: undefined, dealId: undefined });
+  expect(MailboxComposeContextSchema.parse({ ...linked, composeMode: 'reply', replyToMessageId: 'original' })).toMatchObject(linked);
+});
+it('keeps exact acknowledged forward intent available after delivery was rejected', async () => {
+  const context = { composeMode: 'forward', forwardSourceMessageId: 'authorized-original' };
+  db.mailboxSendReceipt.findFirst.mockResolvedValue({ authorizationContext: context });
+  expect(await draftComposeContext(account, row)).toEqual(context);
+  expect(db.mailboxSendReceipt.findFirst.mock.calls[0][0].where.AND).toEqual(expect.arrayContaining([expect.objectContaining({ OR: expect.arrayContaining([
+    { status: 'failed', authorizationContext: { path: ['composeMode'], equals: 'forward' } },
+  ]) })]));
+});
 it('rejects conflicting contracts and refuses to infer Compose from source-free legacy headers', async () => {
   expect(MailboxComposeContextSchema.safeParse({ composeMode: 'forward', replyToMessageId: 'wrong-source' }).success).toBe(false);
   expect(MailboxComposeContextSchema.safeParse({ composeMode: 'compose', forwardSourceMessageId: 'wrong-source' }).success).toBe(false);

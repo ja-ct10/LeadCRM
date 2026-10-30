@@ -6,7 +6,7 @@ import EmailConversationView from './email-conversation-view';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 
 const mocks = vi.hoisted(() => ({ schedule: vi.fn(), send: vi.fn(), save: vi.fn(), remove: vi.fn(), thread: vi.fn(), read: vi.fn(), associate: vi.fn() }));
-vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: async () => ({ body: '<p>Question</p><script>bad()</script>', attachments: [] }), fetchGmailAttachment: vi.fn(), associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
+vi.mock('../services/gmail.service', () => ({ getGmailStatus: async () => ({ isConnected: true, forwardRecipientEmails: ['employee@example.test'] }), fetchGmailMessageContent: async () => ({ body: '<p>Question</p><script>bad()</script>', attachments: [] }), fetchGmailAttachment: vi.fn(), associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const email = { id: 'message1', threadId: 'thread1', from: 'Customer <customer@example.test>', to: ['staff@camxian.com'], subject: 'Telephone inquiry', body: '<p>Question</p><script>bad()</script>', snippet: 'Question', date: '2026-10-07T00:00:00Z', labels: ['INBOX'], isRead: false, direction: 'inbound' as const };
 beforeEach(() => { vi.clearAllMocks(); mocks.schedule.mockResolvedValue({ id: 'scheduled', status: 'pending' }); mocks.read.mockResolvedValue({ success: true }); mocks.thread.mockResolvedValue({ emails: [email], dealOptions: [], canAssociateDeal: false }); });
@@ -106,8 +106,9 @@ it('clears a newly saved provider draft when mailbox authorization changes', asy
 it.each(['reply', 'replyAll', 'forward'] as const)('restores saved %s draft with its exact original source', async composeMode => {
   mocks.save.mockResolvedValue({ draftId: 'saved', messageId: 'saved-message' });
   const source = composeMode === 'forward' ? { forwardSourceMessageId: 'older-topic' } : { replyToMessageId: 'older-topic' };
-  render(<ComposeModal isOpen onClose={vi.fn()} onSent={vi.fn()} initialDraft={{ to: 'customer@example.test', subject: composeMode === 'forward' ? 'Fwd: Inquiry' : 'Re: Inquiry', body: '<p>Authored details</p>', draftId: 'saved', composeMode, ...source }} />);
+  render(<ComposeModal isOpen onClose={vi.fn()} onSent={vi.fn()} initialDraft={{ to: composeMode === 'forward' ? 'employee@example.test' : 'customer@example.test', subject: composeMode === 'forward' ? 'Fwd: Inquiry' : 'Re: Inquiry', body: '<p>Authored details</p>', draftId: 'saved', composeMode, ...source }} />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toBe('Authored details'));
+  await waitFor(() => expect(screen.getByLabelText('Save as draft')).toHaveProperty('disabled', false));
   fireEvent.click(screen.getByLabelText('Save as draft'));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][4]).toBe(source.replyToMessageId);
@@ -116,12 +117,13 @@ it.each(['reply', 'replyAll', 'forward'] as const)('restores saved %s draft with
 });
 it('requires explicit authorized original message and action for legacy drafts without changing authored text', async () => {
   mocks.save.mockResolvedValue({ draftId: 'saved', messageId: 'saved-message' });
-  render(<ComposeModal isOpen onClose={vi.fn()} onSent={vi.fn()} initialDraft={{ to: 'customer@example.test', subject: 'Fwd: Inquiry', body: '<p>Keep legacy authored details</p>', draftId: 'saved', draftContextRequired: true, draftThreadId: email.threadId }} />);
+  render(<ComposeModal isOpen onClose={vi.fn()} onSent={vi.fn()} initialDraft={{ to: 'employee@example.test', subject: 'Fwd: Inquiry', body: '<p>Keep legacy authored details</p>', draftId: 'saved', draftContextRequired: true, draftThreadId: email.threadId }} />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toBe('Keep legacy authored details'));
   await waitFor(() => expect(screen.getByLabelText('Original message for draft').querySelectorAll('option')).toHaveLength(2));
   for (const label of ['Send email', 'Schedule send options', 'Save as draft']) expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByLabelText('Draft action'), { target: { value: 'forward' } });
   fireEvent.change(screen.getByLabelText('Original message for draft'), { target: { value: email.id } });
+  await waitFor(() => expect(screen.getByLabelText('Save as draft')).toHaveProperty('disabled', false));
   fireEvent.click(screen.getByLabelText('Save as draft'));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][2]).toBe('<p>Keep legacy authored details</p>');

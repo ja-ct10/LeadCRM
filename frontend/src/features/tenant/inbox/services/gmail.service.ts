@@ -13,14 +13,7 @@ export const fetchGmailMessageContent = (messageId: string, signal?: AbortSignal
 export const fetchGmailAttachment = (messageId: string, attachmentId: string, signal?: AbortSignal, recordContext?: RecordEmailAttachmentContext) =>
   apiClient.download(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${recordContext ? '?' + new URLSearchParams(recordContext).toString() : ''}`, undefined, signal);
 
-export interface GmailConnectionStatus {
-  isConnected: boolean;
-  email: string | null;
-  connectedAt: string | null;
-  lastSyncAt: string | null;
-  syncError?: string | null;
-  retryAt?: string | null;
-}
+export type GmailConnectionStatus = import('@leadcrm/shared').MailboxConnectionStatus;
 
 export const syncGmail = () => apiClient.post<{ hasMore: boolean; processed?: number; retryAt?: string }>('/integrations/gmail/sync', {});
 export const fetchGmailThread = (threadId: string, signal?: AbortSignal) => apiClient.get<EmailListResponse & { dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }>(`/integrations/gmail/threads/${encodeURIComponent(threadId)}`, { signal });
@@ -63,8 +56,8 @@ export async function initiateGmailConnect(): Promise<void> {
 /**
  * Checks whether the current user has a connected Gmail account.
  */
-export async function getGmailStatus(signal?: AbortSignal): Promise<GmailConnectionStatus> {
-  return apiClient.get<GmailConnectionStatus>('/integrations/gmail/status', { signal });
+export async function getGmailStatus(signal?: AbortSignal, includeForwardRecipients = false): Promise<GmailConnectionStatus> {
+  return apiClient.get<GmailConnectionStatus>('/integrations/gmail/status', { signal, ...(includeForwardRecipients ? { params: { includeForwardRecipients: true } } : {}) });
 }
 
 /**

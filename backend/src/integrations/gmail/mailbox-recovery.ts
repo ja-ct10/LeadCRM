@@ -35,7 +35,7 @@ export async function persistRecoveredDraft(account: EmailAccount, result: { mes
   if (!messageInScope(email, account.email, current.scope)) throw new AppError('Draft access changed during recovery.', 409, 'MAILBOX_SCOPE_CHANGED');
   const participants = mailboxParticipants(email)!;
   const data = { threadId: email.threadId, from: email.from, fromAddress: mailboxAddress(email.from)!, recipients: email.to,
-    recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [],
+    recipientAddresses: [...new Set([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []))].sort(), ccRecipients: email.cc ?? [],
     replyToAddress: email.replyToAddress ?? null, authorizationParticipants: participants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
     subject: email.subject, body: email.body, snippet: email.snippet, labels: email.labels, direction: 'outbound', sentAt: new Date(email.date),
     draftId: result.draftId, crmDraft: true, sourceMessageId: context.replyToMessageId ?? context.forwardSourceMessageId ?? null,

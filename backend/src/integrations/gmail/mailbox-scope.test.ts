@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { EmailAccount } from '@prisma/client';
-const db = vi.hoisted(() => ({ lead: { findMany: vi.fn() }, contact: { findMany: vi.fn() }, mailboxMessage: { findMany: vi.fn() } }));
+const db = vi.hoisted(() => ({ lead: { findMany: vi.fn() }, contact: { findMany: vi.fn() }, user: { findMany: vi.fn() }, mailboxSendReceipt: { findMany: vi.fn() }, mailboxMessage: { findMany: vi.fn() } }));
 vi.mock('../../config/database.config', () => ({ default: db }));
 import { resolveMailboxScope, messageInScope, projectMailboxScope, scopedMessagesWhere, scopedMessagesSql, mailboxParticipants } from './mailbox-scope';
 const account = { id: 'account', tenantId: 'tenant', userId: 'actor', email: 'actor@example.test' } as EmailAccount;
@@ -14,12 +14,36 @@ it('allows Client Admin same-tenant recipients without assignment but keeps unav
   expect(scope.addresses).not.toContain('blocked@example.test');
   expect(db.lead.findMany.mock.calls[0][0].where.tenantId).toBe(account.tenantId);
 });
-beforeEach(() => { vi.resetAllMocks(); db.lead.findMany.mockResolvedValue([lead('own', 'own@example.test')]); db.contact.findMany.mockResolvedValue([]); db.mailboxMessage.findMany.mockResolvedValue([]); });
+beforeEach(() => { vi.resetAllMocks(); db.lead.findMany.mockResolvedValue([lead('own', 'own@example.test')]); db.contact.findMany.mockResolvedValue([]); db.user.findMany.mockResolvedValue([]); db.mailboxSendReceipt.findMany.mockResolvedValue([]); db.mailboxMessage.findMany.mockResolvedValue([]); });
 
 it('normalizes omitted administrator flags and permission property order in scope revisions', async () => {
   const before = await resolveMailboxScope(account, permissions);
   const after = await resolveMailboxScope(account, { clientAdmin: false, ...permissions });
   expect(after.hash).toBe(before.hash);
+});
+it('invalidates forward eligibility when employee status changes and rejects CRM address collisions', async () => {
+  const employee = { id: 'employee', tenantId: account.tenantId, email: 'employee@camxian.com', role: 'Client Admin', status: 'ACTIVE' };
+  db.user.findMany.mockResolvedValue([employee]);
+  const eligible = await resolveMailboxScope(account, permissions);
+  expect(eligible.forwardRecipientEmails).toEqual([employee.email]);
+  db.user.findMany.mockResolvedValue([{ ...employee, status: 'INACTIVE' }]);
+  const inactive = await resolveMailboxScope(account, permissions);
+  expect(inactive.hash).not.toBe(eligible.hash); expect(inactive.forwardRecipientEmails).toEqual([]);
+  db.user.findMany.mockResolvedValue([employee]); db.contact.findMany.mockResolvedValue([{ id: 'customer', email: employee.email, assignedUserId: 'other', isArchived: true }]);
+  expect((await resolveMailboxScope(account, permissions)).forwardRecipientEmails).toEqual([]);
+});
+it('admits only exact receipt-proven employee copies, with no subject or thread bypass', async () => {
+  const scope = await resolveMailboxScope(account, permissions);
+  scope.forwardProofs = [{ rfcMessageId: '<employee-forward@test>', providerMessageId: null, sender: 'employee@camxian.com', recipients: [account.email], participants: [account.email, 'employee@camxian.com'].sort(), sourceMessageId: 'authorized-original' }];
+  const copy = { id: 'received', threadId: 'internal-thread', from: 'employee@camxian.com', to: [account.email], rfcMessageId: '<employee-forward@test>', labels: ['INBOX'] };
+  expect(messageInScope(copy, account.email, scope)).toBe(true);
+  expect(messageInScope({ ...copy, rfcMessageId: '<unproven@test>' }, account.email, scope)).toBe(false);
+  expect(messageInScope({ ...copy, from: 'foreign@camxian.com' }, account.email, scope)).toBe(false);
+  for (const field of ['cc', 'bcc', 'replyToAddresses']) expect(messageInScope({ ...copy, [field]: ['external@example.test'] }, account.email, scope)).toBe(false);
+  expect(messageInScope({ ...copy, labels: ['DRAFT'] }, account.email, scope)).toBe(false);
+  expect(scopedMessagesWhere(account, scope).OR?.[0]).toMatchObject({ NOT: { labels: { has: 'DRAFT' } } });
+  expect(scopedMessagesWhere(account, scope).OR).toEqual(expect.arrayContaining([expect.objectContaining({ fromAddress: copy.from, recipientAddresses: { equals: copy.to }, authorizationParticipants: { equals: scope.forwardProofs[0].participants } })]));
+  expect(scopedMessagesSql(account, scope).values).toContain(copy.rfcMessageId);
 });
 
 it.each(['from', 'to', 'cc', 'bcc', 'replyToAddresses'] as const)('an unauthorized CRM participant in %s vetoes fixed-sender mail', async field => {
