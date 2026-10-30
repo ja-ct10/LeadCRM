@@ -19,6 +19,7 @@ import { authorizeMailboxOperation, type MailboxOperationContext } from './mailb
 import { createHash } from 'node:crypto';
 import type { MailboxQuotationContext } from './mailbox-operations';
 import { validateOutgoingAttachments } from './mailbox-upload-attachments';
+import { assertProviderMessageIds, completeForwardDelivery, forwardDeliverySnapshot, stageForwardDelivery } from './mailbox-forward-delivery';
 
 export type GeneratedMailboxAttachment = import('./mailbox-upload-attachments').OutgoingMailboxAttachment;
 
@@ -214,9 +215,9 @@ export async function sendEmailWithToken(
  * Fetches emails from the user's Gmail inbox.
  */
 export async function fetchUnreadCount(tenantId: string, userId: string): Promise<MailboxUnreadCount> {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const { account, scope } = await authorizedMailbox(tenantId, userId, true);
   const unreadCount = await countUnreadConversations(account, scope);
-  const current = await authorizedMailbox(tenantId, userId);
+  const current = await authorizedMailbox(tenantId, userId, true);
   if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw new AppError('Mailbox access changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   return { unreadCount, unreadCountUnit: 'conversations' };
 }
@@ -233,10 +234,35 @@ export async function fetchMessageDetail(accessToken: string, messageId: string)
   return parseGmailMessage(message);
 }
 
+/** Legacy receipt recovery uses verified provider content, never the original CRM email. */
+export async function captureConfirmedForward(account: EmailAccount, email: GmailEmail, receiptId: string) {
+  const attachments: GeneratedMailboxAttachment[] = [];
+  if (email.attachments?.length) {
+    const token = await getValidAccessToken(account.tenantId, account.userId);
+    for (const file of email.attachments) {
+      let content: { data?: string; size?: number };
+      if (file.id.startsWith('part:')) {
+        const message = await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(email.id)}?format=full`);
+        const part = gmailParts(message.payload).find(part => `part:${part.partId}` === file.id);
+        if (!part?.body || message.id !== email.id) throw new AppError('Forward attachment is unavailable.', 502);
+        content = part.body;
+      } else content = await readGmailJson(token, `messages/${encodeURIComponent(email.id)}/attachments/${encodeURIComponent(file.id)}`);
+      attachments.push({ filename: file.filename, mimeType: file.mimeType, data: decodeGmailBody(content) });
+    }
+  }
+  await stageForwardDelivery(account, receiptId, { recipients: [...email.to, ...(email.cc ?? [])], subject: email.subject, body: email.body, attachments, sentAt: email.date });
+  await completeForwardDelivery(account, receiptId, { messageId: email.id, threadId: email.threadId });
+}
+
 /** A provider-confirmed send is never repeated because local history is delayed. */
 export async function ingestConfirmedMailboxSend(account: EmailAccount, messageId: string, context: MailboxOperationContext) {
   try {
     let current = await authorizeMailboxOperation(account, context);
+    if (context.forwardSourceMessageId) {
+      const receipt = await prisma.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, providerMessageId: messageId,
+        operation: { in: ['send', 'schedule'] }, status: 'sent' } });
+      if (receipt?.providerThreadId && forwardDeliverySnapshot(receipt.authorizationContext) && await completeForwardDelivery(account, receipt.id, { messageId, threadId: receipt.providerThreadId })) return;
+    }
     const persisted = await prisma.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(current.account, current.scope),
       { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true, dealId: true, dealAttribution: true } });
     if (persisted && (persisted.dealAttribution || !context.dealId && !context.replyToMessageId && !context.quotation?.draft.dealId)) return;
@@ -246,7 +272,12 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
     if (!messageInScope(metadata, account.email, current.scope) || metadata.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) {
       throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
     }
-    await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions,
+    const full = await fetchMessageDetail(token, messageId);
+    if (context.forwardSourceMessageId && full.rfcMessageId) {
+      const receipt = await prisma.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, rfcMessageId: full.rfcMessageId, operation: { in: ['send', 'schedule'] }, status: 'sent' } });
+      if (receipt && !forwardDeliverySnapshot(receipt.authorizationContext)) await captureConfirmedForward(account, full, receipt.id);
+    }
+    await ingestMailboxMessages(current.account, [full], current.permissions,
       { composeMode: context.composeMode, forwardSourceMessageId: context.forwardSourceMessageId, sourceMessageId: context.replyToMessageId, dealId: context.dealId ?? context.quotation?.draft.dealId, recordContext: context.recordContext });
     await mailboxChanged(account.id);
   } catch (error) {
@@ -268,7 +299,10 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   if (!draftId && reply) assertReplySubject(subject, reply.subject);
   let marked = false;
   const beforeProviderWrite = async () => { if (!marked) { await operation.beforeProviderWrite?.(); marked = true; } };
-  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId, messageId: operation.messageId, operationReceiptId: operation.receiptId, attachments: operation.attachments, recordContext: operation.recordContext, dealId: operation.dealId, beforeProviderWrite }) : null;
+  const forwardAttachments = forwardSourceMessageId && operation.receiptId
+    ? operation.attachments ?? (draftId ? await existingDraftAttachments(tenantId, userId, draftId, operation.receiptId) : []) : operation.attachments;
+  if (forwardSourceMessageId && operation.receiptId) await stageForwardDelivery(account, operation.receiptId, { recipients, subject, body, attachments: forwardAttachments ?? [] });
+  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId, messageId: operation.messageId, operationReceiptId: operation.receiptId, attachments: forwardAttachments, recordContext: operation.recordContext, dealId: operation.dealId, beforeProviderWrite }) : null;
   const accessToken = await getValidAccessToken(tenantId, userId);
   const headers = reply && !savedDraft ? await verifiedReplyHeaders(accessToken, reply) : undefined;
   const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, operation.messageId, headers?.rfcReferences, operation.attachments);
@@ -282,7 +316,7 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   } catch {
     await prisma.emailAccount.updateMany({ where: { id: account.id, tenantId, userId, isActive: true }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
   }
-  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, recordContext: operation.recordContext, dealId: operation.dealId });
+  if (!forwardSourceMessageId || !operation.receiptId) await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, recordContext: operation.recordContext, dealId: operation.dealId });
   return { messageId: result.id, threadId: result.threadId };
 }
 export async function getConnectionStatus(
@@ -295,7 +329,10 @@ export async function getConnectionStatus(
   });
 
   if (!account || !account.isActive) {
-    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null, ...(account?.syncError ? { syncError: account.syncError } : {}) };
+    const local = account ? await authorizedMailbox(tenantId, userId, true) : null;
+    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null,
+      ...(local?.scope.forwardProofs?.some(proof => proof.completed) ? { canReadMailbox: true, mailboxEmail: local.account.email } : {}),
+      ...(account?.syncError ? { syncError: account.syncError } : {}) };
   }
 
   const user = await readAuthUser(userId, tenantId);
@@ -361,7 +398,7 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
   await mailboxChanged(account.id);
   return { draftId: result.id, messageId: result.message.id };
 }
-async function existingDraftAttachments(tenantId: string, userId: string, draftId: string, operationReceiptId?: string, scheduledId?: string): Promise<GeneratedMailboxAttachment[]> {
+export async function existingDraftAttachments(tenantId: string, userId: string, draftId: string, operationReceiptId?: string, scheduledId?: string): Promise<GeneratedMailboxAttachment[]> {
   const account = await assertDraftAccess(tenantId, userId, draftId, operationReceiptId, scheduledId);
   const token = await getValidAccessToken(tenantId, userId);
   const draft = await readGmailJson<{ message: GmailApiMessage }>(token, `drafts/${encodeURIComponent(draftId)}?format=full`);
@@ -398,6 +435,7 @@ export async function deleteDraft(tenantId: string, userId: string, draftId: str
 async function modifyEmails(tenantId: string, userId: string, messageIds: string[], trash: boolean) {
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   await assertStoredMessages(account, scope, messageIds, true);
+  assertProviderMessageIds(messageIds);
   const token = await getValidAccessToken(tenantId, userId);
   for (const id of messageIds) {
     const current = await authorizedMailbox(tenantId, userId);
@@ -497,6 +535,7 @@ export function parseGmailMessage(data: GmailApiMessage, format: 'full' | 'metad
   const body = html || `<pre>${escape(plainText)}</pre>`;
 
   return {
+    contentLoaded: format === 'full',
     id: data.id,
     threadId: data.threadId,
     from,

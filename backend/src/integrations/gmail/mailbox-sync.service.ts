@@ -40,7 +40,7 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string): Promise<GmailEmail[]> {
   const changed = () => new AppError('Mailbox access changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   const access = async () => {
-    try { return await authorizedMailbox(tenantId, userId); }
+    try { return await authorizedMailbox(tenantId, userId, true); }
     catch (error) { if (error instanceof AppError && error.statusCode < 500) throw changed(); throw error; }
   };
   const { account, scope, permissions: currentPermissions } = await access();
@@ -53,6 +53,7 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
   if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw changed();
   return emails.map<GmailEmail>(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, bcc: undefined, replyToAddresses: undefined, authorizationHeadersValid: undefined, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
+    gmailActionsAvailable: account.isActive && email.gmailActionsAvailable !== false,
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
     contactId: row?.contactId && scope.contactIds.includes(row.contactId) ? row.contactId : undefined,
     dealId: permissions.dealsView ? email.conversationId ? email.dealId : (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined : undefined,
@@ -64,7 +65,6 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
 export async function readMailboxThread(tenantId: string, userId: string, threadId: string) {
   const permissions = await mailboxPermissions(tenantId, userId);
   const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
   const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId, NOT: { labels: { has: 'DRAFT' } } }] }, orderBy: [{ sentAt: 'asc' }, { providerMessageId: 'asc' }] });
   if (!saved.length) throw new AppError('Conversation is outside your assigned CRM mailbox scope.', 404);
@@ -74,7 +74,7 @@ export async function readMailboxThread(tenantId: string, userId: string, thread
   const link: CustomerLink | undefined = latest?.leadId ? { leadId: latest.leadId } : latest?.contactId ? { contactId: latest.contactId } : undefined;
   const deals = link && permissions.dealsView ? await prisma.deal.findMany({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true, title: true, stage: { select: { name: true } } } }) : [];
   const current = await resolveMailboxScope(account, await mailboxPermissions(tenantId, userId));
-  if (current.hash !== scope.hash || !await prisma.emailAccount.findFirst({ where: { id: account.id, isActive: true }, select: { id: true } })) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
+  if (current.hash !== scope.hash || !await prisma.emailAccount.findFirst({ where: { id: account.id, tenantId, userId, ...(scope.internalOnly ? {} : { isActive: true }) }, select: { id: true } })) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
   const groups = await mailboxReadQuery<{ providerMessageId: string; conversationId: string; effectiveDealId: string | null; effectiveDealTitle: string | null }[]>(account, Prisma.sql`
     WITH ${correspondentCte(account, scope)} SELECT "providerMessageId", "conversationId", "effectiveDealId", "effectiveDealTitle" FROM eligible WHERE "threadId" = ${threadId}`);
   return { emails: decorated.map(email => {
@@ -233,7 +233,9 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
         } else if (messageInScope(email, account.email, scope)) {
           // Hydrate legacy authorization metadata without rewriting an already verified historical body.
           const existing = await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: id } }, select: { id: true, engagementRuleVersion: true, labels: true } });
-          if (existing && existing.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !email.labels.includes('DRAFT')) {
+          const forward = matchingMailboxForward(email, currentScope);
+          const needsForwardContent = forward?.receiptId && !forward.hasDeliverySnapshot && forward.sender === normalizeEmail(account.email) && forward.completed && forward.recipients.every(address => currentScope.forwardRecipientEmails?.includes(address));
+          if (existing && existing.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !email.labels.includes('DRAFT') && !needsForwardContent) {
             // Ingestion preserves the stored body and also repairs a missing Activity.
             await ingestMailboxMessages(account, [email], currentPermissions);
             processed++;

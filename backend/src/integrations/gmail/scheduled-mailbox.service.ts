@@ -7,7 +7,8 @@ import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox, mailboxChanged } from './mailbox-store';
 import { assertStoredMessages, mailboxAddress, messageInScope, resolveMailboxScope } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
-import { fetchMessageDetail, getValidAccessToken, saveDraft, parseGmailMessage, GmailApiMessage } from './gmail.service';
+import { fetchMessageDetail, getValidAccessToken, saveDraft, parseGmailMessage, GmailApiMessage, existingDraftAttachments } from './gmail.service';
+import { completeForwardDelivery, stageForwardDelivery } from './mailbox-forward-delivery';
 import { readGmailJson, writeGmailJson, withMailboxWorkerReadBudget } from './gmail-read';
 import { ingestMailboxMessages } from './mailbox-ingestion.service';
 import { authorizeMailboxOperation, normalizedRecipients, mailboxIntentHash, reserveMailboxOperation, markMailboxOperationAttempt, failMailboxOperation, type MailboxOperationContext } from './mailbox-operations';
@@ -203,6 +204,12 @@ async function runScheduledMailboxPass() {
         if (email.rfcMessageId !== rfcMessageId || mailboxAddress(email.from) !== mailboxAddress(account.email) || !messageInScope(email, account.email, current.scope) ||
           JSON.stringify(normalizedRecipients([...email.to, ...(email.cc ?? [])])) !== JSON.stringify(normalizedRecipients(item.recipients))) throw new AppError('Scheduled draft changed or recipient is no longer assigned to you.', 403);
         await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId, undefined, source.composeMode === 'forward');
+        if (source.composeMode === 'forward') {
+          const full = await fetchMessageDetail(token, email.id);
+          const attachments = await existingDraftAttachments(item.tenantId, item.createdById, item.draftId, receipt.id, item.id);
+          await stageForwardDelivery(account, receipt.id, { recipients: item.recipients, subject: full.subject, body: full.body, attachments });
+          await authorizeMailboxOperation(account, context);
+        }
         await prisma.$transaction(async tx => {
           const moved = await tx.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId, status: 'claimed', leaseUntil: { gt: new Date() } }, data: { status: 'sending' } });
           if (!moved.count) throw new AppError('Scheduled email claim lost.', 409);
@@ -215,13 +222,16 @@ async function runScheduledMailboxPass() {
       if (![result?.id, result?.threadId].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value))) {
         throw new AppError('Gmail returned an incomplete scheduled delivery receipt. Verify this operation before resending.', 503, 'GMAIL_OUTCOME_UNKNOWN');
       }
-      await update({ status: 'sent', sentAt: new Date(), providerMessageId: result.id, providerThreadId: result.threadId, lastError: null });
+      const forwardPersisted = source.composeMode === 'forward' && await completeForwardDelivery(account, receipt.id,
+        { messageId: result.id, threadId: result.threadId }, { id: item.id, leaseId });
+      if (!forwardPersisted) await update({ status: 'sent', sentAt: new Date(), providerMessageId: result.id, providerThreadId: result.threadId, lastError: null });
       committed = true;
       await prisma.mailboxSendReceipt.updateMany({ where: { accountId: item.accountId, requestId: item.requestId, operation: 'schedule', status: { in: ['queued', 'sending', 'uncertain'] } }, data: { status: 'sent', providerMessageId: result.id, providerThreadId: result.threadId, leaseId: null, leaseUntil: null } });
       await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId: item.draftId }, data: { labels: ['DELETED'] } });
       await prisma.emailAccount.updateMany({ where: { id: account.id }, data: { syncRequestedAt: new Date(), mailboxVersion: { increment: 1 } } });
       // Delivery is already committed. An ingestion error never requeues the send.
       try {
+        if (forwardPersisted) return;
         const meta = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(result.id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
         const current = await authorizeMailboxOperation(account, context);
         if (messageInScope(meta, account.email, current.scope) && !meta.labels.some(label => ['SPAM', 'TRASH'].includes(label))) await ingestMailboxMessages(account, [await fetchMessageDetail(token, result.id)], current.permissions, { composeMode: context.composeMode, forwardSourceMessageId: context.forwardSourceMessageId, dealId: context.dealId, sourceMessageId: context.replyToMessageId });

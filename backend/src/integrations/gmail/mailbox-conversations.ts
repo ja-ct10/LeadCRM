@@ -13,7 +13,7 @@ type Summary = {
   threadId: string; date: Date; unread: boolean; messageCount: number; authors: string[]; presentations: string[];
   id: string; from: string; to: string[]; cc: string[]; subject: string; snippet: string; body: string;
   labels: string[]; direction: GmailEmail['direction']; replyToAddress: string | null;
-  effectiveDealId: string | null; effectiveDealTitle: string | null; isArchived: boolean; canArchive: boolean;
+  effectiveDealId: string | null; effectiveDealTitle: string | null; isArchived: boolean; canArchive: boolean; gmailActionsAvailable: boolean;
 };
 
 function incomingUnread(account: EmailAccount) {
@@ -133,6 +133,7 @@ export async function listMailboxConversations(account: EmailAccount, scope: Mai
       SELECT "conversationId", max("sentAt") AS date, count(*)::int AS "messageCount", bool_or(unread) AS unread,
         bool_or(direction = 'outbound' AND 'SENT' = ANY(labels)) AS sent, bool_or(matched) AS matched,
         bool_or("isArchived") AS "isArchived", bool_or("canArchive") AS "canArchive",
+        bool_and(left("providerMessageId", 9) <> 'internal_') AS "gmailActionsAvailable",
         array_agg(DISTINCT "from" ORDER BY "from") AS authors
       FROM eligible GROUP BY "conversationId"
     ), people AS (
@@ -159,7 +160,7 @@ export async function listMailboxConversations(account: EmailAccount, scope: Mai
       const address = mailboxAddress(value);
       if (address && names.has(address) && value.includes('<')) names.set(address, (value.match(/^(.+?)\s*<[^<>]+>$/)?.[1] ?? address).replace(/^"|"$/g, '').trim());
     }
-    return { id: row.id, threadId: row.threadId, conversationId: row.conversationId, conversationKind: row.conversationKind,
+    return { gmailActionsAvailable: account.isActive && row.gmailActionsAvailable, id: row.id, threadId: row.threadId, conversationId: row.conversationId, conversationKind: row.conversationKind,
       correspondentAddresses: row.externalAddresses, from: row.from, to: row.to, cc: row.cc, subject: row.subject, snippet: row.snippet,
       body: row.body, date: row.date.toISOString(), isRead: !row.unread, labels: row.labels, direction: row.direction,
       replyToAddress: row.replyToAddress, messageCount: row.messageCount, participants: [...names.values()],

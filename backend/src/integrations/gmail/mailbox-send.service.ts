@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema } from '@leadcrm/shared';
 import { z } from 'zod';
 import prisma from '../../config/database.config';
+import { completeForwardDelivery } from './mailbox-forward-delivery';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox, mailboxChanged } from './mailbox-store';
 import { sendEmail, saveDraft, deleteDraft, assertDraftAccess, getValidAccessToken, ingestConfirmedMailboxSend } from './gmail.service';
@@ -39,7 +40,9 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
       ? await recoverMailboxProviderResult(account, claim.receipt, context, 'sent')
       : await sendEmail(tenantId, userId, recipients, data.subject, data.body, source.replyToMessageId, data.draftId, source.forwardSourceMessageId,
         { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, attachments, recordContext: source.recordContext, dealId: source.dealId, quotation: generated?.quotation, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
-    await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
+    if (source.composeMode !== 'forward' || !await completeForwardDelivery(account, claim.receipt.id, result)) {
+      await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
+    }
     if (source.composeMode !== 'forward') await recordPersonalOutreach(account.id, tenantId, result.messageId);
     if (claim.recover) await ingestConfirmedMailboxSend(account, result.messageId, context);
     await requestMailboxIngestion(account).catch(() => undefined);

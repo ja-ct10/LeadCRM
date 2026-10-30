@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ account: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, oauthStates: { deleteMany: vi.fn() }, refresh: vi.fn() }));
+const state = vi.hoisted(() => ({ account: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, oauthStates: { deleteMany: vi.fn() }, refresh: vi.fn(), mailbox: vi.fn() }));
 vi.mock('../../config/database.config', () => ({ default: { emailAccount: state.account, mailboxOAuthState: state.oauthStates } }));
 vi.mock('../../core/auth/auth-user', () => ({ readAuthUser: vi.fn().mockResolvedValue({ email: 'staff@camxian.com' }) }));
 vi.mock('./gmail.oauth', () => ({ refreshAccessToken: state.refresh, getUserInfo: vi.fn() }));
+vi.mock('./mailbox-store', () => ({ authorizedMailbox: state.mailbox }));
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
 import { AppError } from '../../shared/errors/app-error';
 import { disconnectAccount, getConnectionStatus, getValidAccessToken } from './gmail.service';
-beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('ENCRYPTION_KEY', 'b'.repeat(64)); state.account.updateMany.mockResolvedValue({ count: 1 }); });
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('ENCRYPTION_KEY', 'b'.repeat(64)); state.account.updateMany.mockResolvedValue({ count: 1 }); state.mailbox.mockResolvedValue({ scope: { forwardProofs: [] } }); });
 afterEach(() => vi.unstubAllEnvs());
 const account = (expiresAt: Date) => ({ id: 'account', email: 'staff@camxian.com', isActive: true,
   accessToken: encryptToken('access'), refreshToken: encryptToken('refresh'), tokenExpiresAt: expiresAt });
@@ -20,6 +21,11 @@ it('uses a valid encrypted access token without refreshing or requesting consent
   state.account.findUnique.mockResolvedValue(account(new Date(Date.now() + 3600000)));
   expect(await getValidAccessToken('tenant', 'staff')).toBe('access');
   expect(state.refresh).not.toHaveBeenCalled();
+});
+it('reports internal read availability separately from Gmail connection state', async () => {
+  state.account.findUnique.mockResolvedValue({ isActive: false });
+  state.mailbox.mockResolvedValue({ account: { email: 'staff@camxian.com' }, scope: { forwardProofs: [{ completed: true }] } });
+  expect(await getConnectionStatus('tenant', 'staff')).toEqual({ isConnected: false, email: null, connectedAt: null, lastSyncAt: null, canReadMailbox: true, mailboxEmail: 'staff@camxian.com' });
 });
 it('refreshes and encrypts the replacement access token without discarding an omitted refresh token', async () => {
   state.account.findUnique.mockResolvedValue(account(new Date(0)));

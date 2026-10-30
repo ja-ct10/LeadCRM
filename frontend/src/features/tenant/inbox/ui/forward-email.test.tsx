@@ -41,7 +41,9 @@ it('loads the selected original before opening Forward and retains full readable
   render(<EmailConversationView email={original} onBack={vi.fn()} onEmailsChanged={vi.fn()} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Forward' })).toHaveProperty('disabled', false)); fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
   const editor = await screen.findByRole('textbox', { name: 'Email body' });
-  for (const value of ['Fresh & readable content', 'Prior message', 'From: Customer <customer@example.test>', 'Cc: copy@example.test']) expect(editor.textContent).toContain(value);
+  await waitFor(() => {
+    for (const value of ['Fresh & readable content', 'Prior message', 'From: Customer <customer@example.test>', 'Cc: copy@example.test']) expect(editor.textContent).toContain(value);
+  });
   expect(editor.textContent).not.toContain('Saved content'); expect(editor.querySelector('strong')).toBeTruthy(); expect(editor.querySelector('a')?.href).toBe('https://example.test/'); expect(editor.querySelector('script')).toBeNull();
   await screen.findByText('Quote.pdf'); expect(mocks.attachment).toHaveBeenCalledWith(original.id, pdf.id, expect.any(AbortSignal));
 });

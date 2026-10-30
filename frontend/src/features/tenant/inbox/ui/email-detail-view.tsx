@@ -48,8 +48,8 @@ export default function EmailDetailView({ email, expanded, onToggle, onReply, on
         {associationControls}
       </div>} />
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button type="button" variant="outline" className="min-h-10" disabled={disabled} onClick={onReply}><Reply size={16} />Reply</Button>
-        <Button type="button" variant="outline" className="min-h-10" disabled={disabled} onClick={onForward}><Forward size={16} />Forward</Button>
+        <Button type="button" variant="outline" className="min-h-10" disabled={disabled || email.gmailActionsAvailable === false} onClick={onReply}><Reply size={16} />Reply</Button>
+        <Button type="button" variant="outline" className="min-h-10" disabled={disabled || email.gmailActionsAvailable === false} onClick={onForward}><Forward size={16} />Forward</Button>
       </div>
     </div>}
   </article>;

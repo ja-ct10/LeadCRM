@@ -12,6 +12,8 @@ import { CustomerLink, customerDealWhere } from '../../modules/crm/engagement.se
 import { engagementStatus, normalizeEmail, ENGAGEMENT_RULE_VERSION, DAY_MS } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
 import { mailboxPermissions } from './mailbox-sync.service';
+import { forwardDeliverySnapshot, forwardAttachmentMetadata, isLocalForwardId, materializeForwardCopies } from './mailbox-forward-delivery';
+import { captureConfirmedForward } from './gmail.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean; clientAdmin?: boolean }
 type Tx = Prisma.TransactionClient;
@@ -123,6 +125,11 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
   const ordered = [...messages].sort((a, b) => +new Date(a.date) - +new Date(b.date) || a.id.localeCompare(b.id));
   for (const email of ordered) {
     if (!messageInScope(email, account.email, scope)) continue;
+    const proof = matchingMailboxForward(email, scope);
+    if (proof?.receiptId && email.labels.includes('SENT') && mailboxAddress(email.from) === mailboxAddress(account.email) && email.contentLoaded !== false && proof.recipients.every(address => scope.forwardRecipientEmails?.includes(address))) {
+      const receipt = await prisma.mailboxSendReceipt.findFirst({ where: { id: proof.receiptId, tenantId: account.tenantId, accountId: account.id } });
+      if (receipt && ['send', 'schedule'].includes(receipt.operation) && ['sending', 'uncertain', 'sent'].includes(receipt.status) && !forwardDeliverySnapshot(receipt.authorizationContext)) await captureConfirmedForward(account, email, receipt.id);
+    }
     const currentPermissions = await mailboxPermissions(account.tenantId, account.userId);
     permissions = Object.fromEntries(Object.entries(requestedPermissions).map(([key, allowed]) => [key, allowed && currentPermissions[key as keyof MailboxPermissions]])) as unknown as MailboxPermissions;
     const now = new Date(), sentAt = new Date(email.date);
@@ -147,17 +154,23 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         const draft = email.labels.includes('DRAFT');
         const sourceMessageId = context?.forwardSourceMessageId ?? forwardProof?.sourceMessageId;
         if (draft && (!sourceMessageId || !await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, currentScope), { providerMessageId: sourceMessageId, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true } }))) return;
+        const receipt = forwardProof?.receiptId ? await tx.mailboxSendReceipt.findFirst({ where: { id: forwardProof.receiptId, tenantId: account.tenantId } }) : null;
+        const snapshot = forwardDeliverySnapshot(receipt?.authorizationContext);
+        const existing = await tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id,
+          ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId, fromAddress: mailboxAddress(email.from), recipientAddresses: { equals: forwardProof?.recipients ?? [] }, NOT: { labels: { has: 'DRAFT' } } } : { providerMessageId: email.id }) }, orderBy: { createdAt: 'asc' } });
         const data = { threadId: email.threadId, from: email.from, fromAddress: mailboxAddress(email.from)!, recipients: email.to,
           recipientAddresses: [...new Set([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []))].sort(),
           authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
-          subject: email.subject, body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
+          subject: snapshot?.subject ?? email.subject, body: snapshot?.body ?? (email.contentLoaded === false ? existing?.body ?? '' : email.body), snippet: snapshot ? snapshot.body.replace(/<[^>]*>/g, '').slice(0, 200) : email.contentLoaded === false ? existing?.snippet ?? email.snippet : email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
           rfcInReplyTo: email.rfcInReplyTo, rfcReferences: email.rfcReferences ?? [], draftId: draft ? email.draftId : null,
-          ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
+          ...(snapshot ? { attachments: forwardAttachmentMetadata(snapshot) as unknown as Prisma.InputJsonValue } : email.contentLoaded !== false && email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
           direction: mailboxAddress(email.from) === mailboxAddress(account.email) ? 'outbound' : 'inbound',
           sourceMessageId: draft ? sourceMessageId : null, crmDraft: draft,
           leadId: null, contactId: null, dealId: null, dealAttribution: Prisma.DbNull, meaningful: false, readyToClose: false, needsDealAssociation: false, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
-        await tx.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: email.id } },
+        if (existing && !draft) await tx.mailboxMessage.update({ where: { id: existing.id }, data: { ...data, providerMessageId: email.id } });
+        else await tx.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: email.id } },
           create: { ...data, accountId: account.id, providerMessageId: email.id, tenantId: account.tenantId }, update: data });
+        if (receipt && snapshot && !draft && !isLocalForwardId(email.id) && email.labels.includes('SENT') && receipt.accountId === account.id) await materializeForwardCopies(tx, account, receipt, { messageId: email.id, threadId: email.threadId }, snapshot);
         return;
       }
       const selected = context?.recordContext;

@@ -1,81 +1,105 @@
-# Employee-only Inbox forwarding — 2026-10-30
+# Internal employee forwarding — persistence verification
 
-## Root cause and resulting behavior
+## Confirmed root cause
 
-Forward shared the customer-recipient validator with Compose and Reply, so assigned CRM customers qualified and employee-only addresses did not. The ingestion guard skipped engagement updates only after customer matching, Deal attribution and email Activity persistence. The verified-message replay path could also persist an Activity.
+Employee recipient restrictions were already present, but Gmail acceptance did not guarantee a LeadCRM message record. The sender path fetched provider metadata and content after sending; a read-back failure was swallowed and deferred to synchronization. Recipient copies depended entirely on the recipient's Gmail synchronization, while mailbox reads and rendering required an active Gmail connection.
 
-Forward now checks active, provisioned employees from the authenticated tenant, including Client Admin and approved staff email addresses. Lead/Contact addresses, unknown addresses, other tenants, inactive/pending accounts and retired Guests are ineligible. Every address must qualify; mixed recipient lists fail together. Existing staff provisioning and email normalization rules are reused.
+Two ingestion details compounded this: the confirmed-send completion check expected a CRM email Activity, which internal forwards intentionally never create, and metadata-only forward ingestion could replace stored content with an empty body. Existing tests supplied successful read-back and a connected recipient, so they did not cover those gaps.
 
-The existing status endpoint accepts `includeForwardRecipients=true` and returns the optional shared `forwardRecipientEmails` field. Forward validates against that list before send, schedule and nonempty draft saves. Loading failures block these actions and offer retry. Backend authorization independently rechecks the current database before provider writes, scheduled dispatch, replay and recovery. Recipient rejection uses `MAILBOX_RECIPIENT_REJECTED` and preserves editable content.
+## Resulting behavior
 
-Normalized forward intent drops CRM record and Deal context, including restored drafts. The composer hides the Deal selector and does not associate a sent forward. Ingestion handles proven forward copies before any customer matching or CRM effects, storing null Lead/Contact/Deal links and no engagement evidence. The manual Deal-association API also rejects employee forwards.
+- The existing operation receipt stages the accepted body, exact employee identities and supported attachment references before Gmail delivery. Attachment bytes use the existing private object storage, with size/hash verification on staging and retry. A fresh delivery attempt gets a fresh timestamp; confirmed replay keeps the persisted timestamp.
+- Gmail confirmation transactionally finalizes the receipt and persists the sender's outbound SENT record and each employee recipient's inbound INBOX record. No Gmail read-back is required to create either view.
+- Recipients without Gmail use an inactive, credential-free account container. Their status reports internal read availability separately from Gmail connection state. They can read and download receipt-proven copies; historical customer mail and provider actions remain unavailable.
+- Connected recipient synchronization reconciles the local identity with verified provider IDs on the same database row. Serializable transactions and canonical identity checks prevent replay/concurrent ingestion from recreating copies or resetting read/archive labels.
+- Metadata-only ingestion preserves accepted body and attachment metadata. Reconciliation fetches full content for older receipt-proven forwards that lack a delivery snapshot, allowing normal synchronization to recover missing recipient copies.
+- Current staff, tenant, mailbox ownership, source authorization and employee-recipient checks remain authoritative. External/customer/other-tenant recipients remain rejected. Local placeholder IDs are rejected before provider operations.
+- Confirmed copies retain null Lead/Contact/Deal links and no CRM Activities, engagement evidence, Deal changes or workflow effects. Original email associations and Activity history remain unchanged. Compose, Reply, scheduling, Gmail MIME/authentication and ordinary synchronization retain their existing paths.
 
-Same-tenant operation receipts, exact provider identities and exact participants provide the narrow read exception for sender Sent, recipient Inbox, drafts, content and attachments. Matching applies consistently to provider metadata, ORM reads and SQL conversation queries. Reconciliation searches the proven RFC identities, rather than granting general access to internal employee mail. Eligibility changes invalidate mailbox scope.
+There are no new endpoints, migrations, schema changes or dependencies. Supported attachment caching requires the existing STORAGE_ROOT private mount; cache keys and hashes are not returned to clients.
 
-Deactivation blocks new delivery and receipt replay, while existing internal Sent history and acknowledged drafts remain readable. A rejected scheduled forward retains the specific employee-eligibility error; its owner can review the failure and correct the draft. Draft reads still require access to the original source message.
+## Actual changed files
 
-Existing Gmail MIME/delivery, authentication, operation IDs and uncertain-outcome recovery remain in use. Supported attachment filenames and bytes, complete sanitized source content and normal Sent history are preserved. The source message's CRM association and Activity rows are unchanged. No endpoint, dependency, schema change or migration was added.
+- [backend/scripts/verify-inbox-forward.mjs](../../backend/scripts/verify-inbox-forward.mjs)
+- [backend/src/integrations/gmail/gmail-token-lifecycle.test.ts](../../backend/src/integrations/gmail/gmail-token-lifecycle.test.ts)
+- [backend/src/integrations/gmail/gmail.service.ts](../../backend/src/integrations/gmail/gmail.service.ts)
+- [backend/src/integrations/gmail/gmail.types.ts](../../backend/src/integrations/gmail/gmail.types.ts)
+- [backend/src/integrations/gmail/mailbox-attachments.ts](../../backend/src/integrations/gmail/mailbox-attachments.ts)
+- [backend/src/integrations/gmail/mailbox-conversations.ts](../../backend/src/integrations/gmail/mailbox-conversations.ts)
+- [backend/src/integrations/gmail/mailbox-correspondents.service.ts](../../backend/src/integrations/gmail/mailbox-correspondents.service.ts)
+- [backend/src/integrations/gmail/mailbox-events.ts](../../backend/src/integrations/gmail/mailbox-events.ts)
+- [backend/src/integrations/gmail/mailbox-forward-access.ts](../../backend/src/integrations/gmail/mailbox-forward-access.ts)
+- [backend/src/integrations/gmail/mailbox-forward-delivery.ts](../../backend/src/integrations/gmail/mailbox-forward-delivery.ts)
+- [backend/src/integrations/gmail/mailbox-ingestion.service.ts](../../backend/src/integrations/gmail/mailbox-ingestion.service.ts)
+- [backend/src/integrations/gmail/mailbox-operations.ts](../../backend/src/integrations/gmail/mailbox-operations.ts)
+- [backend/src/integrations/gmail/mailbox-scope.ts](../../backend/src/integrations/gmail/mailbox-scope.ts)
+- [backend/src/integrations/gmail/mailbox-send.service.ts](../../backend/src/integrations/gmail/mailbox-send.service.ts)
+- [backend/src/integrations/gmail/mailbox-store.ts](../../backend/src/integrations/gmail/mailbox-store.ts)
+- [backend/src/integrations/gmail/mailbox-sync.service.ts](../../backend/src/integrations/gmail/mailbox-sync.service.ts)
+- [backend/src/integrations/gmail/mailbox-thread-actions.ts](../../backend/src/integrations/gmail/mailbox-thread-actions.ts)
+- [backend/src/integrations/gmail/scheduled-mailbox.service.ts](../../backend/src/integrations/gmail/scheduled-mailbox.service.ts)
+- [backend/src/integrations/gmail/scoped-mailbox.integration.test.ts](../../backend/src/integrations/gmail/scoped-mailbox.integration.test.ts)
+- [docs/API.md](../../docs/API.md)
+- [docs/verification/inbox-forwarding.md](../../docs/verification/inbox-forwarding.md)
+- [frontend/src/features/tenant/inbox/ui/email-conversation-view.test.tsx](../../frontend/src/features/tenant/inbox/ui/email-conversation-view.test.tsx)
+- [frontend/src/features/tenant/inbox/ui/email-conversation-view.tsx](../../frontend/src/features/tenant/inbox/ui/email-conversation-view.tsx)
+- [frontend/src/features/tenant/inbox/ui/email-detail-view.tsx](../../frontend/src/features/tenant/inbox/ui/email-detail-view.tsx)
+- [frontend/src/features/tenant/inbox/ui/forward-email.test.tsx](../../frontend/src/features/tenant/inbox/ui/forward-email.test.tsx)
+- [frontend/src/features/tenant/inbox/ui/inbox-email-list.tsx](../../frontend/src/features/tenant/inbox/ui/inbox-email-list.tsx)
+- [frontend/src/features/tenant/inbox/ui/inbox-page.test.tsx](../../frontend/src/features/tenant/inbox/ui/inbox-page.test.tsx)
+- [frontend/src/features/tenant/inbox/ui/inbox-page.tsx](../../frontend/src/features/tenant/inbox/ui/inbox-page.tsx)
+- [frontend/src/features/tenant/layout/__tests__/topbar-inbox-count.test.tsx](../../frontend/src/features/tenant/layout/__tests__/topbar-inbox-count.test.tsx)
+- [frontend/src/features/tenant/layout/topbar.tsx](../../frontend/src/features/tenant/layout/topbar.tsx)
+- [shared/src/contracts/mailbox.contract.ts](../../shared/src/contracts/mailbox.contract.ts)
 
-## Changed files
-
-Backend behavior:
-
-- `backend/src/integrations/gmail/mailbox-forward-access.ts` — employee eligibility and receipt proof.
-- `backend/src/integrations/gmail/mailbox-recipient-access.ts` — Forward-specific validation.
-- `backend/src/integrations/gmail/mailbox-operations.ts` — authoritative source/recipient authorization.
-- `backend/src/integrations/gmail/mailbox-draft-context.ts` — retain exact acknowledged Forward intent after rejected delivery.
-- `backend/src/integrations/gmail/gmail.controller.ts` — opt-in status query.
-- `backend/src/integrations/gmail/gmail.service.ts` — status data, delivery/draft checks and canonical participants.
-- `backend/src/integrations/gmail/mailbox-ingestion.service.ts` — persist forward copies without CRM effects.
-- `backend/src/integrations/gmail/mailbox-scope.ts` — metadata, ORM, SQL and reconciliation access.
-- `backend/src/integrations/gmail/mailbox-sync.service.ts` — reject manual CRM association.
-- `backend/src/integrations/gmail/mailbox-recovery.ts` — canonical recovered-draft participants.
-- `backend/src/integrations/gmail/scheduled-mailbox.service.ts` — Forward-aware dispatch rechecks.
-
-Frontend and shared contracts:
-
-- `frontend/src/features/tenant/inbox/services/gmail.service.ts`
-- `frontend/src/features/tenant/inbox/ui/compose-modal.tsx`
-- `shared/src/contracts/mailbox.contract.ts`
-- `shared/src/contracts/mailbox.contract.js` — generated by the shared build.
-
-Tests, browser fixture and documentation:
-
-- `backend/src/integrations/gmail/mailbox-draft-context.test.ts`
-- `backend/src/integrations/gmail/mailbox-scope.test.ts`
-- `backend/src/integrations/gmail/scoped-mailbox.integration.test.ts`
-- `frontend/src/features/tenant/inbox/ui/forward-email.test.tsx`
-- `frontend/src/features/tenant/inbox/ui/compose-schedule.test.tsx`
-- `frontend/src/features/tenant/inbox/ui/email-conversation-view.test.tsx`
-- `backend/scripts/verify-inbox-forward.mjs` — adds rejection checks and writes new evidence under ignored QA outputs.
-- `docs/API.md`
-- `docs/verification/inbox-forwarding.md`
+The shared change adds optional read availability/address and provider-action capability fields. Its generated JavaScript is unchanged because these additions are TypeScript interfaces.
 
 ## Executed verification
 
+All final results below passed. Gmail was mocked or controlled; no live mail was sent.
+
 | Check | Result |
 | --- | --- |
-| Shared package build | Passed; generated JavaScript synchronized |
-| `npm run lint` | All three workspaces passed, including backend test types |
-| Gmail, CRM email visibility and workflow email unit suites | 176 passed across 15 files |
-| All Inbox component/service suites | 184 passed across 11 files |
-| Full scoped mailbox HTTP suite on disposable PostgreSQL 17.6 | 178 passed; zero failed or skipped |
-| Final deactivation/recovery revalidation on unchanged source | 2 passed; 176 other cases excluded by the explicit name filter |
-| Native guarded deployment/startup rehearsal | 3 checks passed against disposable databases |
-| Bundled forwarding browser fixture in Chromium | 6 scenarios passed, zero page errors |
+| Gmail, CRM email visibility and workflow unit suites | 177 passed across 15 files; 0 failed/skipped |
+| Inbox and topbar component/service suites | 194 passed across 12 files; 0 failed/skipped |
+| Complete scoped mailbox HTTP integration suite | 182 passed; 0 failed/skipped; fresh native PostgreSQL 17.6 |
+| Guarded deployment/startup rehearsal | 3 checks passed on a disposable database |
+| Forwarding browser fixture | 7 scenarios passed; 0 page errors |
+| Shared build | Passed |
+| Fresh Prisma generation and Next route type generation | Passed |
+| Frontend, backend, shared and backend-test TypeScript checks | All passed |
+| git diff --check | Passed |
+| Documentation links | 2,253 checked; 0 broken |
 
-The HTTP suite covers same-tenant employee delivery and multiple recipients; external, Lead, Contact, other-tenant, inactive/pending, Guest and employee/customer-collision rejection on send/draft/schedule APIs; Client Admin and approved staff eligibility; saved drafts; scheduled delivery and deactivation before dispatch; uncertain-outcome recovery and replay. Delivery tests assert new-thread MIME and attachment bytes, sender Sent and recipient Inbox visibility, metadata rejection before unrelated body fetches, unchanged source rows/activities, no forwarded-copy timeline entries, no new Activities/Workflow trigger rows, unchanged CRM engagement/stage evidence, and rejection of manual Deal linking.
+The final HTTP QA run was `1793341923832-5c5cbd8e-3f10-459e-b6d8-734d0a862e6c`. Its outer status is PASS, with sourceChanged=false, executableSourceChanged=false and validForExecutableSource=true. This report was updated afterward; executable source was unchanged.
 
-The existing relationship-read race assertion now expects the documented `409 MAILBOX_SCOPE_CHANGED` retry response after reassignment, with no data disclosure. Deactivation fixtures use independent employees without assigned CRM records; retired-Guest fixtures respect the database prohibition on active Guest accounts.
+Commands executed:
 
-The broad run overlapped the final failed-forward draft-restoration/test/report edits, so its outer QA wrapper records `REVALIDATION REQUIRED` despite all 178 assertions passing. Both affected deactivation/recovery scenarios were then rerun on unchanged final executable source and passed, including restored Forward intent. The 176 backend unit tests also passed on that final implementation; the two native rechecks repeat cases from the broad suite.
+```powershell
+npm --prefix shared run build
+npm --prefix backend run test -- src/integrations/gmail src/modules/crm/activities/email-activity-visibility.test.ts src/modules/automation/workflows/__tests__/workflow-email.test.ts --exclude=**/*.integration.test.ts
+npm --prefix frontend run test -- src/features/tenant/inbox src/features/tenant/layout/__tests__/topbar-inbox-count.test.tsx
+$env:POSTGRES_TEST_BIN='C:/Program Files/PostgreSQL/17/bin'
+npm run test:integration:native -- --filter=scoped-mailbox.integration.test.ts
+node backend/scripts/verify-inbox-forward.mjs
+npm --prefix backend run db:generate
+# From frontend, using the CI build API_URL:
+node ../node_modules/next/dist/bin/next typegen
+# From repository root, for each workspace:
+node node_modules/typescript/bin/tsc --noEmit --project frontend/tsconfig.json
+node node_modules/typescript/bin/tsc --noEmit --project backend/tsconfig.json
+node node_modules/typescript/bin/tsc --noEmit --project shared/tsconfig.json
+node node_modules/typescript/bin/tsc --noEmit --project backend/tsconfig.tests.json
+git diff --check
+npm run qa:docs
+```
 
-Local evidence is retained under the ignored `data/outputs/system-audit/inbox-forward-employees/` directory: `native-http-results.json`, `native-qa-report.json`, `native-targeted-results.json`, `native-targeted-qa-report.json`, `browser-results.json`, `forward-error-retains-draft.png` and `forward-sent-visible.png`. These generated artifacts are not required repository inputs.
+The new HTTP cases disable Gmail read-back after an accepted send and verify both persisted views, sender/recipient metadata, HTML content, exact attachment bytes, disconnected read-only access, denied historical customer content, repeated reads/replay, concurrent recipient reconciliation, stable database identity, metadata-only preservation, legacy recovery, and storage failure/retry. Existing cases cover multiple employees, recipient rejection/deactivation, saved drafts, scheduling, uncertain recovery, CRM timelines/engagement/workflows and Compose/Reply regressions. Browser/component checks cover first delivery discovery without Gmail, reloads, disabled provider actions, disconnect-to-read-only refresh, attachment omission/retry and retained edits after rejection.
 
-## Limits and rollout
+## Earlier attempts and limits
 
-Gmail was mocked in HTTP tests and controlled in the browser fixture. Live Gmail delivery, live OAuth and production deployment were not exercised. The native startup rehearsal built and started the backend; the browser fixture bundle was built, rather than a complete Next.js production build.
+Initial sandbox runs were blocked by temporary-cache or loopback restrictions and were rerun outside the sandbox. Prisma generation also hit Windows engine locks when backend tests were running; sequential regeneration passed. Development runs caught a raw-operation guard, incomplete provider fixtures, an editor-initialization assertion, a disconnect refresh race and two TypeScript errors; these were corrected. Earlier integration runs overlapped changes or failed the then-unfixed legacy reference. The final complete run above had no overlapping source changes.
 
-Initial sandbox runs hit Vitest cache/loopback restrictions and were rerun outside the sandbox. An initial PGlite full-suite attempt lost its socket; native PostgreSQL replaced that fixture. Initial native fixture failures were corrected and the full suite rerun. Historical tracked browser evidence was preserved; current captures live in the ignored QA directory.
+Local evidence remains under ignored data/outputs/system-audit paths: internal-forward-final-qa.json, internal-forward-verified-integration.log, internal-forward-browser-final.log, and inbox-forward-employees/browser-results.json and screenshots. No private evidence is required as a repository input.
 
-Deploy matching frontend/backend/shared versions together. No historical production cleanup or backfill is part of this change. Existing attachment limits and explicit omission/retry behavior remain as documented in the [Inbox API](../API.md).
+Live Gmail delivery, live OAuth, deployment and production acceptance were not tested. The deployed hostname could not be resolved during investigation, so the exact deployed revision and screenshot failure were not confirmed. No retrospective production cleanup was performed. These are local verification results, not a GitHub CI or deployment result.

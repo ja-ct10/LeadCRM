@@ -19,12 +19,14 @@ const services = `
 const owner='owner@example.test',customer='customer@example.test';
 const original={id:'original',threadId:'original-thread',from:'Customer <'+customer+'>',to:[owner],cc:['copy@example.test'],subject:'Forward UI verification',snippet:'Saved content',body:'<p>Saved content</p>',date:'2026-10-28T01:00:00Z',labels:['INBOX'],isRead:true,direction:'inbound'};
 const full='<p>Fresh &amp; readable <strong>quotation</strong></p><p>Second line</p><div class="gmail_quote"><p>Original quoted history</p></div>';
+const recipientMode=new URLSearchParams(location.search).has('internal-recipient');
+const internalCopy={...original,id:'internal_receipt',threadId:'internal_thread',from:'First Employee <first@example.test>',to:['second@example.test'],subject:'Internal employee forward',body:'<p>Persisted employee content</p>',snippet:'Persisted employee content',gmailActionsAvailable:false};
 const files=[{id:'pdf',filename:'Quote.pdf',mimeType:'application/pdf',size:18},{id:'eml',filename:'Original.eml',mimeType:'message/rfc822'},{id:'retry',filename:'Retry.txt',mimeType:'text/plain',size:4}];
 let sent=[],attempts=0;window.forwardCalls=[];window.forwardMode='success';window.forwardDownloads=[];
-export const getGmailStatus=async()=>({isConnected:true,email:owner,connectedAt:'2026-10-01',lastSyncAt:'2026-10-28',forwardRecipientEmails:['first@example.test','second@example.test']});
-export const fetchGmailEmails=async(options={})=>({emails:options.filter==='sent'?sent:[original,...sent],unreadCount:0});
-export const fetchGmailThread=async(id)=>({emails:id==='original-thread'?[{...original,id:'older',date:'2026-10-27T01:00:00Z'},original]:sent.filter(row=>row.threadId===id),dealOptions:[],canAssociateDeal:false});
-export const fetchGmailMessageContent=async(id)=>({body:id==='original'?full:id==='older'?'<pre>Plain &lt;original&gt; &amp; preserved\\nSecond line</pre>':sent.find(row=>row.id===id)?.body??'',attachments:id==='original'?files:[]});
+export const getGmailStatus=async()=>recipientMode?{isConnected:false,email:null,canReadMailbox:true,mailboxEmail:'second@example.test'}:({isConnected:true,email:owner,connectedAt:'2026-10-01',lastSyncAt:'2026-10-28',forwardRecipientEmails:['first@example.test','second@example.test']});
+export const fetchGmailEmails=async(options={})=>({emails:recipientMode?[internalCopy]:options.filter==='sent'?sent:[original,...sent],unreadCount:0});
+export const fetchGmailThread=async(id)=>({emails:recipientMode?[internalCopy]:id==='original-thread'?[{...original,id:'older',date:'2026-10-27T01:00:00Z'},original]:sent.filter(row=>row.threadId===id),dealOptions:[],canAssociateDeal:false});
+export const fetchGmailMessageContent=async(id)=>({body:id==='internal_receipt'?internalCopy.body:id==='original'?full:id==='older'?'<pre>Plain &lt;original&gt; &amp; preserved\\nSecond line</pre>':sent.find(row=>row.id===id)?.body??'',attachments:id==='original'?files:[]});
 export const fetchGmailAttachment=async(id,file)=>{window.forwardDownloads.push(file);if(file==='retry'&&++attempts===1)throw Error('Download failed.');return new Blob([file==='pdf'?'%PDF-original-bytes':'Text']);};
 export const sendGmailEmail=async(to,subject,body,replyToMessageId,draftId,forwardSourceMessageId,requestId,composeMode,extras)=>{
  const payload={to,subject,body,replyToMessageId,draftId,forwardSourceMessageId,requestId,composeMode,...extras};window.forwardCalls.push(payload);
@@ -111,6 +113,16 @@ try {
   await page.getByText('Edited forward', { exact: true }).waitFor(); await page.screenshot({ path: resolve(output, 'forward-sent-visible.png') }); results.push('Duplicate prevention, stable request ID and Sent visibility');
   await page.getByText('Edited forward', { exact: true }).click(); await page.getByRole('button', { name: 'Forward', exact: true }).waitFor();
   assert.equal(await page.getByText('No unique CRM email match.', { exact: true }).count(), 0);
+  await page.goto(server.resolvedUrls.local[0] + '?internal-recipient');
+  await page.getByText('Internal employee forward', { exact: true }).click();
+  for (const name of ['Reply', 'Forward', 'Archive conversation', 'Move to Gmail Trash']) {
+    await page.getByRole('button', { name, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true);
+  }
+  assert.ok((await page.locator('iframe[data-mailbox-body]').getAttribute('srcdoc')).includes('Persisted employee content'));
+  await page.reload(); await page.getByText('Internal employee forward', { exact: true }).click();
+  await page.getByRole('button', { name: 'Forward', exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, 'internal-recipient-without-gmail.png') }); results.push('Disconnected recipient reads persisted content across reload with Gmail actions disabled');
   assert.deepEqual(errors, []); writeFileSync(resolve(output, 'browser-results.json'), JSON.stringify({ passed: results, pageErrors: errors, liveGmailDelivery: false }, null, 2));
   console.log(JSON.stringify({ passed: results.length, results, pageErrors: errors, liveGmailDelivery: false }, null, 2));
 } finally { await browser?.close(); await server.close(); }

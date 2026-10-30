@@ -14,7 +14,7 @@ export async function mailboxEvents(req: Request, res: Response, next: NextFunct
     const { tenantId, userId } = req.user!;
     const sessionToken = req.cookies?.leadcrm_token ?? req.headers.authorization?.replace(/^Bearer /, '');
     if (!sessionToken) throw new AppError('Sign in again to receive mailbox updates.', 401);
-    const { account, scope } = await authorizedMailbox(tenantId, userId);
+    const { account, scope } = await authorizedMailbox(tenantId, userId, true);
     if (!open(res)) return;
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store, no-transform');
@@ -41,7 +41,7 @@ export async function mailboxEvents(req: Request, res: Response, next: NextFunct
             }
           }
           if (stopped || !clients.size) return;
-          const current = await tenantContext.run({ tenantId }, () => authorizedMailbox(tenantId, userId));
+          const current = await tenantContext.run({ tenantId }, () => authorizedMailbox(tenantId, userId, true));
           if (stopped) return;
           const accessChanged = current.scope.hash !== scopeRevision;
           if (accessChanged || current.account.mailboxVersion !== revision) {

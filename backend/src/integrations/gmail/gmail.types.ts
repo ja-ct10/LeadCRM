@@ -13,6 +13,8 @@ export interface GmailTokens {
 }
 
 export interface GmailEmail extends MailboxEmail {
+  /** Metadata-only ingestion must not erase persisted content. */
+  contentLoaded?: boolean;
   cc?: string[];
   /** Internal authorization headers. Never expose hidden recipients to the UI. */
   bcc?: string[];

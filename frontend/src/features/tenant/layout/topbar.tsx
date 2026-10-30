@@ -52,7 +52,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox, sidebarOpen = false
       try {
         const status = await getGmailStatus(signal);
         if (!current()) return;
-        if (!status.isConnected) { subscription?.close(); subscription = undefined; setInboxCount(0); return; }
+        if (!status.isConnected && !status.canReadMailbox) { subscription?.close(); subscription = undefined; setInboxCount(0); return; }
         subscription ??= subscribeMailboxEvents(tenant.id, user.id, {
           onChange: schedule, onOpen: schedule, onFallback: schedule,
           onAccessChanged: () => {

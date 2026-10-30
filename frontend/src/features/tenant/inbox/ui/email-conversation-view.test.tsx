@@ -19,6 +19,16 @@ const loaded = () => waitFor(() => {
 });
 const messageDocument = (element: ParentNode = document) => new DOMParser().parseFromString(element.querySelector('iframe[data-mailbox-body]')?.getAttribute('srcdoc') ?? '', 'text/html');
 
+it('renders internal copy content while gating Gmail actions before provider reconciliation', async () => {
+  const internal = { ...latest, id: 'internal_receipt', gmailActionsAvailable: false, leadId: null };
+  mocks.thread.mockResolvedValue({ emails: [internal], dealOptions: [], canAssociateDeal: false });
+  render(<EmailConversationView {...props()} email={internal} />); await loaded();
+  expect(messageDocument().body.textContent).toContain('Please send the catalog');
+  for (const name of ['Reply', 'Forward', 'Archive conversation', 'Move to Gmail Trash']) {
+    expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
+  }
+});
+
 it('keeps only one bottom Reply and Forward area per expanded message, without Reply All or header reply icons', async () => {
   render(<EmailConversationView {...props()} mailboxEmail="staff@camxian.com" />); await loaded();
   expect(screen.queryByRole('button', { name: /Reply All|Reply all to/ })).toBeNull();
