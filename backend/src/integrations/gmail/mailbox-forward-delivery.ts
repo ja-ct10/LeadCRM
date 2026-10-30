@@ -16,6 +16,7 @@ const snapshotSchema = z.object({
   version: z.literal(1), tenantId: z.string(), senderUserId: z.string(), sender: z.string().email(),
   recipients: z.array(z.object({ userId: z.string(), email: z.string().email() })).min(1).max(50),
   subject: z.string(), body: z.string(), sentAt: z.string().datetime(),
+  rfcInReplyTo: z.string().optional(), rfcReferences: z.array(z.string()).optional(),
   attachments: z.array(z.object({ id: z.string(), filename: z.string(), mimeType: z.string(), size: z.number().int().nonnegative(), key: z.string(), sha256: z.string() })).max(10),
 });
 export type ForwardDeliverySnapshot = z.infer<typeof snapshotSchema>;
@@ -35,7 +36,7 @@ export function forwardAttachmentMetadata(snapshot: ForwardDeliverySnapshot): Ma
 
 /** Stage the exact delivery before Gmail accepts it, including bytes needed by non-OAuth recipients. */
 export async function stageForwardDelivery(account: EmailAccount, receiptId: string, input: {
-  recipients: string[]; subject: string; body: string; attachments: OutgoingMailboxAttachment[]; sentAt?: string;
+  recipients: string[]; subject: string; body: string; attachments: OutgoingMailboxAttachment[]; sentAt?: string; rfcInReplyTo?: string; rfcReferences?: string[];
 }) {
   const receipt = await prisma.mailboxSendReceipt.findFirstOrThrow({ where: { id: receiptId, tenantId: account.tenantId, accountId: account.id } });
   const prior = forwardDeliverySnapshot(receipt.authorizationContext);
@@ -76,9 +77,12 @@ export async function stageForwardDelivery(account: EmailAccount, receiptId: str
     attachments.push({ id: `forward_${receipt.id}_${index}`, filename: file.filename, mimeType: file.mimeType, size: file.data.length, key, sha256 });
   }
   const snapshot: ForwardDeliverySnapshot = { version: 1, tenantId: account.tenantId, senderUserId: account.userId, sender: normalizeEmail(account.email),
-    recipients, subject: input.subject, body: input.body, sentAt: input.sentAt ?? new Date().toISOString(), attachments };
-  const context = receipt.authorizationContext as Prisma.JsonObject;
-  await prisma.mailboxSendReceipt.update({ where: { id: receipt.id }, data: { authorizationContext: { ...context, forwardDelivery: snapshot } } });
+    recipients, subject: input.subject, body: input.body, sentAt: input.sentAt ?? new Date().toISOString(), attachments,
+    ...(input.rfcInReplyTo ? { rfcInReplyTo: input.rfcInReplyTo, rfcReferences: input.rfcReferences ?? [] } : {}) };
+  await salesTransaction(async tx => {
+    const current = await tx.mailboxSendReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+    await tx.mailboxSendReceipt.update({ where: { id: receipt.id }, data: { authorizationContext: { ...current.authorizationContext as Prisma.JsonObject, forwardDelivery: snapshot } } });
+  });
   return snapshot;
 }
 
@@ -109,10 +113,32 @@ export async function materializeForwardCopies(tx: Prisma.TransactionClient, acc
       recipients, recipientAddresses: recipients, authorizationParticipants: participants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
       subject: snapshot.subject, body: snapshot.body, snippet: snapshot.body.replace(/<[^>]*>/g, '').slice(0, 200),
       labels: sender ? ['SENT'] : ['INBOX', 'UNREAD'], sentAt: new Date(snapshot.sentAt), rfcMessageId: receipt.rfcMessageId,
+      rfcInReplyTo: snapshot.rfcInReplyTo, rfcReferences: snapshot.rfcReferences ?? [],
       attachments: forwardAttachmentMetadata(snapshot) as unknown as Prisma.InputJsonValue,
       leadId: null, contactId: null, dealId: null, meaningful: false, readyToClose: false, needsDealAssociation: false, engagementRuleVersion: ENGAGEMENT_RULE_VERSION } });
     await tx.emailAccount.update({ where: { id: target.id }, data: { mailboxVersion: { increment: 1 } } });
   }
+}
+
+const localStateSchema = z.object({ accountId: z.string(), userId: z.string(), version: z.number().int().positive(), pending: z.boolean(),
+  unread: z.boolean().optional(), inbox: z.boolean().optional(), trash: z.literal(true).optional() });
+export type InternalMailboxState = z.infer<typeof localStateSchema>;
+export function internalMailboxStates(context: unknown): Record<string, InternalMailboxState> {
+  const parsed = z.object({ mailboxActions: z.record(localStateSchema) }).safeParse(context);
+  return parsed.success ? parsed.data.mailboxActions : {};
+}
+export function overlayInternalLabels(labels: string[], state?: InternalMailboxState) {
+  const result = new Set(labels);
+  if (!state?.pending) return [...result];
+  for (const [label, present] of [['UNREAD', state.unread], ['INBOX', state.inbox], ['TRASH', state.trash]] as const) {
+    if (present === true) result.add(label); else if (present === false) result.delete(label);
+  }
+  if (state.trash) result.delete('INBOX');
+  return [...result];
+}
+export function nextInternalMailboxState(previous: InternalMailboxState | undefined, account: EmailAccount, action: 'read' | 'unread' | 'archive' | 'trash' | 'restore'): InternalMailboxState {
+  return { ...(previous?.pending ? previous : {}), accountId: account.id, userId: account.userId, version: (previous?.version ?? 0) + 1, pending: true,
+    ...(action === 'read' || action === 'unread' ? { unread: action === 'unread' } : action === 'archive' || action === 'restore' ? { inbox: action === 'restore' } : { trash: true, inbox: false }) };
 }
 
 export async function completeForwardDelivery(account: EmailAccount, receiptId: string, result: { messageId: string; threadId: string }, scheduled?: { id: string; leaseId: string }) {

@@ -106,6 +106,8 @@ export interface MailboxAttachment {
 export interface MailboxMessageContent { body: string; attachments: MailboxAttachment[] }
 
 export interface MailboxEmail {
+  /** Derived from authorized internal delivery receipts, never client intent. */
+  isInternal?: boolean;
   /** False for disconnected or receipt-backed copies awaiting provider reconciliation. */
   gmailActionsAvailable?: boolean;
   id: string;

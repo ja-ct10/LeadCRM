@@ -9,7 +9,7 @@ import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { SendMailboxEmailSchema, mailboxAttachmentType, MAILBOX_FORWARD_RECIPIENT_ERROR, MAILBOX_ATTACHMENT_TYPES, MAILBOX_ATTACHMENT_MAX_BYTES, MAILBOX_ATTACHMENTS_MAX_BYTES, type MailboxComposeMode, type MailboxUploadAttachment, type MailboxRecordContext } from '@leadcrm/shared';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { toast } from '@/shared/utils/toast';
-import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft, fetchGmailThread, fetchGmailMessageContent, fetchGmailAttachment, getGmailStatus, type GmailEmail } from '../services/gmail.service';
+import { initiateGmailConnect, associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft, fetchGmailThread, fetchGmailMessageContent, fetchGmailAttachment, getGmailStatus, type GmailEmail } from '../services/gmail.service';
 import { readComposeFiles } from '../services/compose-attachments';
 import { ComposeDealSelect } from './compose-deal-select';
 import EmojiPicker from './emoji-picker';
@@ -73,9 +73,11 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const [forwardRecipients, setForwardRecipients] = useState<string[] | null>(null);
   const [forwardRecipientsFailed, setForwardRecipientsFailed] = useState(false);
   const [forwardRecipientsRetry, setForwardRecipientsRetry] = useState(0);
-  const forwardRecipientsBlocked = composeMode === 'forward' && forwardRecipients === null;
+  const [connectionRequired, setConnectionRequired] = useState(false);
   const [sourceMessageId, setSourceMessageId] = useState('');
   const [sourceOptions, setSourceOptions] = useState<GmailEmail[]>([]);
+  const employeeRecipientsRequired = composeMode === 'forward' || !!initialDraft?.isInternal || !!sourceOptions.find(email => email.id === sourceMessageId)?.isInternal;
+  const forwardRecipientsBlocked = employeeRecipientsRequired && forwardRecipients === null;
   const [sourceLoading, setSourceLoading] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
@@ -223,15 +225,16 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   }, [isOpen, initialDraft, attachmentRetry]);
 
   useEffect(() => {
-    setForwardRecipients(null); setForwardRecipientsFailed(false);
-    if (!isOpen || composeMode !== 'forward') return;
+    setForwardRecipients(null); setForwardRecipientsFailed(false); setConnectionRequired(false);
+    if (!isOpen || !employeeRecipientsRequired) return;
     const controller = new AbortController(), generation = operationGeneration.current;
     void getGmailStatus(controller.signal, true).then(status => {
-      if (!status.isConnected || !Array.isArray(status.forwardRecipientEmails)) throw new Error('Employee recipients unavailable.');
+      if (!status.isConnected) { if (!controller.signal.aborted && generation === operationGeneration.current) setConnectionRequired(true); return; }
+      if (!Array.isArray(status.forwardRecipientEmails)) throw new Error('Employee recipients unavailable.');
       if (!controller.signal.aborted && generation === operationGeneration.current) setForwardRecipients(status.forwardRecipientEmails.map(email => email.trim().toLowerCase()));
     }).catch(() => { if (!controller.signal.aborted && generation === operationGeneration.current) setForwardRecipientsFailed(true); });
     return () => controller.abort();
-  }, [isOpen, composeMode, initialDraft, authorizationRevision, forwardRecipientsRetry]);
+  }, [isOpen, employeeRecipientsRequired, initialDraft, authorizationRevision, forwardRecipientsRetry]);
 
   const addAttachments = async (files: File[]) => {
     if (readingFiles.current || mutationPending.current || attachmentBusy || attachmentBlocked || !files.length) return;
@@ -293,11 +296,11 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const getEditorContent = (): string => {
     return safeMailboxHtml(editorRef.current?.innerHTML ?? '');
   };
-  const sourceContext = { composeMode: composeMode || undefined, recordContext: composeMode === 'forward' ? undefined : recordContext, dealId: composeMode === 'forward' ? undefined : dealId || initialDraft?.sourceDealId || undefined,
+  const sourceContext = { composeMode: composeMode || undefined, recordContext: employeeRecipientsRequired ? undefined : recordContext, dealId: employeeRecipientsRequired ? undefined : dealId || initialDraft?.sourceDealId || undefined,
     replyToMessageId: composeMode === 'reply' || composeMode === 'replyAll' ? sourceMessageId || undefined : undefined,
     forwardSourceMessageId: composeMode === 'forward' ? sourceMessageId || undefined : undefined };
   const sourceRequired = !!initialDraft?.draftContextRequired && (!composeMode || !sourceOptions.some(email => email.id === sourceMessageId));
-  const forwardRecipientError = (values: string[]) => composeMode === 'forward' && values.some(value => !forwardRecipients?.includes(value.trim().toLowerCase())) ? MAILBOX_FORWARD_RECIPIENT_ERROR : null;
+  const forwardRecipientError = (values: string[]) => employeeRecipientsRequired && values.some(value => !forwardRecipients?.includes(value.trim().toLowerCase())) ? MAILBOX_FORWARD_RECIPIENT_ERROR : null;
   const actionFailed = (error: unknown, fallback: string) => {
     const request = error as ApiRequestError;
     const editableFailure = request.code === 'MAILBOX_RECIPIENT_REJECTED' || request.code === 'GMAIL_WRITE_REJECTED';
@@ -359,7 +362,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
         if (sendRequest.current?.key !== key) sendRequest.current = { key, id: crypto.randomUUID() };
         const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, sourceContext.replyToMessageId, currentDraftId, sourceContext.forwardSourceMessageId, sendRequest.current.id, sourceContext.composeMode, { attachments, recordContext: sourceContext.recordContext, dealId: sourceContext.dealId });
         if (generation !== operationGeneration.current) return;
-        if (composeMode !== 'forward' && initialDraft?.sourceDealId) {
+        if (!employeeRecipientsRequired && initialDraft?.sourceDealId) {
           const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId, messageId: result.messageId };
           try { await associateThreadDeal(link.threadId, link.sourceDealId, { messageId: link.messageId }); if (generation !== operationGeneration.current) return; onDealLinkResult?.(link, true); }
           catch { if (generation !== operationGeneration.current) return; setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent.'); return; }
@@ -588,7 +591,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
       </div>
 
       {composeMode === 'forward' && <p className="px-4 py-1 text-xs text-muted-foreground">Forward to active employees in your workspace.</p>}
-      {forwardRecipientsBlocked && (forwardRecipientsFailed
+      {connectionRequired && <p role="alert" className="px-4 py-2 text-sm text-red-600">Connect your work Gmail account first. <button type="button" className="underline" onClick={() => void initiateGmailConnect().catch(error => setError(error instanceof Error ? error.message : 'Unable to connect Gmail.'))}>Connect Gmail</button></p>}
+      {forwardRecipientsBlocked && !connectionRequired && (forwardRecipientsFailed
         ? <div role="alert" className="px-4 py-1 text-xs">Employee recipients could not be loaded. <button type="button" className="underline" onClick={() => setForwardRecipientsRetry(value => value + 1)}>Retry employee recipients</button></div>
         : <p role="status" className="px-4 py-1 text-xs">Checking employee recipients…</p>)}
 
@@ -606,7 +610,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
         />
       </div>
 
-      {composeMode !== 'forward' && recordContext && <ComposeDealSelect context={recordContext} dealId={dealId} disabled={isSending || isSavingDraft || !!sentLink} onSelect={(id, title) => { setDealId(id); if (title) setSubject(title); authoredContent.current = true; }} />}
+      {!employeeRecipientsRequired && recordContext && <ComposeDealSelect context={recordContext} dealId={dealId} disabled={isSending || isSavingDraft || !!sentLink} onSelect={(id, title) => { setDealId(id); if (title) setSubject(title); authoredContent.current = true; }} />}
 
       {initialDraft?.draftContextRequired && <div className="space-y-2 border-b border-gray-100 px-4 py-2 text-xs dark:border-white/[0.05]">
         <p>This older draft needs its original message and action selected before delivery.</p>

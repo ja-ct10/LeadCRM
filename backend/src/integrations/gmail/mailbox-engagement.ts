@@ -7,11 +7,17 @@ export function isMailboxForward(value: unknown): boolean {
   return context.composeMode === 'forward' || typeof context.forwardSourceMessageId === 'string' && !!context.forwardSourceMessageId;
 }
 
+/** Internal Reply is established by server-side source authorization. */
+export function isInternalMailboxOperation(value: unknown): boolean {
+  return isMailboxForward(value) || !!value && typeof value === 'object' && !Array.isArray(value) &&
+    typeof (value as { internalSourceReceiptId?: unknown }).internalSourceReceiptId === 'string';
+}
+
 /** Keep sent history readable while excluding proven forwards from customer engagement reads. */
 export async function withoutMailboxForwards(tx: Prisma.TransactionClient, account: { id: string; tenantId: string }): Promise<Prisma.MailboxMessageWhereInput> {
   const receipts = await tx.mailboxSendReceipt.findMany({ where: { tenantId: account.tenantId, accountId: account.id,
     operation: { in: ['send', 'schedule'] },
-    OR: [{ authorizationContext: { path: ['composeMode'], equals: 'forward' } }, { authorizationContext: { path: ['forwardSourceMessageId'], string_starts_with: '' } }],
+    OR: [{ authorizationContext: { path: ['composeMode'], equals: 'forward' } }, { authorizationContext: { path: ['forwardSourceMessageId'], string_starts_with: '' } }, { authorizationContext: { path: ['internalSourceReceiptId'], string_starts_with: '' } }],
   }, select: { rfcMessageId: true, providerMessageId: true } });
   if (!receipts.length) return {};
   return { NOT: { accountId: account.id, OR: [

@@ -218,7 +218,6 @@ function InboxMailbox(): React.ReactElement {
   const mailboxIdentity = useRef(connectionStatus?.email);
   mailboxIdentity.current = connectionStatus?.email;
   const markOpenedRead = useCallback((email: GmailEmail) => {
-    if (email.gmailActionsAvailable === false) return Promise.resolve();
     const generation = authorizationGeneration.current, mailbox = mailboxIdentity.current;
     const current = () => mounted.current && generation === authorizationGeneration.current && mailbox === mailboxIdentity.current;
     const key = `${generation}:${mailbox}:${email.conversationId ?? email.threadId}`;
@@ -233,6 +232,9 @@ function InboxMailbox(): React.ReactElement {
           do {
             const result = await setGmailConversationReadState(email.conversationId, true, pageToken);
             if (!current()) return;
+            setEmails(previous => previous.map(row => row.conversationId === email.conversationId ? { ...row, isRead: result.isRead } : row));
+            setUnreadCount(result.unreadCount);
+            window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: result.unreadCount }));
             refreshAfterMutation.current();
             pageToken = result.nextPageToken;
           } while (pageToken);
@@ -263,7 +265,7 @@ function InboxMailbox(): React.ReactElement {
     if (opened.current === selectedEmail) return;
     opened.current = selectedEmail;
     // One attempt per opening; revisions/new arrivals must not re-mark the history.
-    if (retryAt > Date.now()) { setReadFailure({ email: selectedEmail, message: 'Gmail updates are temporarily paused. Retry marking as read when updates resume.' }); return; }
+    if (retryAt > Date.now() && !selectedEmail.isInternal) { setReadFailure({ email: selectedEmail, message: 'Gmail updates are temporarily paused. Retry marking as read when updates resume.' }); return; }
     void markOpenedRead(selectedEmail);
   }, [selectedEmail, markOpenedRead, retryAt]);
   useEffect(() => {
@@ -394,7 +396,7 @@ function InboxMailbox(): React.ReactElement {
   };
   const openEmail = (email: GmailEmail) => {
     if (email.scheduledStatus) { setSelectedSchedule(email.id); return; }
-    if (filter === 'drafts') { setComposeDraft({ to: [...email.to, ...(email.cc ?? [])].join(', '), subject: email.subject, body: email.body, draftId: email.draftId,
+    if (filter === 'drafts') { setComposeDraft({ isInternal: email.isInternal, to: [...email.to, ...(email.cc ?? [])].join(', '), subject: email.subject, body: email.body, draftId: email.draftId,
       composeMode: email.composeMode, replyToMessageId: email.replyToMessageId, forwardSourceMessageId: email.forwardSourceMessageId,
         sourceDealId: email.recordContext ? undefined : email.dealId ?? undefined, recordContext: email.recordContext, dealId: email.dealId ?? undefined, attachmentSourceMessageId: email.id, draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
     else setSelectedEmail(email);
@@ -434,7 +436,7 @@ function InboxMailbox(): React.ReactElement {
       </>}
       {syncError && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{syncError}</p>}
       {error && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{error}</p>{canReadMailbox && <button type="button" className={control} disabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onClick={() => void loadEmails(tokenRef.current, pageRef.current)}>Retry loading emails</button>}</div>}
-      {canReadMailbox && !connectionStatus?.isConnected && <p className="px-4 py-2 text-sm text-muted-foreground">Internal messages are available to read and download. Connect Gmail to send or manage email.</p>}
+      {canReadMailbox && !connectionStatus?.isConnected && <p className="px-4 py-2 text-sm text-muted-foreground">Internal messages are available to read, archive and trash. Connect Gmail to send email.</p>}
       {readFailure && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{readFailure.message}</p><button type="button" className={control} disabled={readBusy || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void markOpenedRead(readFailure.email)}>Retry marking as read</button></div>}
       {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !canReadMailbox ? <InboxCurrentEmpty /> : <InboxEmailList key={view} view={view} emails={emails} mailboxEmail={mailboxEmail ?? undefined} onEmailClick={openEmail} loading={initialLoading || (!error && loadedQuery !== mailboxQuery)} hasLoadError={!!error || loadedQuery !== mailboxQuery} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>

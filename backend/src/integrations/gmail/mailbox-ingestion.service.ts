@@ -1,6 +1,6 @@
 import { classifyCustomerRecord, refreshDealClassification, recordStaffOutreach, acceptCustomerReply } from '../../modules/crm/customer-classification.service';
 import { acceptDealReply } from '../../modules/crm/deals/deal-engagement.service';
-import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, matchingMailboxForward, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
+import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, mailboxMessageIdentity, messageInScope, matchingMailboxForward, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { normalizeCrmStatus, type MailboxComposeMode, type MailboxRecordContext } from '@leadcrm/shared';
@@ -12,7 +12,7 @@ import { CustomerLink, customerDealWhere } from '../../modules/crm/engagement.se
 import { engagementStatus, normalizeEmail, ENGAGEMENT_RULE_VERSION, DAY_MS } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
 import { mailboxPermissions } from './mailbox-sync.service';
-import { forwardDeliverySnapshot, forwardAttachmentMetadata, isLocalForwardId, materializeForwardCopies } from './mailbox-forward-delivery';
+import { forwardDeliverySnapshot, forwardAttachmentMetadata, isLocalForwardId, materializeForwardCopies, internalMailboxStates, overlayInternalLabels } from './mailbox-forward-delivery';
 import { captureConfirmedForward } from './gmail.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean; clientAdmin?: boolean }
@@ -152,17 +152,19 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       // including the verified-message replay path and inherited thread associations.
       if (forwarded) {
         const draft = email.labels.includes('DRAFT');
-        const sourceMessageId = context?.forwardSourceMessageId ?? forwardProof?.sourceMessageId;
-        if (draft && (!sourceMessageId || !await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, currentScope), { providerMessageId: sourceMessageId, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true } }))) return;
+        const sourceMessageId = context?.forwardSourceMessageId ?? context?.sourceMessageId ?? forwardProof?.sourceMessageId;
+        if (draft && (!sourceMessageId || !await tx.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, currentScope), mailboxMessageIdentity(currentScope, sourceMessageId), { NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true } }))) return;
         const receipt = forwardProof?.receiptId ? await tx.mailboxSendReceipt.findFirst({ where: { id: forwardProof.receiptId, tenantId: account.tenantId } }) : null;
         const snapshot = forwardDeliverySnapshot(receipt?.authorizationContext);
         const existing = await tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id,
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId, fromAddress: mailboxAddress(email.from), recipientAddresses: { equals: forwardProof?.recipients ?? [] }, NOT: { labels: { has: 'DRAFT' } } } : { providerMessageId: email.id }) }, orderBy: { createdAt: 'asc' } });
+        const state = existing ? internalMailboxStates(receipt?.authorizationContext)[existing.id] : undefined;
+        const localState = state?.accountId === account.id && state.userId === account.userId ? state : undefined;
         const data = { threadId: email.threadId, from: email.from, fromAddress: mailboxAddress(email.from)!, recipients: email.to,
           recipientAddresses: [...new Set([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []))].sort(),
           authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
-          subject: snapshot?.subject ?? email.subject, body: snapshot?.body ?? (email.contentLoaded === false ? existing?.body ?? '' : email.body), snippet: snapshot ? snapshot.body.replace(/<[^>]*>/g, '').slice(0, 200) : email.contentLoaded === false ? existing?.snippet ?? email.snippet : email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
-          rfcInReplyTo: email.rfcInReplyTo, rfcReferences: email.rfcReferences ?? [], draftId: draft ? email.draftId : null,
+          subject: snapshot?.subject ?? email.subject, body: snapshot?.body ?? (email.contentLoaded === false ? existing?.body ?? '' : email.body), snippet: snapshot ? snapshot.body.replace(/<[^>]*>/g, '').slice(0, 200) : email.contentLoaded === false ? existing?.snippet ?? email.snippet : email.snippet, labels: overlayInternalLabels(email.labels, localState), sentAt, rfcMessageId: email.rfcMessageId,
+          rfcInReplyTo: snapshot?.rfcInReplyTo ?? (email.contentLoaded === false ? existing?.rfcInReplyTo : email.rfcInReplyTo), rfcReferences: snapshot?.rfcReferences ?? (email.contentLoaded === false ? existing?.rfcReferences ?? [] : email.rfcReferences ?? []), draftId: draft ? email.draftId : null,
           ...(snapshot ? { attachments: forwardAttachmentMetadata(snapshot) as unknown as Prisma.InputJsonValue } : email.contentLoaded !== false && email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
           direction: mailboxAddress(email.from) === mailboxAddress(account.email) ? 'outbound' : 'inbound',
           sourceMessageId: draft ? sourceMessageId : null, crmDraft: draft,

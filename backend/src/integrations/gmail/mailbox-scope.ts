@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Prisma, EmailAccount } from '@prisma/client';
+import { Prisma, EmailAccount, type MailboxMessage } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
@@ -121,8 +121,9 @@ export async function resolveMailboxScope(account: EmailAccount, permissions: Ma
   }
   const drafts = await db.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, draftId: { not: null }, sourceMessageId: { not: null } }, select: { sourceMessageId: true }, distinct: ['sourceMessageId'] });
   if (drafts.length) {
-    const sources = await db.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { providerMessageId: { in: drafts.flatMap(row => row.sourceMessageId ?? []) }, NOT: { labels: { has: 'DRAFT' } } }] }, select: { providerMessageId: true } });
-    scope.draftSourceIds = sources.map(row => row.providerMessageId);
+    const ids = drafts.flatMap(row => row.sourceMessageId ?? []);
+    const sources = await db.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { OR: ids.map(id => mailboxMessageIdentity(scope, id)) }, { NOT: { labels: { has: 'DRAFT' } } }] }, select: { providerMessageId: true, rfcMessageId: true } });
+    scope.draftSourceIds = ids.filter(id => sources.some(row => row.providerMessageId === id || scope.forwardProofs?.some(proof => id === `internal_${proof.receiptId}` && !!proof.rfcMessageId && proof.rfcMessageId === row.rfcMessageId)));
   }
   return scope;
 }
@@ -136,6 +137,24 @@ export function matchingMailboxForward(email: ScopedEmail, scope: MailboxScope):
   return scope.forwardProofs?.find(proof => (proof.rfcMessageId && proof.rfcMessageId === email.rfcMessageId || proof.providerMessageId && proof.providerMessageId === email.id)
     && proof.sender === mailboxAddress(email.from) && JSON.stringify(proof.recipients) === JSON.stringify(recipients)
     && JSON.stringify(proof.participants) === JSON.stringify(participants) && (recipients.length > 0 || email.labels?.includes('DRAFT')));
+}
+
+export function storedInternalProof(row: Pick<MailboxMessage, 'providerMessageId' | 'rfcMessageId' | 'fromAddress' | 'recipientAddresses' | 'authorizationParticipants' | 'labels'>, scope: MailboxScope) {
+  return scope.forwardProofs?.find(proof => (proof.rfcMessageId && proof.rfcMessageId === row.rfcMessageId || proof.providerMessageId && proof.providerMessageId === row.providerMessageId)
+    && proof.sender === row.fromAddress && JSON.stringify(proof.recipients) === JSON.stringify(row.recipientAddresses)
+    && JSON.stringify(proof.participants) === JSON.stringify(row.authorizationParticipants));
+}
+
+/** A local receipt identity remains a valid source after its provider identity arrives. */
+export function mailboxMessageIdentity(scope: MailboxScope, id: string): Prisma.MailboxMessageWhereInput {
+  const proof = scope.forwardProofs?.find(proof => proof.completed && id === `internal_${proof.receiptId}` && proof.rfcMessageId);
+  return proof ? { OR: [{ providerMessageId: id }, { rfcMessageId: proof.rfcMessageId }] } : { providerMessageId: id };
+}
+
+export async function resolveMailboxMessage(account: EmailAccount, scope: MailboxScope, id: string, excludeDrafts = true, db: Prisma.TransactionClient = prisma) {
+  const row = await db.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(account, scope), mailboxMessageIdentity(scope, id), ...(excludeDrafts ? [{ NOT: { labels: { has: 'DRAFT' } } }] : [])] } });
+  if (!row) throw new AppError('Email is outside your assigned CRM mailbox scope.', 404);
+  return row;
 }
 
 export function messageInScope(email: ScopedEmail, mailbox: string, scope: MailboxScope): boolean {
@@ -171,7 +190,7 @@ export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope, 
         { labels: { has: 'DRAFT' }, crmDraft: true, recipientAddresses: { isEmpty: true } },
       ] },
     ] };
-  if (scope.internalOnly) result.OR = result.OR!.slice(0, scope.forwardProofs?.length ?? 0);
+  if (scope.internalOnly) result.OR = scope.forwardProofs?.length ? result.OR!.slice(0, scope.forwardProofs.length) : [{ id: { in: [] } }];
   return result;
 }
 
@@ -215,6 +234,10 @@ export function mailboxProviderQueries(scope: MailboxScope): string[] {
 }
 
 export async function assertStoredMessages(account: EmailAccount, scope: MailboxScope, ids: string[], excludeDrafts = false, db: Prisma.TransactionClient = prisma) {
+  if (ids.some(id => id.startsWith('internal_'))) {
+    for (const id of new Set(ids)) await resolveMailboxMessage(account, scope, id, excludeDrafts, db);
+    return;
+  }
   const found = await db.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { providerMessageId: { in: ids } }, ...(excludeDrafts ? [{ NOT: { labels: { has: 'DRAFT' } } }] : [])] }, select: { providerMessageId: true } });
   if (new Set(found.map(row => row.providerMessageId)).size !== new Set(ids).size) throw new AppError('Email is outside your assigned CRM mailbox scope.', 404);
 }
